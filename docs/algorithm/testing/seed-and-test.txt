@@ -1,0 +1,95 @@
+Create a seed script that populates the database with test data and validates the recommendation system.
+
+1. CREATE 20 TEST USERS across 4 cohort years (2026-2029), 5 cities (Seoul, Hyderabad, Buenos Aires, San Francisco, Berlin), and 4 concentrations (Computational Sciences, Arts & Humanities, Social Sciences, Business).
+
+   Distribute evenly: 5 users per cohort year, mix of cities and concentrations.
+   Give each user 3 freeform interests that sound natural, not like tags.
+   Example: interests: ["how cities shape the way you think", "generative art", "why some teams click and others don't"]
+
+2. CREATE 40 THOUGHTS with realistic sentences and contexts. Include cross-domain pairs that share underlying questions but differ on the surface:
+
+   Pair A — "What am I becoming vs what I planned?"
+   - CS student, 2027, San Francisco:
+     sentence: "I automated my morning routine and now I miss the inefficiency"
+     context: "Built a system that handles everything from coffee to calendar. It works perfectly. I feel nothing about it."
+   - Philosophy student, 2029, Seoul:
+     sentence: "I wonder if my need for structure is really a fear of surprise"
+     context: "Wrote my entire semester plan in one sitting. Felt productive. Then realized I'd eliminated every gap where something unexpected could happen."
+
+   Pair B — "Does the best work happen outside permission?"
+   - Arts student, 2026, Buenos Aires:
+     sentence: "The best thing I made this year was something I almost deleted"
+     context: "Submitted the wrong draft. My professor said it was the most honest piece I'd written. Still not sure what that means."
+   - Business student, 2028, Berlin:
+     sentence: "Our most successful product was the one nobody approved"
+     context: "Three of us built it over a weekend because the official project was stalled. Now the official project is cancelled and ours ships next month."
+
+   Pair C — "What do I owe the place I came from?"
+   - Social Sciences student, 2027, Hyderabad:
+     sentence: "I explain my hometown differently depending on who's asking"
+     context: "To people from home, I'm the one who left. To people here, I'm the one from somewhere interesting. Neither version is the whole story."
+   - Business student, 2029, San Francisco:
+     sentence: "My family's business is the thing I'm most qualified for and least interested in"
+     context: "Three generations of knowing exactly what comes next. I came to Minerva to find a different answer but I'm not sure the question was mine to begin with."
+
+   Pair D — "When does understanding become performance?"
+   - Arts student, 2028, Seoul:
+     sentence: "I stopped journaling because I started writing for an audience of myself"
+     context: "Caught myself editing entries for clarity. Who was I performing for? The realization made me close the notebook."
+   - CS student, 2026, Berlin:
+     sentence: "My code comments explain things I actually understand to someone who doesn't exist"
+     context: "Started documenting everything obsessively. Realized I was performing comprehension, not practicing it. The comments were for me to feel like I knew what I was doing."
+
+   Create at least 8 such cross-domain pairs (16 thoughts). Fill the remaining 24 with standalone thoughts that are specific, personal, and have open gaps.
+
+3. RUN THE DUAL EMBEDDING PIPELINE on all 40 thoughts. This calls ThoughtProcessingService.processNewThought() for each.
+
+4. GENERATE FEEDS for 3 test users from different cohorts and concentrations:
+   - User A: CS student, cohort 2027
+   - User B: Arts student, cohort 2026
+   - User C: Social Sciences student, cohort 2029
+
+5. PRINT A VALIDATION REPORT showing:
+
+   For each of the 3 test users:
+   a. Top 10 thoughts in their feed with scores:
+      - Q (question resonance), D (diversity), F (freshness), R (reply quality)
+      - Final rank score
+      - The thought's sentence
+      - The thought author's concentration and cohort year
+   
+   b. Cohort distribution in the top 10:
+      - Count per cohort year
+      - PASS/FAIL: does any single cohort exceed 40%?
+   
+   c. Cross-domain pair detection:
+      - For each known pair (A, B, C, D), are both thoughts in the top 20?
+      - Are they ranked within 5 positions of each other?
+   
+   d. The extracted underlying questions for each thought in the feed
+
+6. RUN SPECIFIC VALIDATIONS:
+
+   VALIDATION 1 — Cross-domain beats same-domain:
+   For the CS 2027 user, compare:
+   - Average rank of thoughts from OTHER concentrations vs SAME concentration
+   - Thoughts from other concentrations should rank higher on average (due to surface_distance bonus)
+   - PASS if cross-domain average rank is better (lower number)
+
+   VALIDATION 2 — Cross-cohort diversity:
+   For all 3 users, verify no single cohort exceeds 40% in any sliding window of 10 thoughts.
+   - PASS if constraint holds for all windows
+
+   VALIDATION 3 — Underlying question matching:
+   For Pair A thoughts ("automated morning" and "fear of surprise"):
+   - Compute question_similarity between them
+   - Compute surface_similarity between them
+   - PASS if question_similarity > 0.6 AND surface_similarity < 0.4
+   (They should be question-similar but surface-different)
+
+   VALIDATION 4 — Quality score sanity:
+   - Specific, open thoughts (our crafted pairs) should score > 0.5
+   - If any standalone "filler" thoughts are generic, they should score < 0.4
+   - PASS if quality scores correlate with specificity and openness
+
+Print final summary: X/4 validations passed.

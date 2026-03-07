@@ -1,0 +1,102 @@
+I'm building the recommendation engine for a social app called net.
+Here's the context: users post "thoughts" (a sentence + up to 600 chars of context).
+Other users can reply. The thought author accepts or ignores replies.
+Accepted replies become conversations (DM threads).
+
+Create the database schema with these tables using PostgreSQL + pgvector:
+
+1. users
+   - id (uuid, primary key)
+   - name (text)
+   - photo_url (text)
+   - cohort_year (integer) — e.g. 2026, 2027, 2028, 2029
+   - current_city (text)
+   - concentration (text) — academic field
+   - interests (text[3]) — freeform strings, max 3 items
+   - created_at (timestamptz)
+
+2. thoughts
+   - id (uuid, primary key)
+   - user_id (uuid, references users)
+   - sentence (text) — one sentence, the front of the thought
+   - context (text) — up to 600 chars, the back of the thought
+   - image_url (text)
+   - surface_embedding (vector(768)) — semantic embedding of sentence + context
+   - question_embedding (vector(768)) — embedding of the underlying question extracted by LLM
+   - quality_score (float) — computed on creation, 0-1
+   - created_at (timestamptz)
+
+   Note: vector dimension is 768 for nomic-embed-text / bge-large. Adjust if using a different model.
+
+3. replies
+   - id (uuid, primary key)
+   - thought_id (uuid, references thoughts)
+   - replier_id (uuid, references users)
+   - text (text)
+   - status (enum: 'pending', 'accepted', 'deleted')
+   - created_at (timestamptz)
+
+4. conversations
+   - id (uuid, primary key)
+   - thought_id (uuid, references thoughts)
+   - reply_id (uuid, references replies)
+   - participant_a (uuid, references users)
+   - participant_b (uuid, references users)
+   - message_count (integer, default 0)
+   - last_message_at (timestamptz)
+   - is_dormant (boolean, default false)
+   - created_at (timestamptz)
+
+5. messages
+   - id (uuid, primary key)
+   - conversation_id (uuid, references conversations)
+   - sender_id (uuid, references users)
+   - text (text)
+   - created_at (timestamptz)
+
+6. engagement_events
+   - id (uuid, primary key)
+   - user_id (uuid, references users)
+   - thought_id (uuid, references thoughts)
+   - event_type (enum: 'view_p1', 'swipe_p2', 'swipe_p3', 'type_start', 'reply_sent')
+   - session_id (text) — for funnel analysis
+   - metadata (jsonb) — flexible storage for dwell_time_ms, reply_length, etc.
+   - created_at (timestamptz)
+
+7. question_clusters (populated later, not on launch)
+   - id (uuid, primary key)
+   - centroid_embedding (vector(768))
+   - label (text) — human-readable, LLM-generated
+   - sample_questions (text[])
+   - thought_count (integer)
+   - created_at (timestamptz)
+
+8. cross_cluster_affinity (populated later)
+   - cluster_a_id (uuid, references question_clusters)
+   - cluster_b_id (uuid, references question_clusters)
+   - reply_rate (float)
+   - conversation_rate (float)
+   - sustain_rate (float) — conversations reaching 10+ messages
+   - avg_conversation_depth (float)
+
+9. user_recommendation_weights (populated by learning loop)
+   - user_id (uuid, references users, primary key)
+   - q_weight (float, default 0.40)
+   - d_weight (float, default 0.25)
+   - f_weight (float, default 0.20)
+   - r_weight (float, default 0.15)
+   - alpha (float, default 0.3)
+   - updated_at (timestamptz)
+
+Create indexes:
+- HNSW index on thoughts.surface_embedding and thoughts.question_embedding using vector_cosine_ops
+- Index on thoughts(user_id, created_at DESC)
+- Index on replies(thought_id, status)
+- Index on engagement_events(user_id, thought_id, event_type)
+- Index on conversations(participant_a), conversations(participant_b)
+- Index on conversations(last_message_at DESC)
+- Index on messages(conversation_id, created_at)
+
+Use Drizzle ORM. Create a migration file.
+
+Do NOT create any interest taxonomy tables, L1/L2 category tables, lens score tables, or social graph edges. The system's intelligence lives in embeddings, not predefined categories.

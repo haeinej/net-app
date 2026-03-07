@@ -1,0 +1,45 @@
+Build an EmbeddingService that generates vector embeddings using open-source models.
+
+For V1, we're using nomic-embed-text (768 dimensions) via a local inference server or Hugging Face API.
+
+Two deployment options — implement both, toggled by environment variable EMBEDDING_PROVIDER:
+
+OPTION A — Self-hosted (production)
+Run nomic-embed-text via Hugging Face's text-embeddings-inference (TEI) server.
+The service calls POST ${EMBEDDING_SERVER_URL}/embed with { inputs: string[] }
+and receives float[][] back.
+
+To run TEI locally:
+docker run -p 8080:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id nomic-ai/nomic-embed-text-v1.5
+
+OPTION B — Hugging Face Inference API (development / low volume)
+Use the free Hugging Face Inference API as a fallback.
+Model: nomic-ai/nomic-embed-text-v1.5
+Endpoint: https://api-inference.huggingface.co/pipeline/feature-extraction/nomic-ai/nomic-embed-text-v1.5
+
+The service should have these methods:
+
+1. embed(text: string): Promise<number[]>
+   - Returns a 768-dimensional vector
+   - Prepends "search_document: " prefix for documents being stored
+   - Prepends "search_query: " prefix for queries (when searching for similar)
+   (nomic-embed-text uses task prefixes for better performance)
+
+2. embedBatch(texts: string[]): Promise<number[][]>
+   - Batch embed multiple texts in one call
+   - Max batch size: 32 texts per call
+   - Split larger batches automatically
+
+3. cosineSimilarity(a: number[], b: number[]): number
+   - Utility function for comparing embeddings in application code
+   - For database queries, use pgvector's <=> operator instead
+
+Configuration via env vars:
+- EMBEDDING_PROVIDER: 'local' | 'huggingface'
+- EMBEDDING_SERVER_URL: URL of local TEI server (for local provider)
+- HF_API_TOKEN: Hugging Face API token (for huggingface provider)
+
+Add retry logic (1 retry with 500ms delay) and request timeout (10s).
+Cache embeddings in memory using an LRU cache (max 1000 entries) keyed by text hash.
+
+Note: if we later switch to bge-large-en-v1.5, the interface stays identical — only the model ID and prefix convention change. Keep the model name configurable.

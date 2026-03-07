@@ -1,0 +1,118 @@
+Build a FeedService that scores and ranks thoughts for each user's personalized feed.
+
+This is the three-layer recommendation architecture: embed → retrieve → rank.
+
+LAYER 1 — RETRIEVE (fast, database-level via pgvector)
+
+getCandidates(userId: string, limit: number = 100): Promise<Thought[]>
+
+If viewer has posted thoughts:
+  - Get the viewer's question_embeddings from their posted thoughts
+  - Query pgvector for the 100 nearest thoughts by question_embedding similarity (use <=> cosine distance operator)
+  - UNION with the 50 most recent thoughts (ensures new content is seen)
+  - EXCLUDE the viewer's own thoughts
+  - EXCLUDE deleted thoughts
+
+If viewer has NO posted thoughts (new user):
+  - Embed their freeform interests field using EmbeddingService
+  - Query pgvector for 80 nearest thoughts by surface_embedding similarity to interests embedding
+  - UNION with 50 most recent thoughts
+  - EXCLUDE the viewer's own thoughts
+
+Deduplicate and return.
+
+
+LAYER 2 — SCORE (application-level)
+
+scoreThought(thought: Thought, viewerEmbeddings: ViewerEmbeddings, viewerProfile: User): number
+
+The core formula:
+  score = question_similarity × (1 + α × surface_distance) × quality_score
+
+Where:
+- question_similarity = max cosine similarity between thought.question_embedding and ALL of the viewer's question_embeddings (from their posted thoughts). Take the highest match.
+- surface_distance = 1 - max cosine similarity between thought.surface_embedding and the viewer's surface_embeddings. This means topically DIFFERENT thoughts score HIGHER. This is intentional — it's the core mechanism that produces the "seemingly irrelevant but intriguing" experience.
+- α = viewer's personalized alpha from user_recommendation_weights table (default 0.3). Controls how much surface difference is rewarded.
+- quality_score = thought's precomputed quality_score (0-1)
+
+Edge cases:
+- Viewer has no posted thoughts: skip question_similarity entirely. score = interests_similarity × quality_score × 0.7 (where interests_similarity = cosine sim between thought surface_embedding and embedded interests)
+- Thought missing question_embedding (processing failed): use surface_embedding similarity only, no surface_distance bonus. score = surface_similarity × quality_score
+
+
+LAYER 3 — RANK (combine scores with diversity, freshness, reply quality)
+
+Determine which phase:
+- PHASE 1 (pre-data): viewer has < 3 thoughts OR system has < 200 total engagement events
+- PHASE 2 (learning): otherwise
+
+PHASE 1 — PRE-DATA RANKING:
+  rank = freshness × 0.50 + quality_score × 0.30 + cohort_diversity_bonus × 0.20
+  
+  - freshness = exp(-0.005 × hours_since_posted) — half-life ~6 days
+  - cohort_diversity_bonus = 1.0 if thought author is different cohort from viewer, 0.3 if same
+
+PHASE 2 — LEARNING RANKING:
+  Load personalized weights from user_recommendation_weights (or defaults):
+  rank = (Q × w1) + (D × w2) + (F × w3) + (R × w4)
+  
+  Defaults: w1=0.40, w2=0.25, w3=0.20, w4=0.15
+
+  Q — Question resonance: the score from Layer 2, normalized to 0-1
+
+  D — Diversity score:
+    cohort_distance = min(|thought.user.cohort_year - viewer.cohort_year| / 3, 1.0)
+    concentration_diff = 1.0 if different concentration, 0.3 if same
+    cluster_novelty = how different this thought's question cluster is from the viewer's last 10 viewed thoughts (1.0 = new cluster, 0.0 = same cluster). If no cluster data yet, default 0.5.
+    D = (cohort_distance × 0.4) + (concentration_diff × 0.3) + (cluster_novelty × 0.3)
+
+  F — Freshness: exp(-0.005 × hours_since_posted)
+
+  R — Reply quality:
+    If no replies yet: R = 0.5 (neutral — don't penalize new thoughts)
+    Otherwise:
+      has_accepted_reply = +0.3
+      has_sustained_conversation (10+ msgs) = +0.4
+      cross_domain_ratio = (accepted replies from different concentrations / total accepted replies) × 0.3
+      R = sum of applicable, capped at 1.0
+
+
+POST-RANKING DIVERSITY ENFORCEMENT:
+After scoring and sorting, enforce hard constraints:
+
+1. Walk through the ranked list
+2. Maintain a sliding window of 10 thoughts
+3. Track cohort year counts in window
+4. If inserting a thought would push any single cohort above 40% in the window, demote it by 5 positions and re-check
+5. If 3 consecutive thoughts share a concentration, demote the 3rd by 3 positions
+6. Never include a user's own thoughts in their feed
+
+
+THE MAIN METHOD:
+
+getFeed(userId: string, limit: number = 20, offset: number = 0): Promise<FeedItem[]>
+
+Steps:
+  1. getCandidates() — Layer 1
+  2. Load viewer's embeddings + profile + recommendation weights
+  3. Score all candidates — Layer 2
+  4. Rank with diversity enforcement — Layer 3
+  5. Slice by offset/limit
+  6. Return FeedItems with:
+     - thought id, sentence, image_url, created_at
+     - user: { id, name, photo_url }
+     - warmth_level: 'none' | 'low' | 'medium' | 'full'
+       none = 0 replies, low = 1+ reply, medium = 3+ replies, full = only when current user is typing (client-side)
+     - has_context: boolean (context is not empty)
+     DO NOT include any numerical counts ever
+
+Cache: store feed per user for 5 minutes. Invalidate when any new thought is posted or any reply activity occurs on thoughts in the cached feed.
+
+
+EXPLICITLY EXCLUDED from ranking (never add these):
+- View counts
+- Reply counts as a ranking factor (warmth bar handles this visually)
+- Social proximity / mutual connections (there is no social graph)
+- Profile completeness
+- "People like you also liked" logic
+- Trending or popularity signals
