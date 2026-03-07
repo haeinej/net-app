@@ -3,11 +3,20 @@
  * Usage: npm run db:migrate
  */
 import "dotenv/config";
+import { setDefaultResultOrder } from "node:dns";
+setDefaultResultOrder("ipv4first");
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import postgres from "postgres";
 
-const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
+const url = process.env.DATABASE_URL;
+if (!url) {
+  console.error("DATABASE_URL is not set in .env");
+  process.exit(1);
+}
+// Supabase (and most cloud Postgres): use SSL. Local postgres: no SSL.
+const useSsl = url.includes("supabase") || url.includes("pooler.supabase");
+const sql = postgres(url, { max: 1, ssl: useSsl ? "require" : false });
 
 const MIGRATIONS_DIR = join(process.cwd(), "drizzle");
 

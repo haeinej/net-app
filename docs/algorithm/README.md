@@ -8,19 +8,20 @@ This folder contains **8 Cursor prompts** plus a rules file and a test script. P
 1. Add the recommendation spec (.docx), product spec, and design spec to your Cursor project context
 2. Copy the contents of `cursorrules.txt` into your `.cursorrules` file or Cursor project instructions
 3. Build phases in order — each depends on the previous
+4. **Database + Auth:** Supabase free tier. Set `DATABASE_URL` in `api/.env` to the **connection pooler** URI (port 6543). See root [README.md](../../README.md) and [DEBUGGING.md](../../DEBUGGING.md) if connection fails.
 
 ---
 
 ## Tech Stack
 
-| Component | Tool | Cost |
-|-----------|------|------|
-| Embeddings | nomic-embed-text (768d) via local TEI server or HuggingFace API | Free |
-| Question extraction LLM | Mistral 7B / Llama 3.1 8B via Ollama (local) | Free |
-| LLM fallback | Claude Haiku or GPT-4o-mini (API) | ~$0.001/thought |
-| Vector search | PostgreSQL + pgvector | Free |
-| Image generation | fal.ai Flux + IP-Adapter | ~$0.04/image |
-| Re-ranker (later) | Mistral 7B via Ollama | Free |
+| Layer | Tool | Cost |
+|-------|------|------|
+| Database + Auth | Supabase free tier | $0 |
+| Embeddings | Ollama on your Mac directly (no Docker) | $0 |
+| Question extraction LLM | Ollama on your Mac directly | $0 |
+| API server | Run locally on your Mac | $0 |
+| Vector search | PostgreSQL + pgvector (Supabase) | $0 |
+| Image generation | fal.ai Flux + IP-Adapter | Pay-per-use |
 
 ---
 
@@ -48,7 +49,7 @@ Phases 2, 3, 4, and 6 can be built in parallel. Phase 7 ships as stubs — the l
 **Three-layer recommendation: embed → retrieve → rank**
 
 **Layer 1 — Embed (on thought creation):**
-Every thought gets two embeddings via an open-source model (nomic-embed-text):
+Every thought gets two embeddings via Ollama on your Mac (nomic-embed-text):
 - Surface embedding: what the thought is topically about
 - Question embedding: what underlying question the person is wrestling with (extracted by LLM, then embedded)
 

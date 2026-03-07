@@ -8,4 +8,9 @@ Download and add here for the net. design system:
 - **General Sans** — [fontshare.com/fonts/general-sans](https://www.fontshare.com/fonts/general-sans)  
   Add: `GeneralSans-Medium.otf`, `GeneralSans-Bold.otf` (labels, logo, nav).
 
-Then in `app/_layout.tsx`, uncomment the `useFonts` block and require these files so they load at app start. Until then, the app uses the system font.
+Font loading is enabled in `app/_layout.tsx`. Expected filenames in this folder:
+- `Sentient-Light.otf`
+- `GeneralSans-Medium.otf`
+- `GeneralSans-Bold.otf`
+
+If your Fontshare download uses different names (e.g. no hyphen), rename them to match or update the `require()` paths in `_layout.tsx`.

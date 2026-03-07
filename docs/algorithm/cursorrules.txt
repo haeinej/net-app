@@ -6,11 +6,12 @@ Goal: surface thoughts that are about different things on the surface but wrestl
 with the same underlying question. Never optimize for interest matching or topic similarity.
 
 ## Tech Stack
-- Embeddings: nomic-embed-text (768 dimensions) via local TEI server or Hugging Face API
-- LLM: Ollama (Mistral 7B) locally, Claude Haiku / GPT-4o-mini as fallback
-- Vector search: PostgreSQL + pgvector with HNSW indexes
+- Database + Auth: Supabase free tier ($0)
+- Embeddings: Ollama on your Mac directly (no Docker), nomic-embed-text 768d ($0)
+- Question extraction LLM: Ollama on your Mac directly ($0)
+- API server: Run locally on your Mac ($0)
+- Vector search: PostgreSQL + pgvector with HNSW indexes (Supabase)
 - Image generation: fal.ai Flux + IP-Adapter (ip_adapter_scale 0.3-0.4)
-- All ML components have a self-hosted primary and API fallback
 
 ## Architecture Pattern
 Three-layer recommendation: embed → retrieve → rank

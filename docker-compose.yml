@@ -1,24 +1,33 @@
-# Docker is no longer required for this project.
-#
-# Database: Supabase (hosted) — see supabase.com/dashboard
-# LLM + Embeddings: Ollama (install from ollama.com, runs as Mac app)
-# Images: fal.ai API
-#
-# This file is kept for reference only. To run locally without Supabase,
-# uncomment the postgres service below.
-#
-# services:
-#   postgres:
-#     image: pgvector/pgvector:pg17
-#     container_name: net-postgres
-#     environment:
-#       POSTGRES_DB: net
-#       POSTGRES_USER: net
-#       POSTGRES_PASSWORD: localdev
-#     ports:
-#       - "5432:5432"
-#     volumes:
-#       - postgres_data:/var/lib/postgresql/data
-#
-# volumes:
-#   postgres_data:
+# Optional local services. Main stack: Database+Auth=Supabase, Embeddings+LLM=Ollama on Mac (no Docker), API=run locally.
+# Use this file only if you need local Postgres/Ollama/TEI in containers. See README.md and docs/DEBUGGING.md.
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    platform: linux/arm64
+    container_name: net-postgres
+    # Uncomment to expose for local dev: ports: ["5432:5432"]
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: net-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # After first start, run: docker exec net-ollama ollama pull mistral
+
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    container_name: net-tei
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - tei_data:/data
+    command: --model-id nomic-ai/nomic-embed-text-v1.5 --pooling mean
+
+volumes:
+  postgres_data:
+  ollama_data:
+  tei_data:

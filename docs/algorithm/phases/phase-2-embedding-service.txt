@@ -1,21 +1,12 @@
 Build an EmbeddingService that generates vector embeddings using open-source models.
 
-For V1, we're using nomic-embed-text (768 dimensions) via a local inference server or Hugging Face API.
+**Preferred setup (no Docker):** nomic-embed-text (768 dimensions) via Ollama on your Mac directly. Install Ollama from ollama.com, then `ollama pull nomic-embed-text`. The API uses OLLAMA_URL (default http://localhost:11434) and OLLAMA_EMBED_MODEL (default nomic-embed-text).
 
-Two deployment options — implement both, toggled by environment variable EMBEDDING_PROVIDER:
+**Optional alternatives** (if not using Ollama):
+- TEI in Docker: docker run -p 8080:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id nomic-ai/nomic-embed-text-v1.5
+- Hugging Face Inference API: https://api-inference.huggingface.co/pipeline/feature-extraction/nomic-ai/nomic-embed-text-v1.5
 
-OPTION A — Self-hosted (production)
-Run nomic-embed-text via Hugging Face's text-embeddings-inference (TEI) server.
-The service calls POST ${EMBEDDING_SERVER_URL}/embed with { inputs: string[] }
-and receives float[][] back.
-
-To run TEI locally:
-docker run -p 8080:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id nomic-ai/nomic-embed-text-v1.5
-
-OPTION B — Hugging Face Inference API (development / low volume)
-Use the free Hugging Face Inference API as a fallback.
-Model: nomic-ai/nomic-embed-text-v1.5
-Endpoint: https://api-inference.huggingface.co/pipeline/feature-extraction/nomic-ai/nomic-embed-text-v1.5
+Current implementation uses Ollama; configure via EMBEDDING_PROVIDER and OLLAMA_* env vars.
 
 The service should have these methods:
 
@@ -34,10 +25,10 @@ The service should have these methods:
    - Utility function for comparing embeddings in application code
    - For database queries, use pgvector's <=> operator instead
 
-Configuration via env vars:
-- EMBEDDING_PROVIDER: 'local' | 'huggingface'
-- EMBEDDING_SERVER_URL: URL of local TEI server (for local provider)
-- HF_API_TOKEN: Hugging Face API token (for huggingface provider)
+Configuration via env vars (Ollama on Mac, no Docker):
+- OLLAMA_URL: default http://localhost:11434
+- OLLAMA_EMBED_MODEL: default nomic-embed-text
+- Optional: EMBEDDING_PROVIDER, EMBEDDING_SERVER_URL (TEI), HF_API_TOKEN (Hugging Face)
 
 Add retry logic (1 retry with 500ms delay) and request timeout (10s).
 Cache embeddings in memory using an LRU cache (max 1000 entries) keyed by text hash.

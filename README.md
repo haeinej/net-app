@@ -60,12 +60,12 @@ A single visual element: an orange left-edge bar that intensifies as warmth incr
 
 | Layer | Tool | Cost |
 |-------|------|------|
-| Database | Supabase PostgreSQL + pgvector | $0 (free tier) |
-| Embeddings | nomic-embed-text via Ollama (Mac app) | $0 |
-| Question extraction | Mistral 7B via Ollama (Mac app) | $0 |
+| Database + Auth | Supabase free tier (PostgreSQL + pgvector, connection pooler port 6543) | $0 |
+| Embeddings | Ollama on your Mac directly (no Docker) | $0 |
+| Question extraction LLM | Ollama on your Mac directly | $0 |
+| API server | Run locally on your Mac | $0 |
 | Image generation | fal.ai Flux Dev + IP-Adapter | Pay-per-use |
-| API server | Fastify + TypeScript (local) | $0 |
-| Mobile | Expo (React Native) | $0 |
+| Mobile | Expo (React Native), run locally | $0 |
 
 ---
 
@@ -170,10 +170,13 @@ net-app/
 **Supabase** (database — free):
 1. Go to [supabase.com](https://supabase.com) → New Project
 2. Enable pgvector: SQL Editor → `create extension vector;`
-3. Copy your **Database connection string** from Settings → Database → Connection string (URI)
-4. Copy your project URL + anon key + service role key from Settings → API
+3. **Database URL:** Use the **Connection pooling** URI (port **6543**), not the direct one (port 5432).  
+   Dashboard → Project Settings → Database → **Connection string** → **Connection pooling** (Session or Transaction) → copy the URI.  
+   Format: `postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres`  
+   If you get `EHOSTUNREACH` with the direct URL, see [docs/DEBUGGING.md](docs/DEBUGGING.md).
+4. Copy your project URL + anon key + service role key from Settings → API (optional, for future auth/storage).
 
-**Ollama** (embeddings + LLM — free, runs on Mac):
+**Ollama** (embeddings + question extraction LLM — free, run on your Mac directly, no Docker):
 1. Download from [ollama.com](https://ollama.com) → install the Mac app
 2. Pull models:
    ```bash
@@ -188,11 +191,14 @@ net-app/
 
 ```bash
 cd api
-cp .env.example .env   # fill in DATABASE_URL, Supabase keys, FAL_KEY
+cp .env.example .env   # set DATABASE_URL (pooler URI), JWT_SECRET, FAL_KEY
 npm install
+npm run db:ping        # optional: test DB connection
 npm run db:migrate     # creates tables in Supabase
 npm run dev
 ```
+
+API server runs locally on your Mac and connects to Supabase (database + auth) via the pooler URL. No separate backend hosting required for development.
 
 ### 3. ML service
 
@@ -215,6 +221,20 @@ npm start   # scan QR with Expo Go on your phone
 ### 5. Build the recommendation system
 
 Open this repo in Cursor. Then follow `docs/algorithm/README.md` — paste each phase prompt into Cursor chat in order.
+
+---
+
+## What to do next
+
+After setup, run things in this order:
+
+1. **Supabase** — Create project, enable pgvector, set `DATABASE_URL` in `api/.env` (pooler URI, port 6543).
+2. **Ollama** — Install Mac app, run `ollama pull mistral` and `ollama pull nomic-embed-text`.
+3. **API** — From repo root: `cd api && npm install && cp .env.example .env` (edit `.env`), then `npm run db:ping` and `npm run db:migrate`, then `npm run dev`.
+4. **Mobile** — In another terminal: `cd mobile && npm install && npm start`; point device to your machine’s IP (see `docs/DEBUGGING.md`).
+5. **(Optional)** **ML service** — For image generation: `cd ml`, venv + `pip install -r requirements.txt`, set `FAL_KEY` in `api/.env`, run `uvicorn main:app --reload --port 8000`.
+
+Troubleshooting: see [docs/DEBUGGING.md](docs/DEBUGGING.md).
 
 ---
 
