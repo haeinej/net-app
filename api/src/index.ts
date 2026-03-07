@@ -24,6 +24,7 @@ const { feedRoutes } = await import("./routes/feed");
 const { replyRoutes } = await import("./routes/replies");
 const { notificationRoutes } = await import("./routes/notifications");
 const { conversationRoutes } = await import("./routes/conversations");
+const { crossingShiftRoutes } = await import("./routes/crossing-shift");
 const { profileRoutes } = await import("./routes/profile");
 const { engagementRoutes } = await import("./engagement");
 
@@ -33,6 +34,7 @@ await app.register(feedRoutes);
 await app.register(replyRoutes);
 await app.register(notificationRoutes);
 await app.register(conversationRoutes);
+await app.register(crossingShiftRoutes);
 await app.register(profileRoutes);
 await app.register(engagementRoutes);
 

@@ -1,12 +1,9 @@
 /**
- * Embedding providers: local TEI and Hugging Face Inference API.
- * Shared timeout (10s) and retry (1 retry, 500ms delay).
+ * Embedding provider: Ollama running locally on Mac.
+ * POST /api/embeddings { model, prompt } -> { embedding: float[] }
  */
 
-import {
-  embeddingConfig,
-  type EmbeddingProvider,
-} from "./config";
+import { embeddingConfig } from "./config";
 
 const { requestTimeoutMs, retryDelayMs, maxRetries } = embeddingConfig;
 
@@ -23,69 +20,35 @@ async function withRetry<T>(
   }
 }
 
+/** Ollama embeddings: one request per input (Ollama doesn't batch) */
+async function fetchOllama(inputs: string[]): Promise<number[][]> {
+  const url = `${embeddingConfig.ollamaUrl.replace(/\/$/, "")}/api/embeddings`;
+  const results: number[][] = [];
 
-/** Local TEI: POST ${url}/embed { inputs: string[] } -> float[][] */
-async function fetchLocal(inputs: string[]): Promise<number[][]> {
-  const url = `${embeddingConfig.serverUrl.replace(/\/$/, "")}/embed`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inputs }),
-    signal: AbortSignal.timeout(requestTimeoutMs),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`TEI embed failed ${res.status}: ${body}`);
-  }
-  const data = (await res.json()) as number[][];
-  if (!Array.isArray(data) || (data.length > 0 && !Array.isArray(data[0]))) {
-    throw new Error("TEI embed: unexpected response shape");
-  }
-  return data;
-}
-
-/** Hugging Face Inference API: feature-extraction pipeline */
-async function fetchHuggingFace(inputs: string[]): Promise<number[][]> {
-  const token = embeddingConfig.hfToken;
-  if (!token) {
-    throw new Error("HF_API_TOKEN (or HF_TOKEN) is required when EMBEDDING_PROVIDER=huggingface");
-  }
-  const url = `https://api-inference.huggingface.co/pipeline/feature-extraction/${embeddingConfig.modelId}`;
-  const body = inputs.length === 1 ? { inputs: inputs[0] } : { inputs };
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(requestTimeoutMs),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HuggingFace embed failed ${res.status}: ${text}`);
-  }
-  const data = (await res.json()) as number[] | number[][];
-  // HF returns single vector for single input, array of vectors for multiple
-  if (inputs.length === 1) {
-    if (!Array.isArray(data) || typeof (data as number[])[0] !== "number") {
-      throw new Error("HuggingFace embed: unexpected single-response shape");
+  for (const input of inputs) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: embeddingConfig.model, prompt: input }),
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Ollama embed failed ${res.status}: ${body}`);
     }
-    return [data as number[]];
+    const data = (await res.json()) as { embedding: number[] };
+    if (!data.embedding || !Array.isArray(data.embedding)) {
+      throw new Error("Ollama embed: unexpected response shape");
+    }
+    results.push(data.embedding);
   }
-  if (!Array.isArray(data) || !Array.isArray((data as number[][])[0])) {
-    throw new Error("HuggingFace embed: unexpected batch response shape");
-  }
-  return data as number[][];
+
+  return results;
 }
 
 export async function embedRemote(
-  provider: EmbeddingProvider,
+  _provider: string,
   inputs: string[]
 ): Promise<number[][]> {
-  const fn =
-    provider === "local"
-      ? () => fetchLocal(inputs)
-      : () => fetchHuggingFace(inputs);
-  return withRetry(fn);
+  return withRetry(() => fetchOllama(inputs));
 }

@@ -58,16 +58,14 @@ A single visual element: an orange left-edge bar that intensifies as warmth incr
 
 ## Tech Stack
 
-| Layer | Tool |
-|-------|------|
-| Database | PostgreSQL + pgvector (HNSW indexes) |
-| Embeddings | nomic-embed-text 768d — local TEI server or HuggingFace API |
-| Question extraction | Mistral 7B / Llama 3.1 8B via Ollama (local) |
-| LLM fallback | Claude Haiku or GPT-4o-mini |
-| Image generation | fal.ai Flux Dev + IP-Adapter (scale 0.3–0.4) |
-| Re-ranker (later) | Mistral 7B via Ollama |
-
-All ML components have a self-hosted primary and an API fallback.
+| Layer | Tool | Cost |
+|-------|------|------|
+| Database | Supabase PostgreSQL + pgvector | $0 (free tier) |
+| Embeddings | nomic-embed-text via Ollama (Mac app) | $0 |
+| Question extraction | Mistral 7B via Ollama (Mac app) | $0 |
+| Image generation | fal.ai Flux Dev + IP-Adapter | Pay-per-use |
+| API server | Fastify + TypeScript (local) | $0 |
+| Mobile | Expo (React Native) | $0 |
 
 ---
 
@@ -109,7 +107,7 @@ All ML components have a self-hosted primary and an API fallback.
 net-app/
 ├── .cursorrules              ← Cursor project rules (auto-loaded)
 ├── .gitignore
-├── docker-compose.yml        ← PostgreSQL + pgvector + Ollama
+├── docker-compose.yml        ← (reference only — not required)
 ├── README.md
 ├── mobile/                   ← Expo (React Native) — iOS + Android
 │   ├── app/
@@ -169,24 +167,30 @@ net-app/
 
 ### 1. Set up services (one-time)
 
-**Supabase** (database + auth):
+**Supabase** (database — free):
 1. Go to [supabase.com](https://supabase.com) → New Project
-2. Enable the pgvector extension: SQL Editor → `create extension vector;`
-3. Copy your project URL + anon key + service role key from Settings → API
+2. Enable pgvector: SQL Editor → `create extension vector;`
+3. Copy your **Database connection string** from Settings → Database → Connection string (URI)
+4. Copy your project URL + anon key + service role key from Settings → API
 
-**Ollama** (embeddings + LLM — runs locally, free):
+**Ollama** (embeddings + LLM — free, runs on Mac):
 1. Download from [ollama.com](https://ollama.com) → install the Mac app
-2. Pull models: `ollama pull mistral && ollama pull nomic-embed-text`
+2. Pull models:
+   ```bash
+   ollama pull mistral
+   ollama pull nomic-embed-text
+   ```
 
-**fal.ai** (image generation):
+**fal.ai** (image generation — pay-per-use):
 1. Sign up at [fal.ai](https://fal.ai) → get API key from dashboard
 
-### 2. API
+### 2. API server
 
 ```bash
 cd api
-cp .env.example .env   # fill in Supabase + fal.ai keys
+cp .env.example .env   # fill in DATABASE_URL, Supabase keys, FAL_KEY
 npm install
+npm run db:migrate     # creates tables in Supabase
 npm run dev
 ```
 
@@ -194,7 +198,7 @@ npm run dev
 
 ```bash
 cd ml
-cp .env.example .env   # fill in Supabase + fal.ai keys
+cp .env.example .env
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000

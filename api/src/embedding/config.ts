@@ -1,21 +1,19 @@
 /**
- * Embedding service configuration (Phase 2).
- * Toggled by EMBEDDING_PROVIDER; model and prefixes are configurable for future bge-large etc.
+ * Embedding service configuration — uses Ollama running locally on Mac.
+ * Model: nomic-embed-text (768-dim vectors)
  */
 
-export type EmbeddingProvider = "local" | "huggingface";
+export type EmbeddingProvider = "ollama";
 
 export const embeddingConfig = {
-  provider: (process.env.EMBEDDING_PROVIDER ?? "local") as EmbeddingProvider,
-  serverUrl: process.env.EMBEDDING_SERVER_URL ?? "http://localhost:8080",
-  hfToken: process.env.HF_API_TOKEN ?? process.env.HF_TOKEN,
-  /** Model ID for Hugging Face Inference API (e.g. nomic-ai/nomic-embed-text-v1.5 or bge-large-en-v1.5) */
-  modelId: process.env.EMBEDDING_MODEL_ID ?? "nomic-ai/nomic-embed-text-v1.5",
+  provider: "ollama" as EmbeddingProvider,
+  ollamaUrl: process.env.OLLAMA_URL ?? "http://localhost:11434",
+  model: process.env.OLLAMA_EMBED_MODEL ?? "nomic-embed-text",
   /** Prefix for documents being stored (nomic uses search_document/search_query) */
   documentPrefix: process.env.EMBEDDING_DOCUMENT_PREFIX ?? "search_document: ",
   /** Prefix for queries when searching */
   queryPrefix: process.env.EMBEDDING_QUERY_PREFIX ?? "search_query: ",
-  requestTimeoutMs: 10_000,
+  requestTimeoutMs: 15_000,
   retryDelayMs: 500,
   maxRetries: 1,
   maxBatchSize: 32,

@@ -2,15 +2,34 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export type WarmthLevel = "none" | "low" | "medium" | "full";
 
-export interface FeedItem {
+export interface FeedItemUser {
   id: string;
-  sentence: string;
-  image_url: string | null;
-  created_at: string;
-  user: { id: string; name: string | null; photo_url: string | null };
-  warmth_level: WarmthLevel;
-  has_context: boolean;
+  name: string | null;
+  photo_url: string | null;
 }
+
+export interface FeedItemThought {
+  type: "thought";
+  thought: {
+    id: string;
+    sentence: string;
+    image_url: string | null;
+    created_at: string;
+    has_context: boolean;
+  };
+  user: FeedItemUser;
+  warmth_level: WarmthLevel;
+}
+
+export interface FeedItemShift {
+  type: "shift";
+  id: string;
+  created_at: string;
+  participant_a: FeedItemUser & { before: string; after: string };
+  participant_b: FeedItemUser & { before: string; after: string };
+}
+
+export type FeedItem = FeedItemThought | FeedItemShift;
 
 export interface NotificationItem {
   reply_id: string;
@@ -198,6 +217,165 @@ export async function postConversationMessage(
   return res.json();
 }
 
+// Conversation detail (message_count, crossing/shift state)
+export interface CrossingDraft {
+  id: string;
+  initiator_id: string;
+  initiator_name: string | null;
+  sentence_a: string | null;
+  sentence_b: string | null;
+  context: string | null;
+}
+
+export interface ShiftDraft {
+  id: string;
+  initiator_id: string;
+  initiator_name: string | null;
+  a_before: string | null;
+  a_after: string | null;
+  b_before: string | null;
+  b_after: string | null;
+}
+
+export interface ConversationDetail {
+  id: string;
+  message_count: number;
+  participant_a_id: string;
+  participant_b_id: string;
+  crossing_draft: CrossingDraft | null;
+  shift_draft: ShiftDraft | null;
+  crossing_complete: boolean;
+  shift_complete: boolean;
+}
+
+export async function fetchConversationDetail(conversationId: string): Promise<ConversationDetail> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Conversation failed");
+  return res.json();
+}
+
+// Crossing
+export async function startCrossing(conversationId: string): Promise<CrossingDraft & { id: string }> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing/start`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Start crossing failed");
+  return res.json();
+}
+
+export async function getCrossingDraft(conversationId: string): Promise<(CrossingDraft & { id: string }) | null> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Get crossing failed");
+  return res.json();
+}
+
+export async function updateCrossingDraft(
+  conversationId: string,
+  body: { sentence_a?: string; sentence_b?: string; context?: string }
+): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Update crossing failed");
+}
+
+export async function completeCrossing(
+  conversationId: string,
+  body: { sentence: string; context?: string }
+): Promise<{ id: string; sentence: string; context: string | null; image_url: string | null }> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing/complete`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Complete crossing failed");
+  return res.json();
+}
+
+export async function abandonCrossing(conversationId: string): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing/abandon`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Abandon failed");
+}
+
+// Shift
+export async function startShift(conversationId: string): Promise<ShiftDraft & { id: string }> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift/start`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Start shift failed");
+  return res.json();
+}
+
+export async function getShiftDraft(conversationId: string): Promise<(ShiftDraft & { id: string }) | null> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Get shift failed");
+  return res.json();
+}
+
+export async function updateShiftDraft(
+  conversationId: string,
+  body: { a_before?: string; a_after?: string; b_before?: string; b_after?: string }
+): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Update shift failed");
+}
+
+export async function completeShift(conversationId: string): Promise<{ id: string }> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift/complete`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Complete shift failed");
+  return res.json();
+}
+
+export async function abandonShift(conversationId: string): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift/abandon`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("Abandon failed");
+}
+
 // Profile
 export interface ProfileThought {
   id: string;
@@ -207,12 +385,23 @@ export interface ProfileThought {
   created_at: string | null;
 }
 
+export interface ProfileCrossing {
+  id: string;
+  sentence: string;
+  context: string | null;
+  image_url: string | null;
+  created_at: string | null;
+  participant_a: FeedItemUser | null;
+  participant_b: FeedItemUser | null;
+}
+
 export interface ProfileResponse {
   id: string;
   name: string | null;
   photo_url: string | null;
   interests: string[];
   thoughts: ProfileThought[];
+  crossings?: ProfileCrossing[];
 }
 
 export async function fetchProfile(userId: string): Promise<ProfileResponse> {

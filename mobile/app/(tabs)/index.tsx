@@ -12,6 +12,7 @@ import {
 import { colors, spacing, typography } from "../../theme";
 import { Header } from "../../components/Header";
 import { ThoughtCard } from "../../components/ThoughtCard";
+import { ShiftCard } from "../../components/ShiftCard";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import {
   fetchFeed,
@@ -157,10 +158,14 @@ export default function WorldsScreen() {
       ) : (
         <FlatList
           data={feed}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => (item.type === "thought" ? item.thought.id : `shift-${item.id}`)}
           renderItem={({ item }) => (
             <View style={[styles.cardWrap, { width: width - spacing.screenPadding * 2 }]}>
-              <ThoughtCard item={item} />
+              {item.type === "thought" ? (
+                <ThoughtCard item={item} />
+              ) : (
+                <ShiftCard item={item} />
+              )}
             </View>
           )}
           contentContainerStyle={styles.listContent}

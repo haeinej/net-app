@@ -3,10 +3,10 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
 import { WarmthBar, type WarmthLevel } from "./WarmthBar";
-import type { FeedItem } from "../lib/api";
+import type { FeedItemThought } from "../lib/api";
 
 interface ThoughtCardProps {
-  item: FeedItem;
+  item: FeedItemThought;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -27,18 +27,19 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
   const cardWidth = width - spacing.screenPadding * 2;
   const imageHeight = cardWidth / IMAGE_ASPECT_RATIO;
 
+  const { thought, user, warmth_level } = item;
   return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push({ pathname: "/thought/[id]", params: { id: item.id } })}
+      onPress={() => router.push({ pathname: "/thought/[id]", params: { id: thought.id } })}
       activeOpacity={1}
     >
       <View style={styles.cardInner}>
-        <WarmthBar warmthLevel={item.warmth_level} height={imageHeight + 56} />
+        <WarmthBar warmthLevel={warmth_level} height={imageHeight + 56} />
         <View style={[styles.imageWrap, { width: cardWidth - spacing.warmthBarWidth, height: imageHeight }]}>
-          {item.image_url ? (
+          {thought.image_url ? (
             <Image
-              source={{ uri: item.image_url }}
+              source={{ uri: thought.image_url }}
               style={styles.image}
               contentFit="cover"
             />
@@ -46,7 +47,7 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
             <View style={[styles.image, styles.imagePlaceholder]} />
           )}
           <Text style={styles.sentence} numberOfLines={2}>
-            {item.sentence}
+            {thought.sentence}
           </Text>
           <View style={styles.dotsHint}>
             <View style={styles.dot} />
@@ -57,16 +58,16 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
       </View>
       <View style={styles.footer}>
         <View style={styles.profileRow}>
-          {item.user.photo_url ? (
-            <Image source={{ uri: item.user.photo_url }} style={styles.avatar} />
+          {user.photo_url ? (
+            <Image source={{ uri: user.photo_url }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]} />
           )}
           <Text style={styles.name} numberOfLines={1}>
-            {item.user.name ? item.user.name.toUpperCase() : "—"}
+            {user.name ? user.name.toUpperCase() : "—"}
           </Text>
         </View>
-        <Text style={styles.timestamp}>{formatRelativeTime(item.created_at)}</Text>
+        <Text style={styles.timestamp}>{formatRelativeTime(thought.created_at)}</Text>
       </View>
     </TouchableOpacity>
   );

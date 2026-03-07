@@ -1,6 +1,6 @@
 /**
- * EmbeddingService — Phase 2.
- * 768-dim embeddings via local TEI or Hugging Face API; LRU cache; retry and timeout.
+ * EmbeddingService — 768-dim embeddings via Ollama (nomic-embed-text).
+ * LRU cache; retry and timeout.
  */
 
 import { embeddingConfig, EMBEDDING_DIM } from "./config";

@@ -1,9 +1,25 @@
 import { Stack } from "expo-router";
+import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View, ActivityIndicator } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { colors } from "../theme";
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    "Sentient-Light": require("../assets/fonts/Sentient-Light.otf"),
+    "GeneralSans-Medium": require("../assets/fonts/GeneralSans-Medium.otf"),
+    "GeneralSans-Bold": require("../assets/fonts/GeneralSans-Bold.otf"),
+  });
+
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={[styles.root, styles.centered]}>
+        <ActivityIndicator size="large" color={colors.TYPE_MUTED} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.root}>
@@ -24,4 +40,5 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  centered: { justifyContent: "center", alignItems: "center" },
 });

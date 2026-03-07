@@ -10,7 +10,8 @@ export interface FeedItemUser {
   photo_url: string | null;
 }
 
-export interface FeedItem {
+export interface FeedItemThought {
+  type: "thought";
   thought: {
     id: string;
     sentence: string;
@@ -21,6 +22,16 @@ export interface FeedItem {
   user: FeedItemUser;
   warmth_level: WarmthLevel;
 }
+
+export interface FeedItemShift {
+  type: "shift";
+  id: string;
+  created_at: string;
+  participant_a: FeedItemUser & { before: string; after: string };
+  participant_b: FeedItemUser & { before: string; after: string };
+}
+
+export type FeedItem = FeedItemThought | FeedItemShift;
 
 /** Thought with embeddings and author for scoring. */
 export interface ThoughtCandidate {

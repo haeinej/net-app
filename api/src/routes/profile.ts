@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and, inArray, desc, sql, isNull } from "drizzle-orm";
-import { db, users, thoughts, replies } from "../db";
+import { eq, and, inArray, desc, sql, isNull, or } from "drizzle-orm";
+import { db, users, thoughts, replies, crossings } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 const INTERESTS_MAX = 3;
 
@@ -54,12 +54,32 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       warmth_level: getWarmthLevel(replyCounts.get(t.id) ?? 0),
       created_at: t.createdAt?.toISOString(),
     }));
+    const userCrossings = await db
+      .select()
+      .from(crossings)
+      .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
+      .orderBy(desc(crossings.createdAt));
+    const allCrossingIds = [...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB]))];
+    const crossingUsers = allCrossingIds.length > 0
+      ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, allCrossingIds))
+      : [];
+    const userInfoMap = new Map(crossingUsers.map((p) => [p.id, { id: p.id, name: p.name, photo_url: p.photoUrl }]));
+    const crossingsForProfile = userCrossings.map((c) => ({
+      id: c.id,
+      sentence: c.sentence,
+      context: c.context,
+      image_url: c.imageUrl,
+      created_at: c.createdAt?.toISOString(),
+      participant_a: userInfoMap.get(c.participantA) ?? null,
+      participant_b: userInfoMap.get(c.participantB) ?? null,
+    }));
     return reply.send({
       id: user.id,
       name: user.name,
       photo_url: user.photoUrl,
       interests: (user.interests ?? []) as string[],
       thoughts: thoughtsForProfile,
+      crossings: crossingsForProfile,
     });
   });
 

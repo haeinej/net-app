@@ -30,6 +30,17 @@ export const engagementEventTypeEnum = pgEnum("engagement_event_type", [
   "reply_sent",
 ]);
 
+export const crossingDraftStatusEnum = pgEnum("crossing_draft_status", [
+  "draft",
+  "complete",
+  "abandoned",
+]);
+export const shiftDraftStatusEnum = pgEnum("shift_draft_status", [
+  "draft",
+  "complete",
+  "abandoned",
+]);
+
 // 1. users
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -288,4 +299,76 @@ export const learningJobLock = pgTable("learning_job_lock", {
   jobType: text("job_type").primaryKey(),
   lockedAt: timestamp("locked_at", { withTimezone: true }).notNull(),
   lockedBy: text("locked_by").notNull(),
+});
+
+// 16. crossing_drafts (Screen 7 — draft state per conversation)
+export const crossingDrafts = pgTable("crossing_drafts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id),
+  initiatorId: uuid("initiator_id")
+    .notNull()
+    .references(() => users.id),
+  sentenceA: text("sentence_a"),
+  sentenceB: text("sentence_b"),
+  context: text("context"),
+  status: crossingDraftStatusEnum("status").notNull().default("draft"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 17. crossings (completed — on both profiles, never in feed)
+export const crossings = pgTable("crossings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id),
+  participantA: uuid("participant_a")
+    .notNull()
+    .references(() => users.id),
+  participantB: uuid("participant_b")
+    .notNull()
+    .references(() => users.id),
+  sentence: text("sentence").notNull(),
+  context: text("context"),
+  imageUrl: text("image_url"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+// 18. shift_drafts (Screen 7 — before/after per person)
+export const shiftDrafts = pgTable("shift_drafts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id),
+  initiatorId: uuid("initiator_id")
+    .notNull()
+    .references(() => users.id),
+  aBefore: text("a_before"),
+  aAfter: text("a_after"),
+  bBefore: text("b_before"),
+  bAfter: text("b_after"),
+  status: shiftDraftStatusEnum("status").notNull().default("draft"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+// 19. shifts (completed — in both participants' feeds)
+export const shifts = pgTable("shifts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id),
+  participantA: uuid("participant_a")
+    .notNull()
+    .references(() => users.id),
+  participantB: uuid("participant_b")
+    .notNull()
+    .references(() => users.id),
+  aBefore: text("a_before").notNull(),
+  aAfter: text("a_after").notNull(),
+  bBefore: text("b_before").notNull(),
+  bAfter: text("b_after").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });

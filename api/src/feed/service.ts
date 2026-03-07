@@ -2,7 +2,7 @@
  * FeedService — Phase 5. getFeed orchestrates retrieve → score → rank → diversity → FeedItem[].
  */
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql, or, desc } from "drizzle-orm";
 import {
   db,
   thoughts,
@@ -10,6 +10,7 @@ import {
   userRecommendationWeights,
   replies,
   engagementEvents,
+  shifts,
 } from "../db";
 import { getEmbeddingService } from "../embedding";
 import { getCandidates } from "./retrieve";
@@ -28,6 +29,7 @@ import type {
   ViewerProfile,
   RecommendationWeights,
   FeedItem,
+  FeedItemThought,
   WarmthLevel,
 } from "./types";
 
@@ -186,10 +188,11 @@ export async function getFeed(
   const authorRows = await db.select().from(users).where(inArray(users.id, authorIds));
   const authorMap = new Map(authorRows.map((u) => [u.id, u]));
 
-  const items: FeedItem[] = slice.map(({ thought }) => {
+  const thoughtItems: FeedItem[] = slice.map(({ thought }) => {
     const author = authorMap.get(thought.userId);
     const acceptedCount = replyCounts.get(thought.id) ?? 0;
     return {
+      type: "thought",
       thought: {
         id: thought.id,
         sentence: thought.sentence,
@@ -205,6 +208,40 @@ export async function getFeed(
       warmth_level: getWarmthLevel(acceptedCount),
     };
   });
+
+  const userShifts = await db
+    .select()
+    .from(shifts)
+    .where(or(eq(shifts.participantA, userId), eq(shifts.participantB, userId)))
+    .orderBy(desc(shifts.createdAt))
+    .limit(CACHE_MAX_ITEMS);
+  const shiftUserIds = [...new Set(userShifts.flatMap((s) => [s.participantA, s.participantB]))];
+  const shiftUsers = shiftUserIds.length > 0
+    ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, shiftUserIds))
+    : [];
+  const shiftUserMap = new Map(shiftUsers.map((u) => [u.id, { id: u.id, name: u.name, photo_url: u.photoUrl }]));
+  const shiftItems: FeedItem[] = userShifts.map((s) => ({
+    type: "shift",
+    id: s.id,
+    created_at: s.createdAt?.toISOString() ?? new Date().toISOString(),
+    participant_a: {
+      ...(shiftUserMap.get(s.participantA) ?? { id: s.participantA, name: null, photo_url: null }),
+      before: s.aBefore,
+      after: s.aAfter,
+    },
+    participant_b: {
+      ...(shiftUserMap.get(s.participantB) ?? { id: s.participantB, name: null, photo_url: null }),
+      before: s.bBefore,
+      after: s.bAfter,
+    },
+  }));
+
+  const byDate = (a: FeedItem, b: FeedItem) => {
+    const dateA = a.type === "thought" ? a.thought.created_at : a.created_at;
+    const dateB = b.type === "thought" ? b.thought.created_at : b.created_at;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  };
+  const items = [...thoughtItems, ...shiftItems].sort(byDate).slice(0, CACHE_MAX_ITEMS);
 
   cache.set(userId, {
     items,
@@ -277,12 +314,13 @@ export async function getFeedWithDebug(
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
   const authorRows = await db.select().from(users).where(inArray(users.id, authorIds));
   const authorMap = new Map(authorRows.map((u) => [u.id, u]));
-  const itemsWithDebug: Array<FeedItem & { _debug: FeedDebugInfo }> = slice.map(({ thought }) => {
+  const itemsWithDebug: Array<FeedItemThought & { _debug: FeedDebugInfo }> = slice.map(({ thought }) => {
     const author = authorMap.get(thought.userId);
     const acceptedCount = replyCounts.get(thought.id) ?? 0;
     const rankInfo = byThoughtId.get(thought.id);
     const sims = getSimilarities(thought, embeddings);
     return {
+      type: "thought",
       thought: {
         id: thought.id,
         sentence: thought.sentence,

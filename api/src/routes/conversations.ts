@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, or, desc, asc, lt, inArray } from "drizzle-orm";
-import { db, conversations, messages, users, thoughts } from "../db";
+import { db, conversations, messages, users, thoughts, crossingDrafts, crossings, shiftDrafts, shifts } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 
 const DORMANT_DAYS = 30;
@@ -64,6 +64,79 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       };
     });
     return reply.send(body);
+  });
+
+  app.get<{ Params: ConvIdParam }>("/api/conversations/:id", async (request, reply) => {
+    const userId = getUserId(request);
+    if (!userId) return reply.status(401).send();
+    const convId = request.params.id;
+    const [conv] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, convId));
+    if (!conv) return reply.status(404).send();
+    if (conv.participantA !== userId && conv.participantB !== userId)
+      return reply.status(403).send();
+    const messageCount = conv.messageCount ?? 0;
+    const [crossDraft] = await db
+      .select()
+      .from(crossingDrafts)
+      .where(and(eq(crossingDrafts.conversationId, convId), eq(crossingDrafts.status, "draft")))
+      .limit(1);
+    const [shiftDraft] = await db
+      .select()
+      .from(shiftDrafts)
+      .where(and(eq(shiftDrafts.conversationId, convId), eq(shiftDrafts.status, "draft")))
+      .limit(1);
+    const hasCrossing = await db
+      .select({ id: crossings.id })
+      .from(crossings)
+      .where(eq(crossings.conversationId, convId))
+      .limit(1);
+    const hasShift = await db
+      .select({ id: shifts.id })
+      .from(shifts)
+      .where(eq(shifts.conversationId, convId))
+      .limit(1);
+    let initiatorName: string | null = null;
+    let shiftInitiatorName: string | null = null;
+    if (crossDraft) {
+      const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, crossDraft.initiatorId)).limit(1);
+      initiatorName = u?.name ?? null;
+    }
+    if (shiftDraft) {
+      const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, shiftDraft.initiatorId)).limit(1);
+      shiftInitiatorName = u?.name ?? null;
+    }
+    return reply.send({
+      id: conv.id,
+      message_count: messageCount,
+      participant_a_id: conv.participantA,
+      participant_b_id: conv.participantB,
+      crossing_draft: crossDraft
+        ? {
+            id: crossDraft.id,
+            initiator_id: crossDraft.initiatorId,
+            initiator_name: initiatorName,
+            sentence_a: crossDraft.sentenceA,
+            sentence_b: crossDraft.sentenceB,
+            context: crossDraft.context,
+          }
+        : null,
+      shift_draft: shiftDraft
+        ? {
+            id: shiftDraft.id,
+            initiator_id: shiftDraft.initiatorId,
+            initiator_name: shiftInitiatorName,
+            a_before: shiftDraft.aBefore,
+            a_after: shiftDraft.aAfter,
+            b_before: shiftDraft.bBefore,
+            b_after: shiftDraft.bAfter,
+          }
+        : null,
+      crossing_complete: hasCrossing.length > 0,
+      shift_complete: hasShift.length > 0,
+    });
   });
 
   app.get<{ Params: ConvIdParam; Querystring: MessagesQuery }>(
