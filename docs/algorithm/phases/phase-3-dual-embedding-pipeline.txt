@@ -1,0 +1,60 @@
+Build a ThoughtProcessingService that generates dual embeddings and a quality score when a thought is created.
+
+This service depends on EmbeddingService (already built) for vector generation and an LLM for question extraction.
+
+LLM setup: use a local Mistral 7B or Llama 3.1 8B via Ollama (OLLAMA_URL env var), or fall back to Claude Haiku / GPT-4o-mini via API (LLM_PROVIDER env var). Use the Ollama HTTP API: POST ${OLLAMA_URL}/api/generate
+
+The service has three steps:
+
+STEP 1 — SURFACE EMBEDDING
+Concatenate: "${thought.sentence}. ${thought.context}"
+Call EmbeddingService.embed() with "search_document: " prefix.
+This measures what the thought is topically about.
+
+STEP 2 — QUESTION EMBEDDING (the core innovation)
+Call the LLM with this system prompt and user message:
+
+System: "You extract the universal human question beneath specific thoughts. You respond with ONLY 1-2 abstract questions. Nothing else — no preamble, no explanation."
+
+User: "Sentence: [thought.sentence]
+Context: [thought.context]
+
+What underlying question is this person wrestling with? Express it as 1-2 abstract questions that someone from a COMPLETELY different field or background might also be asking. Do not reference the specific topic, domain, or field.
+
+Examples:
+- 'I keep building things nobody asked for' → 'When does creating for yourself become avoidance of creating for others? What makes work meaningful if no one sees it?'
+- 'My parents still don't understand why I left home for this' → 'What do we owe the people who shaped us? When does growth require distance from where you started?'
+- 'The seminar format makes me perform understanding instead of reaching it' → 'When does the structure meant to help learning become a performance of learning? How do you tell the difference between understanding and appearing to understand?'"
+
+Take the LLM's output (the abstract questions) and embed THAT using EmbeddingService.embed().
+This measures what deeper question the thought is circling.
+
+STEP 3 — QUALITY SCORE
+Call the LLM with:
+
+System: "You rate thoughts on two dimensions. Respond in exactly this format and nothing else:
+specificity: 0.X
+openness: 0.X"
+
+User: "Sentence: [thought.sentence]
+Context: [thought.context]
+
+SPECIFICITY (0.0-1.0): Does this sound like a specific person in a specific moment (1.0), or could anyone have written it (0.0)? Look for concrete details, personal stakes, a particular situation.
+
+OPENNESS (0.0-1.0): Does the context leave something unresolved that a stranger might want to respond to (1.0), or does it fully explain and close the thought (0.0)? The best thoughts have a gap between what the sentence hints at and what the context reveals — a gap that invites someone else's experience in."
+
+Parse the two scores.
+quality_score = (specificity * 0.5) + (openness * 0.5)
+
+STORAGE
+Store surface_embedding, question_embedding, and quality_score on the thought record.
+
+METHODS:
+- extractUnderlyingQuestion(sentence: string, context: string): Promise<string>
+- computeQualityScore(sentence: string, context: string): Promise<number>
+- processNewThought(thoughtId: string): Promise<void> — orchestrates the full pipeline
+
+Run processNewThought asynchronously after thought creation (don't block the POST response).
+If any step fails, retry once. If it still fails, store nulls and add to a reprocessing queue (a simple table: failed_processing_jobs with thought_id, error, retry_count, created_at).
+
+Add a reprocessFailedJobs() method that retries all failed jobs (run via cron every hour).

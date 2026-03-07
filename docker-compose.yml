@@ -1,0 +1,24 @@
+# Docker is no longer required for this project.
+#
+# Database: Supabase (hosted) — see supabase.com/dashboard
+# LLM + Embeddings: Ollama (install from ollama.com, runs as Mac app)
+# Images: fal.ai API
+#
+# This file is kept for reference only. To run locally without Supabase,
+# uncomment the postgres service below.
+#
+# services:
+#   postgres:
+#     image: pgvector/pgvector:pg17
+#     container_name: net-postgres
+#     environment:
+#       POSTGRES_DB: net
+#       POSTGRES_USER: net
+#       POSTGRES_PASSWORD: localdev
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#
+# volumes:
+#   postgres_data:

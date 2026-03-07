@@ -1,0 +1,96 @@
+Build an EngagementTrackingService that captures user interactions with thoughts.
+
+The engagement funnel has 5 tracked events (in order of increasing weight). The tracking service captures raw events; the learning service (Phase 7) interprets them.
+
+EVENTS TO TRACK:
+
+1. view_p1 — User saw Panel 1 of a thought in the feed
+   Trigger: thought card enters viewport for > 1 second (use Intersection Observer)
+   Metadata: {} (just the fact they saw it)
+
+2. swipe_p2 — User swiped to Panel 2 (context)
+   Trigger: horizontal swipe completing to Panel 2
+   Metadata: { dwell_time_p1_ms: number }
+
+3. swipe_p3 — User swiped to Panel 3 (replies)
+   Trigger: horizontal swipe completing to Panel 3
+   Metadata: { dwell_time_p2_ms: number }
+
+4. type_start — User began typing a reply
+   Trigger: first keystroke in Panel 3 reply input
+   Metadata: {}
+   Only fire ONCE per Panel 3 visit (don't re-fire if user deletes and retypes)
+
+5. reply_sent — User submitted a reply
+   Trigger: reply form submission
+   Metadata: { reply_length_chars: number }
+
+Note: reply_accepted is tracked separately in the reply acceptance flow, not here.
+
+
+CLIENT-SIDE IMPLEMENTATION:
+
+Create a React hook: useEngagementTracking(thoughtId: string)
+
+This hook should:
+- Set up an Intersection Observer for view_p1 (1 second threshold)
+- Provide callback functions for swipe_p2, swipe_p3, type_start, reply_sent
+- Buffer events in an array (don't send each one individually)
+- Flush the buffer: every 5 seconds, OR when buffer hits 20 events, OR when app goes to background (use visibilitychange event)
+- Generate a session_id on app mount (uuid), new session after 30+ minutes of inactivity. Store in React context or zustand.
+- Include session_id on every event for funnel analysis
+
+Each buffered event looks like:
+{
+  event_type: 'view_p1' | 'swipe_p2' | 'swipe_p3' | 'type_start' | 'reply_sent',
+  thought_id: string,
+  session_id: string,
+  metadata: object (optional),
+  timestamp: ISO string (captured at event time, not flush time)
+}
+
+
+SERVER-SIDE:
+
+API endpoint: POST /api/engagement/track
+- Auth required
+- Body: { events: EngagementEvent[] }
+- Validate event_types against allowed enum
+- Add user_id from auth token
+- Bulk insert to engagement_events table
+- Return 200 with empty body (no response needed)
+
+
+ANALYTICS METHODS (server-side, for internal use only — never exposed to users):
+
+getThoughtFunnel(thoughtId: string): Promise<ThoughtFunnel>
+Returns:
+{
+  views: number,
+  swipe_to_context: number,
+  swipe_to_replies: number,
+  typing_started: number,
+  replies_sent: number,
+  replies_accepted: number,  (join with replies table)
+  conversion_rates: {
+    p1_to_p2: number,  (swipe_to_context / views)
+    p2_to_p3: number,  (swipe_to_replies / swipe_to_context)
+    p3_to_reply: number,  (replies_sent / swipe_to_replies)
+    reply_to_accepted: number  (replies_accepted / replies_sent)
+  }
+}
+
+getUserEngagementProfile(userId: string): Promise<UserEngagement>
+Returns:
+{
+  avg_swipe_through_rate: number,
+  avg_reply_rate: number,
+  cross_cohort_reply_rate: number,  (% of replies sent to different cohort authors)
+  cross_concentration_reply_rate: number,
+  avg_reply_length: number,
+  total_thoughts_posted: number,
+  total_replies_sent: number,
+  total_conversations: number
+}
+
+These profiles feed into the learning loop (Phase 7) to personalize recommendation weights.

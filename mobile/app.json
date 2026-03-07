@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "net.",
+    "slug": "net-app",
+    "version": "1.0.0",
+    "scheme": "net",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "backgroundColor": "#F5F0EA"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.net.app"
+    },
+    "android": {
+      "package": "com.net.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F0EA"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,0 +1,57 @@
+# net. Recommendation System — Project Rules
+
+## Core Philosophy
+This recommendation system optimizes for LATENT CONNECTION, not similarity.
+Goal: surface thoughts that are about different things on the surface but wrestling
+with the same underlying question. Never optimize for interest matching or topic similarity.
+
+## Tech Stack
+- Embeddings: nomic-embed-text (768 dimensions) via local TEI server or Hugging Face API
+- LLM: Ollama (Mistral 7B) locally, Claude Haiku / GPT-4o-mini as fallback
+- Vector search: PostgreSQL + pgvector with HNSW indexes
+- Image generation: fal.ai Flux + IP-Adapter (ip_adapter_scale 0.3-0.4)
+- All ML components have a self-hosted primary and API fallback
+
+## Architecture Pattern
+Three-layer recommendation: embed → retrieve → rank
+1. Embed: dual embeddings (surface + question) per thought using open models
+2. Retrieve: pgvector nearest-neighbor on question_embeddings for candidates
+3. Rank: application-level scoring with diversity enforcement
+
+## Matching Formula
+score = question_similarity × (1 + α × surface_distance) × quality_score
+- α starts at 0.3, personalizes per user over time
+- surface_distance REWARDS topical difference (this is intentional and correct)
+
+## Hard Constraints — NEVER violate these
+- Cross-cohort diversity: max 40% single cohort in any window of 10 feed items
+- No metrics exposed to users (no counts of any kind, ever, in any API response)
+- warmth_level is the only engagement signal: 'none' | 'low' | 'medium' | 'full'
+- Replies require acceptance before appearing on a thought
+- No social graph (no follow, no connect, no mutual connections, no "people like you")
+- No engagement prompts ("you might want to reply to this", "this is trending")
+- No interest taxonomy exposed to users (no tags, no categories, no topic filters)
+- Dormant conversations (30+ days) are NEVER nudged. No "reconnect" suggestions.
+- Reply deletion is SILENT — the replier receives no signal they were ignored
+- No editing thoughts after posting
+
+## Data Model Rules
+- interests field is freeform text, never references to a taxonomy
+- question_clusters are emergent from data, never predefined
+- engagement_events track: view_p1 → swipe_p2 → swipe_p3 → type_start → reply_sent
+- Reply acceptance and conversation sustain rate (10+ messages) are ground truth signals
+- View counts and dwell time are directional only, never ground truth
+
+## Image Generation Rules
+- Every thought image: cinematic landscape, desaturated, low contrast, film grain
+- IP-Adapter scale 0.3-0.4 (mood influence from profile photo, not face insertion)
+- Crossing images use both profile photos as references
+- Always append to prompts: "cinematic landscape, desaturated, film grain, low contrast, atmospheric"
+- Negative prompt always includes: "faces, people, portrait, bright colors, saturated, text overlay"
+
+## API Rules
+- Never return counts in any API response
+- Never return who viewed a thought or profile
+- Notification endpoint returns a list, not a count
+- Feed response includes warmth_level per thought, never reply numbers
+- Debug endpoints only behind ENABLE_DEBUG_ENDPOINTS=true feature flag

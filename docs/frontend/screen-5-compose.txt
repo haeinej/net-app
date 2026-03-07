@@ -1,0 +1,81 @@
+Build the creation flow — how a user posts a thought.
+
+Route: app/compose.tsx (modal or full-screen, accessed from the "+" button in the header)
+The creation entry point is the "+" icon in the top-right of Screen 1. Posting should feel like a deliberate choice, not the default action, but also not a burden.
+
+
+STEP 1 — WRITE THE SENTENCE:
+
+  One large text input. Centered vertically on the screen.
+  Background: WARM_GROUND (#F5F0EA) or near-white.
+  Placeholder: "A thought you are in the middle of."
+  Sentient Light, 14-16px (larger than reading size — this is a writing moment).
+  One sentence. The design enforces this through presentation, not a hard character limit — the input should LOOK like it expects one sentence and nothing more. But do enforce a max of ~200 characters as a soft guardrail.
+  No label above the input. The placeholder IS the instruction.
+
+
+STEP 2 — WRITE THE CONTEXT:
+
+  A smaller textarea appears below the sentence once the user starts typing.
+  Placeholder: "600 characters of context — where this thought came from."
+  Sentient Light, 11-12px. TYPE_DARK text.
+  Hard limit: 600 characters. Show a subtle character count when > 500 characters.
+  This is the "back" of the thought — up to 3 sentences of background.
+  The gap between what the sentence says and what the context reveals is what makes someone want to reply. If the context fully explains the thought, the thought is closed.
+
+
+STEP 3 — IMAGE GENERATES:
+
+  As the user types the sentence, image generation runs in the background.
+  API: POST to the ML service image generation endpoint with { sentence, profile_photo_url }.
+  A 4:3 preview appears ABOVE the text inputs.
+  While generating: a small animated dot (pulsing, in ACCENT_ORANGE) indicates generation is in progress.
+  When complete: the dot disappears, the image fades in smoothly.
+  The image should feel cinematic — desaturated, low contrast, landscape. A world shaped by the person's visual presence and the idea they wrote.
+
+  Implementation notes:
+  - Debounce the generation trigger — don't fire on every keystroke. Wait 2-3 seconds after the user stops typing.
+  - If the sentence changes significantly after an image was generated, regenerate.
+  - If generation fails, show a subtle "image will generate after posting" message. Do NOT block posting.
+
+
+STEP 4 — POST:
+
+  A single button at the bottom: "post" in General Sans Medium, UPPERCASE, small.
+  Button colour: ACCENT_ORANGE (#C4622D) background, white text. This is one of the 5 permitted uses of orange.
+  The button is only active when the sentence field is non-empty.
+
+  On tap:
+  - POST /api/thoughts with { sentence, context }
+  - The user is returned to the feed (Screen 1).
+  - The thought appears at the top of their profile deck.
+  - Image generation and embedding processing happen asynchronously on the server — don't wait for them.
+
+  There is no editing after posting. The thought was honest when it was written.
+  If the user wants to remove it, they can delete it from their profile.
+  Deletion does not erase any conversations that began from that thought.
+
+
+ANIMATION:
+  - Screen slides up from the bottom as a modal (or push navigation).
+  - Image preview fades in when generation completes.
+  - On "post": the screen slides down and the feed refreshes.
+
+
+STATES:
+  - Empty: blank inputs, no image preview, post button inactive
+  - Writing sentence: image generation starts after debounce
+  - Image generating: small pulsing dot, 4:3 placeholder area visible
+  - Image ready: image visible, post button active (if sentence non-empty)
+  - Image failed: subtle fallback message, post still available
+  - Writing context: character count appears above 500 chars
+  - Posting: button shows brief loading state
+  - Posted: modal dismisses, user returns to feed
+
+
+WHAT THIS FLOW MUST NEVER DO:
+  - Show category/topic selection (no tags, no labels)
+  - Allow image editing or filter selection (the AI generates the image, period)
+  - Allow editing after posting
+  - Show a preview of "how your thought will look in the feed" — the compose view IS the experience
+  - Add a "save draft" feature for v1

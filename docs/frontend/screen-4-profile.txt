@@ -1,0 +1,71 @@
+Build Screen 3 — Me. The user's own profile, and the view for other users' profiles.
+
+Route: app/(tabs)/me.tsx (own profile) + app/user/[id].tsx (other user's profile)
+The profile is not a resume. It is the collection of thoughts this person has put into the world — their presence on net.
+
+
+OWN PROFILE (Me tab):
+
+  API: GET /api/users/:id/profile (using the authenticated user's ID)
+  Background: WARM_GROUND (#F5F0EA)
+
+  Layout — looks like an Apple contact card feel:
+
+  Top section:
+  - Profile photo: large (~80px circle), visually blended with the background. Not a harsh circle cutout — the edges should feel soft.
+  - Name: General Sans Medium, 14px, TYPE_DARK. Below the photo.
+  - Interests: three freeform text items below the name. Sentient Light 10px, TYPE_MUTED.
+    Placeholder if empty: "what you are into right now"
+    This is NOT a skills field. It is what is currently alive in this person's thinking.
+
+  Edit capability:
+  - Tap name, interests, or photo to edit.
+  - API: PUT /api/me/profile with { name?, photo_url?, interests?: string[] }
+  - interests: max 3 items, each freeform text. No chips, no predefined list.
+  - For photo upload: POST /api/me/photo (multipart upload, returns URL).
+
+  Deck section:
+  - Below the profile card: every thought the user has posted.
+  - Displayed as a scrollable vertical list.
+  - Each thought shows Panel 1 only: image (4:3) + sentence. Same card layout as the feed, same styling.
+  - Tapping opens the full three-panel thought view.
+  - Ordered by created_at DESC (newest first).
+  - A "delete" action should be available per thought (long press or swipe-to-delete).
+    DELETE /api/thoughts/:id — soft deletes. Conversations from that thought are NOT affected.
+
+  The deck is the user's full archive. Their entire presence on net.
+
+
+OTHER USER'S PROFILE (user/[id]):
+
+  Same layout, but:
+  - View only. No edit capability on name, interests, or photo.
+  - No follow or connect button. Not present. Not hidden — truly absent.
+  - No external links section.
+  - No "mutual connections" indicator.
+  - The deck shows their posted thoughts, same Panel 1 view.
+  - Tapping a thought opens the three-panel view.
+
+  Profile viewing is invisible:
+  - You will not know when someone has viewed your profile.
+  - There are no profile view notifications.
+  - The view is not tracked or recorded anywhere.
+
+
+WHAT THE PROFILE DOES NOT CONTAIN:
+  - No follower or connection count
+  - No job title field
+  - No "mutual connections" indicator
+  - No external links
+  - No analytics or view counts
+  - No activity feed ("X replied to Y")
+  - No achievements or badges
+
+
+STATES:
+  - Loading: skeleton photo + name + list
+  - Empty deck (no thoughts posted): "Your thoughts will appear here." Sentient Light 11px, TYPE_MUTED. Subtle prompt to post their first thought.
+  - Photo uploading: loading indicator on the photo circle
+  - Edit mode: inline editing for name and interests, keyboard-aware layout
+  - Other user loading: same skeleton
+  - Other user empty deck: "No thoughts yet." — no further commentary

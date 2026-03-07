@@ -1,0 +1,82 @@
+Build Screen 2 — Conversations. This shows accepted conversation threads only.
+
+Route: app/(tabs)/conversations.tsx + app/conversation/[id].tsx for the thread view.
+This screen has one function: show the conversations that are currently happening.
+It is NOT a network view. It is NOT a contact list.
+
+
+CONVERSATION LIST:
+
+  API: GET /api/conversations
+  Background: WARM_GROUND (#F5F0EA)
+
+  Each row shows:
+  - Profile photo of the other person (~32px circle)
+  - Name (General Sans Medium, 8px, UPPERCASE)
+  - First line of the last message (Sentient Light 10px, TYPE_DARK, single line, truncated with ellipsis)
+  - Time since last message (General Sans Regular, 7px, TYPE_MUTED, top-right)
+
+  Row states:
+  - Active: full opacity, no dot. Recent message.
+  - Unread: full opacity + small orange dot on the row (left of the name or on the photo).
+  - Dormant: 30+ days with no messages. Row appears visually muted — lower opacity (~50%). No urgency markers. Not archived, not deleted, not removed. Simply quiet.
+
+  Ordered by last_message_at DESC. Dormant conversations sink to the bottom naturally.
+
+  Tap a row → navigate to conversation/[id] thread view.
+
+
+THREAD VIEW (conversation/[id]):
+
+  API: GET /api/conversations/:id/messages?limit=50
+  Background: WARM_GROUND (#F5F0EA) or slightly darker warm tone.
+
+  Header: back arrow + other person's name + photo.
+
+  Message layout:
+  - Simple message bubbles. Sent messages on the right, received on the left.
+  - Sent: warm-toned bubble (subtle, not bright). Text in white or near-white.
+  - Received: lighter bubble on CARD_GROUND (#EDE8E2). Text in TYPE_DARK.
+  - Sentient Light 11px for message text.
+  - Timestamp below each message or group, General Sans Regular 7px, TYPE_MUTED.
+
+  The FIRST message in every thread is always the reply that started it — the moment of connection is preserved. Visually distinguish it slightly (e.g. a thin line separator below it, or a subtle label "this reply started the conversation" in 7px muted text).
+
+  Text input at the bottom:
+  - Sentient Light 11px
+  - Placeholder: "..." or nothing
+  - Send action: POST /api/conversations/:id/messages with { text }
+  - On send: message appears immediately (optimistic update), scroll to bottom.
+
+  Pagination: cursor-based. Load older messages when scrolling to top. Use before_id parameter.
+
+  Real-time: if WebSocket is implemented, new messages appear instantly. If not yet, poll every 5-10 seconds when the thread is open.
+
+
+CROSSING / SHIFT BUTTON:
+  After 10+ messages in a conversation, a small understated element appears above the text input.
+  A round-edged rectangle button with the word "crossing" in General Sans Regular 8px, TYPE_MUTED.
+  Not prominent. Not pushed. Findable, not prompted.
+  This is built in the crossing-shift prompt — for now, just leave space for it.
+  Do NOT show it if message_count < 10.
+
+
+WHAT THIS SCREEN DOES NOT SHOW:
+  - Not a list of everyone who has replied to your thoughts
+  - Not a list of people you've viewed or who've viewed you
+  - Not a network, connection count, or mutual contacts view
+  - Not a search for people on the platform
+  - No "reconnect with..." nudges for dormant conversations
+  - No push notifications about dormant conversations
+  - No "you haven't talked to X in a while" prompts
+
+  A relationship going quiet is valid. The product does not judge the pace of human connection.
+
+
+STATES:
+  - Loading: skeleton rows pulsing on WARM_GROUND
+  - Empty (no conversations yet): centered message "When you accept a reply, the conversation begins here." Sentient Light 11px, TYPE_MUTED.
+  - Thread loading: skeleton messages
+  - Thread empty (should not happen — always has at least the initial reply): show the first reply message
+  - Sending message: optimistic update, message appears immediately
+  - Send failed: message shows subtle error state, tap to retry

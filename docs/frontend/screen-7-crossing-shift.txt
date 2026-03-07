@@ -1,0 +1,103 @@
+Build the Crossing and Shift features — two collaborative artefacts available after 10+ message exchanges in a conversation. Both are quiet — findable, never prompted.
+
+These features live inside the conversation thread view (app/conversation/[id].tsx).
+
+
+CROSSING — WHERE TWO THOUGHTS MET:
+
+  A crossing is a joint thought created collaboratively by two people.
+
+  When it becomes available:
+  - Only after a conversation has 10+ messages (message_count >= 10).
+  - A small, understated button appears right above the text input in the conversation.
+  - Round-edged rectangle, General Sans Regular 8px, TYPE_MUTED (#9A9A98): "crossing"
+  - It is findable, not pushed. No animation, no highlight, no notification.
+
+  How it works:
+  - Either person can initiate by tapping the button.
+  - Initiating does NOT notify the other person. It opens a draft that sits in the conversation until the other person encounters it.
+
+  Crossing creation flow (modal or inline):
+
+    1. Sentence — both people write a version.
+       - The initiator writes first.
+       - When the other person opens the crossing, they see the initiator's sentence and can either:
+         a) Choose it
+         b) Write their own version
+         c) Write a new combined version
+
+    2. Context — up to 600 characters, written jointly in alternating turns (up to 3 sentences total).
+       - Person A writes a sentence of context.
+       - Person B adds the next.
+       - Alternating until 3 sentences or 600 chars.
+
+    3. Image — AI-generated from THREE inputs:
+       - The chosen sentence
+       - Person A's profile photo
+       - Person B's profile photo
+       Both visual presences merged with one shared idea.
+       API: POST to ML service /image/crossing endpoint.
+
+  Where it lives:
+  - The crossing appears on BOTH profiles — in each person's deck, attributed to both.
+  - The crossing is NEVER in the public feed. NEVER in discovery. Only on profiles.
+  - The conversation it came from remains private.
+
+
+SHIFT — WHERE THINKING MOVED:
+
+  A shift captures how both people's thinking changed through the conversation.
+
+  When it becomes available:
+  - Same threshold: 10+ messages.
+  - A second subtle button next to "crossing": "shift"
+  - Same styling: round-edged rectangle, General Sans Regular 8px, TYPE_MUTED.
+
+  How it works:
+  - Either person initiates.
+  - Each person fills in two fields:
+    - Before: "What I was thinking before this conversation" (one sentence)
+    - After: "What I am thinking now" (one sentence)
+
+  Display — a two-halved card:
+  - Left half: Person A's arc (photo + before sentence muted + after sentence full opacity)
+  - Right half: Person B's arc (photo + before sentence muted + after sentence full opacity)
+  - No AI image. The two arcs ARE the content.
+  - Before text: Sentient Light 10px, TYPE_MUTED (~40% opacity)
+  - After text: Sentient Light 10px, TYPE_WHITE (full)
+
+  Where it lives:
+  - The shift appears in BOTH people's Worlds feed (Screen 1). It is public.
+  - But the conversation that produced it ALWAYS stays private. Only the arc is visible.
+
+
+STATES FOR BOTH:
+
+  Available:
+  - Buttons appear quietly at bottom of thread after 10+ exchanges. Both "crossing" and "shift".
+
+  Initiated:
+  - One person has started. The draft sits silently until the other person encounters it.
+  - When the other person opens the conversation, they see a subtle inline card: "X started a crossing" or "X started a shift" — tapping opens the draft.
+
+  In progress:
+  - Both people are contributing. Show current state of the creation.
+
+  Complete:
+  - Crossing: saved to both profiles. The button in the conversation changes to a muted "crossing created" label.
+  - Shift: posted to both profiles + feed. Button changes to "shift shared" label.
+
+  Declined / Abandoned:
+  - Either person can opt not to complete it.
+  - The draft dissolves silently. No signal sent to the other person.
+  - The "crossing" / "shift" button reappears as if nothing happened.
+
+
+WHAT CROSSING AND SHIFT MUST NEVER DO:
+  - Be prompted or suggested ("You should create a crossing!")
+  - Send notifications when initiated
+  - Appear before 10 messages
+  - Show the crossing in the public feed (only profiles)
+  - Expose the conversation content through the shift (only the before/after arc)
+  - Use countdown timers or expiration
+  - Be a required step in any flow
