@@ -49,7 +49,7 @@ export const users = pgTable("users", {
   cohortYear: integer("cohort_year"),
   currentCity: text("current_city"),
   concentration: text("concentration"),
-  interests: text("interests").array(), // freeform strings, max 3 (enforced in app)
+  interests: text("interests").array(), // internal cold-start strings, max 3
   email: text("email").unique(),
   passwordHash: text("password_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
@@ -68,9 +68,9 @@ export const thoughts = pgTable(
     imageUrl: text("image_url"),
     imageMetadata: jsonb("image_metadata"), // Phase 4: model, params, fal request ID for debugging
     surfaceEmbedding: vector("surface_embedding", { dimensions: VECTOR_DIMS }),
-    questionEmbedding: vector("question_embedding", { dimensions: VECTOR_DIMS }),
-    qualityScore: real("quality_score"),
-    clusterId: uuid("cluster_id"), // FK to question_clusters, set by weekly learning
+    questionEmbedding: vector("question_embedding", { dimensions: VECTOR_DIMS }), // primary resonance embedding stored in legacy column
+    qualityScore: real("quality_score"), // openness-weighted signal
+    clusterId: uuid("cluster_id"), // FK to resonance clusters, set by weekly learning
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
@@ -184,7 +184,7 @@ export const engagementEvents = pgTable(
   ]
 );
 
-// 7. question_clusters (populated by weekly learning)
+// 7. question_clusters (legacy name; currently used as resonance clusters)
 export const questionClusters = pgTable("question_clusters", {
   id: uuid("id").primaryKey().defaultRandom(),
   centroidEmbedding: vector("centroid_embedding", { dimensions: VECTOR_DIMS }),

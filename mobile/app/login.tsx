@@ -54,8 +54,8 @@ export default function LoginScreen() {
       keyboardVerticalOffset={0}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>net.</Text>
-        <Text style={styles.subtitle}>Log in</Text>
+        <Text style={styles.title}>ohm.</Text>
+        <Text style={styles.subtitle}>Where your thoughts find someone</Text>
 
         <TextInput
           style={styles.input}
@@ -142,11 +142,11 @@ const styles = StyleSheet.create({
   error: {
     fontFamily: typography.label.fontFamily,
     fontSize: 12,
-    color: colors.ACCENT_ORANGE,
+  color: colors.OLIVE,
     marginBottom: 12,
   },
   button: {
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
     paddingVertical: 14,
     alignItems: "center",
     borderRadius: 8,

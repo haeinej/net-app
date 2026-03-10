@@ -1,99 +1,46 @@
-Build the design system for net. — a React Native (Expo) mobile app.
+Design system for the March 2026 ohm. spec.
 
-This is the visual foundation. Every screen prompt after this depends on these constants. Create a theme file and reusable primitives.
+## Principles
 
-DESIGN PHILOSOPHY:
-The feed is warm, quiet, analogue in feeling. The product recedes so the thought comes forward. If anything looks like a social media card, the design is wrong. It should feel like film stills with captions.
+- Warm, quiet, analog
+- The product recedes so the thought comes forward
+- Color communicates depth and warmth only
+- No decorative urgency
 
+## Palette
 
-COLOUR PALETTE — create as a theme constants file:
+- Warm ground: `#F5F0EA`
+- Card ground: `#EDE8E2`
+- Vermillion: `#EB4101`
+- Olive: `#979C5B`
+- Chartreuse: `#D0D37C`
+- Panel dark: `#0C0C0A`
+- Panel deep: `#080604`
+- Type dark: `#1A1A16`
+- Type muted: `#9A9A98`
+- Type white: `#FFFFFF`
 
-  WARM_GROUND: '#F5F0EA'      — feed background, bottom nav background
-  CARD_GROUND: '#EDE8E2'      — thought card surface below the image
-  ACCENT_ORANGE: '#C4622D'    — notification dot, post button, edge bar, reply label, logo period
-  PANEL_DARK: '#0C0C0A'       — Panel 2 background, beneath Panel 1 image
-  PANEL_DEEP: '#080604'       — Panel 3 background (deepest)
-  TYPE_WHITE: '#FFFFFF'       — thought sentence on Panel 1
-  TYPE_DARK: '#1A1A18'        — body text on light surfaces
-  TYPE_MUTED: '#9A9A98'       — labels, timestamps, dormant states
+Vermillion has five product uses only:
 
-  NEVER use pure black (#000000). The slight warmth in the dark values makes darkness feel like depth, not void.
+- full warmth edge bar
+- reply label
+- notification circle
+- post button
+- logo period
 
-  ORANGE is used in exactly 5 places. If you are considering using it anywhere else, the answer is no:
-  1. Left edge bar at full warmth
-  2. Reply input label on Panel 3
-  3. Notification circle
-  4. Post button
-  5. Logo period
+## Typography
 
+- Display and structural text: Comico in the target spec
+- Reading text: Sentient
 
-TYPOGRAPHY — two typefaces only:
+Runtime note:
 
-  General Sans — all structural/display text. Headings, labels, section numbers, logo, navigation.
-  Sentient — all reading text. Thought sentences, context, replies, body copy.
+- The mobile app now uses Sentient plus Comico directly.
 
-  Both from Fontshare, both free for commercial use. Download and add to the Expo project assets.
+## Layout
 
-  No italic. No third typeface. If a design requires something else, the design is wrong.
-
-  TYPE SCALE:
-  - Thought sentence (Panel 1): Sentient Light 300, 12-13px, white, no background box
-  - Context text (Panel 2): Sentient Light 300, 9-10px, muted white
-  - Reply input (Panel 3): Sentient Light 300, 11-12px
-  - Names/labels: General Sans Medium 500, 7-8px, UPPERCASE, wide letter-spacing (tracking)
-  - Card metadata: General Sans Regular 400, 7px, muted, UPPERCASE
-  - Logo: General Sans Bold, lowercase, ~18px. "net." with the period in ACCENT_ORANGE
-
-
-SPACING:
-  - Card width: full screen minus 16px each side
-  - Card corner radius: 8px
-  - Gap between cards: 12px
-  - Top padding: 12px below header
-  - Image aspect ratio: 4:3
-
-
-MOTION:
-  - Panel swipe: horizontal slide, no fade, no bounce, no snap. Gestural.
-  - Swipe left = go deeper (Panel 1 → 2 → 3)
-  - Swipe right = go back (Panel 3 → 2 → 1)
-  - Each panel occupies the full card width
-  - Reply sent: brief haptic pulse + short visual pulse on the thought, then return to Panel 1
-
-
-WARMTH BAR (left edge of every thought card):
-  - 2px vertical bar on the left edge, full card height
-  - No bar: no replies sent yet
-  - Orange 30% opacity: at least one reply sent
-  - Orange 60% opacity: multiple replies, active engagement
-  - Orange 100% (#C4622D): current user is actively typing a reply right now
-
-  This is the ONLY engagement signal in the product. It has no number attached to it. Ever.
-
-
-BOTTOM NAVIGATION:
-  - Three icons, monochrome. No colour. No labels. Ever.
-  - Worlds (circle icon) | Conversations (two-square icon) | Me (single-square icon)
-  - Background: WARM_GROUND (#F5F0EA)
-  - Active icon: 100% opacity. Inactive: ~40% opacity
-  - No borders, dividers, or shadows above the bar
-
-
-HEADER (Screen 1 only):
-  Three elements. One row. Nothing else, ever.
-  - LEFT: notification circle. Small filled circle #C4622D ~20px diameter. Absent when no pending replies (no grey placeholder). Present = orange circle. Tapping reveals notification panel.
-  - CENTRE: logo. "net." General Sans Bold lowercase ~18px. "n", "e", "t" in TYPE_DARK. Period in ACCENT_ORANGE.
-  - RIGHT: compose button. A "+" icon, thin stroke ~18px. Not a floating action button.
-
-
-CREATE THESE FILES:
-1. theme/colors.ts — all colour constants
-2. theme/typography.ts — font families, sizes, weights, letter-spacing
-3. theme/spacing.ts — layout constants
-4. theme/index.ts — unified export
-5. Load General Sans and Sentient fonts via expo-font in the root layout
-6. components/WarmthBar.tsx — the left edge bar component, takes warmth_level prop
-7. components/Header.tsx — Screen 1 header with notification dot, logo, compose button
-8. components/BottomNav.tsx — if not already handled by Expo Router tabs
-
-Use React Native StyleSheet, not styled-components or NativeWind. Keep it simple.
+- Three screens only
+- Full-width 4:3 thought image
+- Quiet 2px warmth bar on the left edge
+- Inline notification panel inside Worlds
+- Bottom nav without labels

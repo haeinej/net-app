@@ -1,70 +1,13 @@
-Build an ImageGenerationService that creates AI-generated landscape images for thoughts using fal.ai's Flux + IP-Adapter.
+Phase 4 image generation.
 
-The spec requirement: each thought gets a 4:3 cinematic landscape image generated from two inputs — the user's sentence AND their profile photo. The profile photo influences the mood, color palette, and visual presence without literally placing the person's face in the image. The same sentence from two different people should produce visibly different images.
+Thought images:
 
-Use fal.ai's API. Install: npm install @fal-ai/serverless-client
+- sentence plus profile photo
+- cinematic landscape
+- desaturated and quiet
 
-Setup:
-import * as fal from "@fal-ai/serverless-client";
-fal.config({ credentials: process.env.FAL_KEY });
+Crossing images:
 
-METHODS:
+- generated from both participants' photos plus the shared crossing sentence
 
-1. generateThoughtImage(sentence: string, profilePhotoUrl: string): Promise<string>
-   
-   Use fal.ai's Flux Dev + IP-Adapter workflow.
-   Check fal.ai docs for current endpoint — likely "fal-ai/flux/dev/image-to-image" or "fal-ai/ip-adapter-face-id" or "fal-ai/flux-general".
-
-   Parameters:
-   - prompt: "${sentence}. Cinematic landscape, desaturated, film grain, low contrast, atmospheric, wide angle, muted color palette, quiet mood, no text, no people, no faces"
-   - negative_prompt: "social media, bright colors, saturated, text overlay, UI elements, faces, people, portrait, selfie, high contrast, vibrant, cartoon, illustration"
-   - image_url: profilePhotoUrl (IP-Adapter reference image)
-   - ip_adapter_scale: 0.35 (LOW-TO-MID influence — mood and palette, not literal face)
-   - guidance_scale: 7.5
-   - num_inference_steps: 28
-   - image_size: { width: 1024, height: 768 } (4:3 ratio)
-   - seed: null (random for variety)
-
-   The ip_adapter_scale is critical:
-   - Too high (>0.6): image starts looking like the person's face
-   - Too low (<0.2): profile photo has no visible influence
-   - Sweet spot (0.3-0.4): picks up color tones, mood, atmosphere from the person's photo
-
-   After receiving the image URL from fal.ai:
-   - Download the image
-   - Upload to permanent storage (S3, Cloudflare R2, etc.)
-   - Return the permanent URL
-   - Store on thought.image_url
-
-2. generateCrossingImage(sentence: string, photoUrlA: string, photoUrlB: string): Promise<string>
-   
-   For crossings (collaborative thoughts between two people).
-   Use both profile photos as IP-Adapter references.
-   
-   If fal.ai doesn't support multiple IP-Adapter images in one call:
-   - Generate with photoA at ip_adapter_scale 0.25
-   - Use img2img with photoB at ip_adapter_scale 0.25 and strength 0.4
-   
-   The result should feel like neither person's individual aesthetic and both at once.
-
-3. TIMING AND INTEGRATION:
-   - Start generation the moment the user finishes typing their sentence (debounce 2 seconds after typing stops)
-   - Show a loading state (small animated dot per design spec) while generating
-   - Generation typically takes 3-8 seconds on fal.ai
-   - If user changes sentence, cancel previous generation and restart
-
-4. COST AND SAFETY:
-   - fal.ai Flux Dev: ~$0.04 per image
-   - Add daily generation cap per user (20 images/day) as a safety net
-   - Cache: if same user posts identical sentence, return cached image
-   - Store generation metadata (model, parameters, fal request ID) for debugging
-
-5. ERROR HANDLING:
-   - If fal.ai is down: create thought without image, queue for retry
-   - If IP-Adapter endpoint unavailable: fall back to text-only Flux generation (still cinematic, just without profile photo influence)
-   - Add to failed_processing_jobs table on failure
-
-Environment variables:
-- FAL_KEY: fal.ai API key
-- IMAGE_STORAGE_BUCKET: S3/R2 bucket name
-- IMAGE_CDN_URL: CDN URL prefix for serving images
+Image generation should support failure without blocking the main thought post response.

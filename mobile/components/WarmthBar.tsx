@@ -17,7 +17,7 @@ export function WarmthBar({ warmthLevel, height }: WarmthBarProps) {
       style={[
         styles.bar,
         { height },
-        opacity > 0 && { backgroundColor: colors.ACCENT_ORANGE, opacity },
+        opacity > 0 && { backgroundColor: colors.VERMILLION, opacity },
       ]}
     />
   );

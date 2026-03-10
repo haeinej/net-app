@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ohm. — Brand Guide</title>
+<link href="https://api.fontshare.com/v2/css?f[]=sentient@200,200i,300,300i,400,400i,500,700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+  font-family: 'Comico';
+  src: url('fonts/Comico-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-display: swap;
+}
+:root {
+  --vermillion: #EB4101;
+  --olive: #979C5B;
+  --chartreuse: #D0D37C;
+  --warm: #F5F0EA;
+  --card: #EDE8E2;
+  --dark: #1A1A16;
+  --deep: #080604;
+  --muted: #9A9A98;
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Sentient', Georgia, serif;
+  background: var(--warm);
+  color: var(--dark);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Utility ── */
+.comico { font-family: 'Comico', serif; }
+.label {
+  font-family: 'Comico', serif;
+  font-size: 9px;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  opacity: .28;
+}
+.label--light { color: var(--warm); opacity: .35; }
+.pad { padding: 64px 56px; }
+.pad-sm { padding: 40px 56px; }
+
+/* ── Cover ── */
+.cover {
+  background: var(--deep);
+  padding: 56px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  min-height: 160px;
+}
+.cover-left {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+}
+.cover-logo { width: 48px; height: auto; }
+.cover-wordmark {
+  font-family: 'Comico', serif;
+  font-size: 42px;
+  color: var(--warm);
+  letter-spacing: -1.5px;
+  line-height: .85;
+}
+.cover-wordmark span { color: var(--vermillion); }
+.cover-sub {
+  font-family: 'Sentient', serif;
+  font-weight: 300;
+  font-style: italic;
+  font-size: 16px;
+  color: rgba(245,240,234,.4);
+}
+.cover-right {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cover-right .label--light { opacity: .2; }
+.cover-swatches {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.cover-swatch {
+  width: 28px; height: 28px; border-radius: 4px;
+}
+
+/* ── Why This Word ── */
+.naming { padding: 80px 56px; }
+.naming-title {
+  font-family: 'Comico', serif;
+  font-size: 9px;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  opacity: .28;
+  margin-bottom: 48px;
+}
+.naming-body {
+  font-weight: 300;
+  font-size: clamp(17px, 2vw, 21px);
+  line-height: 1.75;
+  max-width: 780px;
+  color: var(--dark);
+}
+.naming-body strong {
+  font-weight: 400;
+  color: var(--dark);
+}
+.naming-body em {
+  font-style: italic;
+  color: var(--vermillion);
+}
+
+/* ── Brand Tests ── */
+.tests {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 0 56px;
+}
+.test-card {
+  background: var(--card);
+  padding: 36px 40px;
+  border-radius: 2px;
+}
+.test-label {
+  font-family: 'Comico', serif;
+  font-size: 8px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  opacity: .3;
+  margin-bottom: 18px;
+}
+.test-quote {
+  font-weight: 300;
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--dark);
+  opacity: .7;
+}
+
+/* ── Logo Section ── */
+.logo-hero {
+  padding: 80px 56px 56px;
+  display: flex;
+  align-items: center;
+  gap: 72px;
+}
+.logo-hero-img { width: 200px; height: auto; flex-shrink: 0; }
+.logo-info h2 {
+  font-family: 'Comico', serif;
+  font-size: clamp(26px, 3.5vw, 38px);
+  font-weight: 400;
+  letter-spacing: -1.5px;
+  line-height: 1.08;
+  margin-bottom: 16px;
+}
+.logo-info h2 em { font-style: normal; color: var(--vermillion); }
+.logo-info p {
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+  max-width: 360px;
+}
+
+/* ── Variants ── */
+.variants {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  margin: 0 56px;
+}
+.variant {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 28px;
+}
+.variant img { width: 52%; height: auto; object-fit: contain; }
+.variant .v-label {
+  font-family: 'Comico', serif;
+  font-size: 7px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+}
+.v-warm { background: var(--warm); border: 1px solid rgba(26,26,22,.05); }
+.v-warm .v-label { color: var(--dark); opacity: .3; }
+.v-card { background: var(--card); }
+.v-card .v-label { color: var(--dark); opacity: .3; }
+.v-olive { background: var(--olive); }
+.v-olive .v-label { color: var(--warm); opacity: .5; }
+.v-dark { background: var(--deep); }
+.v-dark .v-label { color: var(--warm); opacity: .25; }
+
+/* ── Lockups (logo smaller than text) ── */
+.lockups { display: flex; flex-direction: column; gap: 40px; }
+.lockup { display: flex; align-items: center; }
+.lockup img { flex-shrink: 0; }
+.lockup-text {
+  font-family: 'Comico', serif;
+  letter-spacing: -0.5px;
+}
+.lockup-text span { color: var(--vermillion); }
+.lockup--lg img { width: 32px; margin-right: 14px; }
+.lockup--lg .lockup-text { font-size: 36px; }
+.lockup--md img { width: 22px; margin-right: 10px; }
+.lockup--md .lockup-text { font-size: 24px; }
+.lockup--sm img { width: 15px; margin-right: 8px; }
+.lockup--sm .lockup-text { font-size: 17px; }
+
+/* ── Palette ── */
+.palette-grid {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.swatch-card {
+  width: 130px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.swatch-fill { height: 72px; }
+.swatch-meta { padding: 10px 12px; }
+.swatch-name {
+  font-family: 'Comico', serif;
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.swatch-hex {
+  font-weight: 300;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── Typography ── */
+.type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+.type-card {
+  padding: 44px 40px;
+}
+.type-card--warm { background: var(--card); }
+.type-card--dark { background: var(--deep); }
+.type-specimen {
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.type-card--warm .type-specimen { color: var(--dark); }
+.type-card--dark .type-specimen { color: var(--warm); }
+.type-comico {
+  font-family: 'Comico', serif;
+  font-size: clamp(44px, 5vw, 64px);
+  font-weight: 400;
+}
+.type-sentient {
+  font-family: 'Sentient', serif;
+  font-size: clamp(44px, 5vw, 64px);
+  font-weight: 300;
+}
+.type-sentient-i {
+  font-family: 'Sentient', serif;
+  font-size: clamp(34px, 4vw, 50px);
+  font-weight: 300;
+  font-style: italic;
+  letter-spacing: -1px;
+  margin-top: 4px;
+}
+.type-role {
+  font-family: 'Comico', serif;
+  font-size: 8px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  margin-top: 20px;
+}
+.type-card--warm .type-role { color: var(--dark); opacity: .25; }
+.type-card--dark .type-role { color: var(--warm); opacity: .25; }
+.type-detail {
+  font-weight: 300;
+  font-size: 11.5px;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+.type-card--warm .type-detail { color: var(--muted); }
+.type-card--dark .type-detail { color: rgba(245,240,234,.4); }
+
+/* ── App Screens ── */
+.screens {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.screen-frame {
+  background: var(--card);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(26,26,22,.04);
+}
+.screen-status {
+  padding: 10px 20px 0;
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Comico', serif;
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.screen-header {
+  padding: 14px 20px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.screen-logo {
+  font-family: 'Comico', serif;
+  font-size: 16px;
+  letter-spacing: -0.3px;
+}
+.screen-logo span { color: var(--vermillion); }
+.screen-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.screen-title {
+  font-family: 'Comico', serif;
+  font-size: 14px;
+  letter-spacing: -0.3px;
+}
+.notif-dot-sm {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--vermillion);
+  display: flex; align-items: center; justify-content: center;
+}
+.notif-dot-sm svg { width: 6px; height: 6px; }
+.compose-btn-sm {
+  font-family: 'Comico', serif;
+  font-size: 6px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: white;
+  background: var(--deep);
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: none;
+}
+.screen-body { padding: 0 12px 12px; }
+
+/* Mini thought card */
+.mini-card {
+  background: var(--warm);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  overflow: hidden;
+}
+.mini-warmth { width: 2px; flex-shrink: 0; }
+.mini-warmth--full { background: var(--vermillion); }
+.mini-warmth--mid { background: var(--olive); }
+.mini-warmth--low { background: var(--chartreuse); }
+.mini-content { padding: 10px 12px; flex: 1; }
+.mini-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.mini-avatar {
+  width: 16px; height: 16px; border-radius: 50%; background: var(--deep);
+}
+.mini-name {
+  font-family: 'Comico', serif;
+  font-size: 6px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.mini-text {
+  font-weight: 300;
+  font-size: 9.5px;
+  line-height: 1.55;
+  color: var(--dark);
+}
+.mini-context {
+  font-weight: 300;
+  font-size: 7.5px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+/* Mini conversation row */
+.mini-convo {
+  background: var(--warm);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mini-convo-avatar {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--deep); flex-shrink: 0;
+}
+.mini-convo-body { flex: 1; }
+.mini-convo-name {
+  font-family: 'Comico', serif;
+  font-size: 7px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.mini-convo-preview {
+  font-weight: 300;
+  font-size: 8.5px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.mini-convo-time {
+  font-family: 'Comico', serif;
+  font-size: 6px;
+  letter-spacing: .5px;
+  color: var(--muted);
+}
+
+/* Mini profile */
+.mini-profile-header {
+  text-align: center;
+  padding: 16px 12px 12px;
+}
+.mini-profile-pic {
+  width: 48px; height: 48px; border-radius: 50%; background: var(--deep); margin: 0 auto 8px;
+}
+.mini-profile-name {
+  font-family: 'Comico', serif;
+  font-size: 10px;
+  letter-spacing: -.2px;
+  margin-bottom: 4px;
+}
+.mini-profile-bio {
+  font-weight: 300;
+  font-size: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.mini-stat-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  justify-content: center;
+}
+.mini-stat {
+  background: var(--warm);
+  border-radius: 4px;
+  padding: 6px 10px;
+  text-align: center;
+}
+.mini-stat-num {
+  font-family: 'Comico', serif;
+  font-size: 10px;
+  margin-bottom: 1px;
+}
+.mini-stat-label {
+  font-family: 'Comico', serif;
+  font-size: 5.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Bottom nav */
+.mini-nav {
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 20px 16px;
+  border-top: 1px solid rgba(26,26,22,.05);
+}
+.mini-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  opacity: .3;
+}
+.mini-nav-item--active { opacity: 1; }
+.mini-nav-item svg { width: 16px; height: 16px; }
+.mini-nav-item span {
+  font-family: 'Comico', serif;
+  font-size: 5.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.mini-nav-item--active span { color: var(--vermillion); }
+
+/* ── Buttons & Components ── */
+.comp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+}
+.btn {
+  font-family: 'Comico', serif;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all .2s;
+}
+.btn--primary { background: var(--vermillion); color: white; padding: 13px 32px; border-radius: 60px; }
+.btn--dark { background: var(--deep); color: var(--warm); padding: 13px 32px; border-radius: 60px; }
+.btn--outline { background: none; color: var(--dark); padding: 12px 30px; border-radius: 60px; border: 1px solid rgba(26,26,22,.14); }
+.btn--ghost { background: none; color: var(--vermillion); padding: 8px 0; letter-spacing: 2.5px; }
+.btn--sm { font-size: 7.5px; padding: 9px 20px; letter-spacing: 1.5px; }
+.btn-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.btn-label {
+  font-family: 'Comico', serif;
+  font-size: 7px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  min-width: 80px;
+}
+
+/* Warmth scale */
+.warmth-row { display: flex; gap: 18px; align-items: flex-end; }
+.warmth-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.warmth-bar { width: 3px; height: 48px; border-radius: 2px; }
+.warmth-lbl {
+  font-family: 'Comico', serif;
+  font-size: 6.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Input */
+.demo-input {
+  background: var(--card);
+  border: 1px solid rgba(26,26,22,.06);
+  border-radius: 60px;
+  padding: 13px 22px;
+  font-family: 'Sentient', serif;
+  font-weight: 300;
+  font-size: 13px;
+  color: var(--muted);
+  width: 100%;
+  outline: none;
+}
+
+/* Notification dots */
+.notif-row { display: flex; gap: 20px; margin-top: 16px; }
+.notif-pair { display: flex; align-items: center; gap: 8px; }
+.notif-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.notif-dot--on { background: var(--vermillion); }
+.notif-dot--off { background: var(--card); border: 1px solid rgba(26,26,22,.08); }
+.notif-dot svg { width: 7px; height: 7px; }
+.notif-text {
+  font-family: 'Comico', serif;
+  font-size: 6.5px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── Export Blocks ── */
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3px;
+}
+.export-block {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 340px; position: relative;
+}
+.export-block img { width: 45%; max-width: 180px; height: auto; }
+.export-label {
+  position: absolute; bottom: 14px; left: 14px;
+  font-family: 'Comico', serif; font-size: 7px; letter-spacing: 2.5px; text-transform: uppercase;
+}
+.eb-warm { background: var(--warm); }
+.eb-warm .export-label { color: var(--dark); opacity: .18; }
+.eb-olive { background: var(--olive); }
+.eb-olive .export-label { color: var(--warm); opacity: .35; }
+.eb-dark { background: var(--deep); }
+.eb-dark .export-label { color: var(--warm); opacity: .18; }
+.eb-white { background: white; }
+.eb-white .export-label { color: var(--dark); opacity: .12; }
+
+/* ── Footer ── */
+.footer {
+  padding: 24px 56px;
+  border-top: 1px solid rgba(26,26,22,.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.footer p {
+  font-family: 'Comico', serif;
+  font-size: 7px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: .18;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .pad, .pad-sm, .naming, .logo-hero, .footer { padding-left: 24px; padding-right: 24px; }
+  .cover { padding: 40px 24px; }
+  .logo-hero { flex-direction: column; gap: 36px; }
+  .variants { margin: 0 24px; grid-template-columns: 1fr 1fr; }
+  .tests { margin: 0 24px; grid-template-columns: 1fr; }
+  .type-grid { grid-template-columns: 1fr; }
+  .screens { grid-template-columns: 1fr; max-width: 360px; }
+  .comp-grid { grid-template-columns: 1fr; }
+  .export-grid { grid-template-columns: 1fr; margin: 0 24px !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ COVER ═══════════ -->
+<header class="cover">
+  <div>
+    <div class="cover-left" style="margin-bottom: 16px;">
+      <img src="images/logo_nobackground.png" class="cover-logo" alt="">
+      <div class="cover-wordmark">ohm<span>.</span></div>
+    </div>
+    <p class="cover-sub">The unit of resonance.</p>
+  </div>
+  <div class="cover-right">
+    <p class="label label--light">Brand Guide &middot; 2026</p>
+    <div class="cover-swatches">
+      <div class="cover-swatch" style="background: var(--vermillion);"></div>
+      <div class="cover-swatch" style="background: var(--olive);"></div>
+      <div class="cover-swatch" style="background: var(--chartreuse);"></div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════ WHY THIS WORD ═══════════ -->
+<section class="naming">
+  <p class="naming-title">Why This Word</p>
+  <div class="naming-body">
+    <p>Ohm is a unit of electrical resistance — the measure of how much a material resists or conducts a signal passing through it. On this platform, the whole system is about <em>reducing resistance</em> between two people's thinking. The recommendation engine literally measures <strong>resonance</strong>.</p>
+    <br>
+    <p>But nobody thinks of that first. First they think: <em>the sound</em>. The vibration. The thing you say when you're centering yourself. Three letters that feel like a deep breath. It's calm. It's grounded. It doesn't explain anything — it just sits there, humming, until someone asks what it means. And then you get to explain resonance, and <strong>the conversation becomes the product</strong>.</p>
+  </div>
+</section>
+
+<!-- ═══════════ BRAND TESTS ═══════════ -->
+<div class="pad-sm" style="padding-bottom: 0;">
+  <p class="label">The Litmus Tests</p>
+</div>
+<div class="tests" style="margin-top: 24px;">
+  <div class="test-card">
+    <p class="test-label">The Sentence Test</p>
+    <p class="test-quote">"It's hard to describe. You just feel like you're on the same frequency as someone."</p>
+  </div>
+  <div class="test-card">
+    <p class="test-label">The Coffee Test</p>
+    <p class="test-quote">"It's where you go when you have a thought and want to see if anyone else is thinking about the same thing."</p>
+  </div>
+</div>
+
+<!-- ═══════════ LOGO ═══════════ -->
+<section class="logo-hero">
+  <img src="images/logo_nobackground.png" class="logo-hero-img" alt="ohm. logo mark">
+  <div class="logo-info">
+    <p class="label" style="margin-bottom: 20px;">01 &mdash; Logo</p>
+    <h2>The mark of resonance<em>.</em></h2>
+    <p>An organic symbol — two forms reaching toward each other, connected through shared frequency. Derived from human gesture, not geometry.</p>
+  </div>
+</section>
+
+<!-- Variants -->
+<div class="variants">
+  <div class="variant v-warm">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="v-label">Warm Ground</span>
+  </div>
+  <div class="variant v-card">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="v-label">Card Ground</span>
+  </div>
+  <div class="variant v-olive">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="v-label">Olive</span>
+  </div>
+  <div class="variant v-dark">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="v-label">Deep</span>
+  </div>
+</div>
+
+<!-- Wordmark Lockups -->
+<section class="pad">
+  <p class="label" style="margin-bottom: 28px;">Wordmark Lockups</p>
+  <div class="lockups">
+    <div class="lockup lockup--lg">
+      <img src="images/logo_nobackground.png" alt="">
+      <div class="lockup-text">ohm<span>.</span></div>
+    </div>
+    <div class="lockup lockup--md">
+      <img src="images/logo_nobackground.png" alt="">
+      <div class="lockup-text">ohm<span>.</span></div>
+    </div>
+    <div class="lockup lockup--sm">
+      <img src="images/logo_nobackground.png" alt="">
+      <div class="lockup-text">ohm<span>.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ PALETTE ═══════════ -->
+<section class="pad" style="padding-top: 0;">
+  <p class="label" style="margin-bottom: 28px;">02 &mdash; Palette</p>
+  <div class="palette-grid">
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--vermillion);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Vermillion</p><p class="swatch-hex">#EB4101</p></div>
+    </div>
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--olive);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Olive</p><p class="swatch-hex">#979C5B</p></div>
+    </div>
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--chartreuse);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Chartreuse</p><p class="swatch-hex">#D0D37C</p></div>
+    </div>
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--warm); border-bottom: 1px solid rgba(26,26,22,.05);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Warm Ground</p><p class="swatch-hex">#F5F0EA</p></div>
+    </div>
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--card);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Card</p><p class="swatch-hex">#EDE8E2</p></div>
+    </div>
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--deep);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Deep</p><p class="swatch-hex">#080604</p></div>
+    </div>
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--dark);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Type Dark</p><p class="swatch-hex">#1A1A16</p></div>
+    </div>
+    <div class="swatch-card">
+      <div class="swatch-fill" style="background: var(--muted);"></div>
+      <div class="swatch-meta"><p class="swatch-name">Muted</p><p class="swatch-hex">#9A9A98</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ TYPOGRAPHY ═══════════ -->
+<section class="pad" style="padding-top: 0;">
+  <p class="label" style="margin-bottom: 28px;">03 &mdash; Typography</p>
+  <div class="type-grid">
+    <div class="type-card type-card--warm">
+      <div class="type-specimen type-comico">Comico</div>
+      <p class="type-role">Display &middot; Structure</p>
+      <p class="type-detail">Logo, labels, metadata, navigation, buttons.<br>Regular 400 &middot; Letter-spacing +1.2 to +3.5px</p>
+    </div>
+    <div class="type-card type-card--dark">
+      <div class="type-specimen type-sentient">Sentient</div>
+      <div class="type-specimen type-sentient-i">Sentient</div>
+      <p class="type-role">Reading &middot; Feeling</p>
+      <p class="type-detail">Thought sentences, context, replies, body.<br>Extralight 200 &middot; Light 300 &middot; Regular 400 &middot; Bold 700</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ APP SCREENS ═══════════ -->
+<section class="pad">
+  <p class="label" style="margin-bottom: 28px;">04 &mdash; Screens</p>
+  <div class="screens">
+
+    <!-- Worlds -->
+    <div class="screen-frame">
+      <div class="screen-status"><span>9:41</span></div>
+      <div class="screen-header">
+        <div class="screen-logo">ohm<span>.</span></div>
+        <div class="screen-header-right">
+          <div class="notif-dot-sm"><svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="2.5" fill="white"/></svg></div>
+          <button class="compose-btn-sm">Post</button>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="mini-card">
+          <div class="mini-warmth mini-warmth--full"></div>
+          <div class="mini-content">
+            <div class="mini-meta"><div class="mini-avatar"></div><span class="mini-name">Anonymous</span></div>
+            <p class="mini-text">Sometimes the most honest conversations happen with people who have no reason to lie to you.</p>
+            <p class="mini-context">3h &middot; 12 resonated</p>
+          </div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-warmth mini-warmth--mid"></div>
+          <div class="mini-content">
+            <div class="mini-meta"><div class="mini-avatar"></div><span class="mini-name">Anonymous</span></div>
+            <p class="mini-text">What if the person who understands you most is someone you've never met?</p>
+            <p class="mini-context">5h &middot; 8 resonated</p>
+          </div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-warmth mini-warmth--low"></div>
+          <div class="mini-content">
+            <div class="mini-meta"><div class="mini-avatar"></div><span class="mini-name">Anonymous</span></div>
+            <p class="mini-text">I've been thinking about how silence between two people can mean completely different things.</p>
+            <p class="mini-context">8h &middot; 4 resonated</p>
+          </div>
+        </div>
+      </div>
+      <div class="mini-nav">
+        <div class="mini-nav-item mini-nav-item--active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--vermillion)" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="var(--vermillion)" stroke="none"/></svg>
+          <span>Worlds</span>
+        </div>
+        <div class="mini-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4,4 L20,4 L20,16 L12,16 L8,20 L8,16 L4,16 Z"/></svg>
+          <span>Conversations</span>
+        </div>
+        <div class="mini-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4,20 C4,16 8,13 12,13 C16,13 20,16 20,20"/></svg>
+          <span>Me</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conversations -->
+    <div class="screen-frame">
+      <div class="screen-status"><span>9:41</span></div>
+      <div class="screen-header">
+        <div class="screen-title">Conversations</div>
+      </div>
+      <div class="screen-body">
+        <div class="mini-convo">
+          <div class="mini-convo-avatar"></div>
+          <div class="mini-convo-body">
+            <p class="mini-convo-name">Anonymous</p>
+            <p class="mini-convo-preview">That's exactly what I meant — the resistance dissolves when...</p>
+          </div>
+          <span class="mini-convo-time">2m</span>
+        </div>
+        <div class="mini-convo">
+          <div class="mini-convo-avatar"></div>
+          <div class="mini-convo-body">
+            <p class="mini-convo-name">Anonymous</p>
+            <p class="mini-convo-preview">I never thought about it that way. Can you explain more?</p>
+          </div>
+          <span class="mini-convo-time">1h</span>
+        </div>
+        <div class="mini-convo">
+          <div class="mini-convo-avatar"></div>
+          <div class="mini-convo-body">
+            <p class="mini-convo-name">Anonymous</p>
+            <p class="mini-convo-preview">This conversation changed how I see my own work.</p>
+          </div>
+          <span class="mini-convo-time">3h</span>
+        </div>
+        <div class="mini-convo" style="opacity: .5;">
+          <div class="mini-convo-avatar"></div>
+          <div class="mini-convo-body">
+            <p class="mini-convo-name">Anonymous</p>
+            <p class="mini-convo-preview">Thank you for that.</p>
+          </div>
+          <span class="mini-convo-time">1d</span>
+        </div>
+      </div>
+      <div class="mini-nav">
+        <div class="mini-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="none"/></svg>
+          <span>Worlds</span>
+        </div>
+        <div class="mini-nav-item mini-nav-item--active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--vermillion)" stroke-width="1.5"><path d="M4,4 L20,4 L20,16 L12,16 L8,20 L8,16 L4,16 Z"/></svg>
+          <span>Conversations</span>
+        </div>
+        <div class="mini-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4,20 C4,16 8,13 12,13 C16,13 20,16 20,20"/></svg>
+          <span>Me</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Me -->
+    <div class="screen-frame">
+      <div class="screen-status"><span>9:41</span></div>
+      <div class="screen-header">
+        <div class="screen-title">Me</div>
+      </div>
+      <div class="mini-profile-header">
+        <div class="mini-profile-pic"></div>
+        <p class="mini-profile-name">Your Profile</p>
+        <p class="mini-profile-bio">No followers. No likes. Just thoughts and the people who resonated with them.</p>
+        <div class="mini-stat-row">
+          <div class="mini-stat"><p class="mini-stat-num">7</p><p class="mini-stat-label">Thoughts</p></div>
+          <div class="mini-stat"><p class="mini-stat-num">3</p><p class="mini-stat-label">Crossings</p></div>
+        </div>
+      </div>
+      <div class="screen-body">
+        <div class="mini-card">
+          <div class="mini-warmth mini-warmth--full"></div>
+          <div class="mini-content">
+            <p class="mini-text">The best technology disappears. It leaves only the human on the other side.</p>
+            <p class="mini-context">2d &middot; 24 resonated</p>
+          </div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-warmth mini-warmth--mid"></div>
+          <div class="mini-content">
+            <p class="mini-text">Every great idea started as a half-formed thought someone dared to share.</p>
+            <p class="mini-context">5d &middot; 6 resonated</p>
+          </div>
+        </div>
+      </div>
+      <div class="mini-nav">
+        <div class="mini-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="none"/></svg>
+          <span>Worlds</span>
+        </div>
+        <div class="mini-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4,4 L20,4 L20,16 L12,16 L8,20 L8,16 L4,16 Z"/></svg>
+          <span>Conversations</span>
+        </div>
+        <div class="mini-nav-item mini-nav-item--active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--vermillion)" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4,20 C4,16 8,13 12,13 C16,13 20,16 20,20"/></svg>
+          <span>Me</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════ BUTTONS & COMPONENTS ═══════════ -->
+<section class="pad" style="padding-top: 0;">
+  <p class="label" style="margin-bottom: 28px;">05 &mdash; Components</p>
+  <div class="comp-grid">
+
+    <!-- Buttons -->
+    <div>
+      <p class="label" style="margin-bottom: 16px; opacity: .18;">Buttons</p>
+      <div class="btn-row">
+        <span class="btn-label">Primary</span>
+        <button class="btn btn--primary">Join ohm.</button>
+      </div>
+      <div class="btn-row">
+        <span class="btn-label">Dark</span>
+        <button class="btn btn--dark">Post a thought</button>
+      </div>
+      <div class="btn-row">
+        <span class="btn-label">Outline</span>
+        <button class="btn btn--outline">Read Manifesto</button>
+      </div>
+      <div class="btn-row">
+        <span class="btn-label">Ghost</span>
+        <button class="btn btn--ghost">Learn more <svg width="14" height="8" viewBox="0 0 14 8" fill="none"><path d="M0,4 L10,4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><polyline points="8,1 12,4 8,7" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="btn-row">
+        <span class="btn-label">Small</span>
+        <button class="btn btn--primary btn--sm">Accept</button>
+        <button class="btn btn--outline btn--sm">Decline</button>
+      </div>
+    </div>
+
+    <!-- Inputs & Signals -->
+    <div>
+      <p class="label" style="margin-bottom: 16px; opacity: .18;">Inputs &amp; Signals</p>
+      <input class="demo-input" type="text" placeholder="your@email.com" readonly>
+      <div class="notif-row">
+        <div class="notif-pair">
+          <div class="notif-dot notif-dot--on"><svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="2.5" fill="white"/></svg></div>
+          <span class="notif-text">New resonance</span>
+        </div>
+        <div class="notif-pair">
+          <div class="notif-dot notif-dot--off"><svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="2" stroke="var(--muted)" stroke-width=".8" fill="none"/></svg></div>
+          <span class="notif-text">Quiet</span>
+        </div>
+      </div>
+      <p class="label" style="margin-top: 28px; margin-bottom: 12px; opacity: .18;">Warmth Bar</p>
+      <div class="warmth-row">
+        <div class="warmth-col"><div class="warmth-bar" style="background: var(--vermillion);"></div><span class="warmth-lbl">Full</span></div>
+        <div class="warmth-col"><div class="warmth-bar" style="background: linear-gradient(to bottom, var(--vermillion) 30%, var(--olive));"></div><span class="warmth-lbl">High</span></div>
+        <div class="warmth-col"><div class="warmth-bar" style="background: var(--olive);"></div><span class="warmth-lbl">Mid</span></div>
+        <div class="warmth-col"><div class="warmth-bar" style="background: linear-gradient(to bottom, var(--olive) 30%, var(--chartreuse));"></div><span class="warmth-lbl">Low</span></div>
+        <div class="warmth-col"><div class="warmth-bar" style="background: var(--chartreuse); opacity: .5;"></div><span class="warmth-lbl">Faint</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════ EXPORT BLOCKS ═══════════ -->
+<section class="pad" style="padding-bottom: 0;">
+  <p class="label" style="margin-bottom: 24px;">06 &mdash; Export-Ready</p>
+</section>
+<div class="export-grid" style="margin: 0 56px;">
+  <div class="export-block eb-warm">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="export-label">Warm Ground</span>
+  </div>
+  <div class="export-block eb-olive">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="export-label">Olive</span>
+  </div>
+  <div class="export-block eb-dark">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="export-label">Deep</span>
+  </div>
+  <div class="export-block eb-white">
+    <img src="images/logo_nobackground.png" alt="">
+    <span class="export-label">White</span>
+  </div>
+</div>
+
+<!-- Footer -->
+<footer class="footer" style="margin-top: 3px;">
+  <p>ohm. &mdash; Brand Guide</p>
+  <p>Vermillion #EB4101 &mdash; Comico + Sentient &mdash; 2026</p>
+</footer>
+
+</body>
+</html>

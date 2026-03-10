@@ -88,6 +88,8 @@ export default function ConversationThreadScreen() {
     if (id && myUserId) loadDetail();
   }, [id, myUserId, loadDetail]);
 
+  const crossingDraft = convDetail?.crossing_draft ?? null;
+  const shiftDraft = convDetail?.shift_draft ?? null;
   const isCrossingInitiator = crossingDraft?.initiator_id === myUserId;
   useEffect(() => {
     if (crossingOpen && crossingDraft) {
@@ -204,8 +206,6 @@ export default function ConversationThreadScreen() {
   const canShowCrossingShift = messageCount >= 10;
   const crossingComplete = convDetail?.crossing_complete ?? false;
   const shiftComplete = convDetail?.shift_complete ?? false;
-  const crossingDraft = convDetail?.crossing_draft ?? null;
-  const shiftDraft = convDetail?.shift_draft ?? null;
   const showCrossingBtn = canShowCrossingShift && !crossingComplete && !crossingDraft && !crossingOpen;
   const showShiftBtn = canShowCrossingShift && !shiftComplete && !shiftDraft && !shiftOpen;
   const showCrossingDraftCard = canShowCrossingShift && crossingDraft && crossingDraft.initiator_id !== myUserId && !crossingOpen;
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.06)",
+    borderBottomColor: "rgba(26,26,22,0.06)",
     backgroundColor: colors.WARM_GROUND,
   },
   backBtn: {
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     paddingBottom: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.08)",
+    borderBottomColor: "rgba(26,26,22,0.08)",
   },
   firstMessageLabelText: {
     ...typography.metadata,
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
   },
   bubbleFailed: {
     borderWidth: 1,
-    borderColor: colors.ACCENT_ORANGE,
+    borderColor: colors.OLIVE,
   },
   bubbleText: {
     ...typography.replyInput,
@@ -674,7 +674,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     backgroundColor: colors.WARM_GROUND,
     borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.06)",
+    borderTopColor: "rgba(26,26,22,0.06)",
   },
   draftCard: {
     paddingVertical: 8,
@@ -715,7 +715,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     marginBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.06)",
+    borderTopColor: "rgba(26,26,22,0.06)",
   },
   flowTitle: {
     ...typography.label,
@@ -755,7 +755,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   flowBtnPrimary: {
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
   },
   flowBtnSecondary: {
     backgroundColor: colors.CARD_GROUND,
@@ -792,7 +792,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
   },
   sendBtnDisabled: {
     opacity: 0.5,

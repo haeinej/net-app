@@ -1,5 +1,5 @@
 /**
- * Layout constants for net. feed and cards.
+ * Layout constants for ohm. feed and cards.
  */
 export const spacing = {
   /** Horizontal padding each side of feed; card width = screen - 2 * this */

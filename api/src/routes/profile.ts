@@ -16,7 +16,7 @@ interface UpdateProfileBody {
 
 function getWarmthLevel(acceptedCount: number): "none" | "low" | "medium" | "full" {
   if (acceptedCount === 0) return "none";
-  if (acceptedCount <= 2) return "low";
+  if (acceptedCount === 1) return "low";
   return "medium";
 }
 
@@ -77,7 +77,6 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       id: user.id,
       name: user.name,
       photo_url: user.photoUrl,
-      interests: (user.interests ?? []) as string[],
       thoughts: thoughtsForProfile,
       crossings: crossingsForProfile,
     });

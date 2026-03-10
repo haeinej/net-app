@@ -18,7 +18,7 @@ import {
   fetchFeed,
   fetchNotifications,
   acceptReply,
-  deleteReply,
+  ignoreReply,
   type FeedItem,
   type NotificationItem,
 } from "../../lib/api";
@@ -100,7 +100,7 @@ export default function WorldsScreen() {
 
   const handleIgnore = useCallback(async (replyId: string) => {
     try {
-      await deleteReply(replyId);
+      await ignoreReply(replyId);
       setNotifications((prev) => {
         const next = prev.filter((n) => n.reply_id !== replyId);
         if (next.length === 0) setNotificationPanelOpen(false);

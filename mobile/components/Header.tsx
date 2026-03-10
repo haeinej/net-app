@@ -24,7 +24,7 @@ export function Header({ hasNotifications = false, onNotificationPress }: Header
         ) : null}
       </View>
       <Text style={styles.logo}>
-        net<Text style={styles.logoPeriod}>.</Text>
+        ohm<Text style={styles.logoPeriod}>.</Text>
       </Text>
       <TouchableOpacity
         style={styles.compose}
@@ -54,16 +54,16 @@ const styles = StyleSheet.create({
     width: spacing.notificationDotSize,
     height: spacing.notificationDotSize,
     borderRadius: spacing.notificationDotSize / 2,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.VERMILLION,
   },
   logo: {
     ...typography.logo,
-    fontFamily: fontFamily.generalSansBold,
+    fontFamily: fontFamily.comico,
     color: colors.TYPE_DARK,
     textTransform: "lowercase",
   },
   logoPeriod: {
-    color: colors.ACCENT_ORANGE,
+    color: colors.VERMILLION,
   },
   compose: {
     width: 36,

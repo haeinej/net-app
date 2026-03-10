@@ -1,9 +1,9 @@
 import * as SecureStore from "expo-secure-store";
 
-const KEY_TOKEN = "net.auth.token";
-const KEY_USER_ID = "net.auth.userId";
-const KEY_ONBOARDING_COMPLETE = "net.auth.onboardingComplete";
-const KEY_ONBOARDING_STEP = "net.auth.onboardingStep";
+const KEY_TOKEN = "ohm.auth.token";
+const KEY_USER_ID = "ohm.auth.userId";
+const KEY_ONBOARDING_COMPLETE = "ohm.auth.onboardingComplete";
+const KEY_ONBOARDING_STEP = "ohm.auth.onboardingStep";
 
 export async function getStoredToken(): Promise<string | null> {
   return SecureStore.getItemAsync(KEY_TOKEN);

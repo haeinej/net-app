@@ -40,19 +40,19 @@ export interface ThoughtCandidate {
   sentence: string;
   context: string | null;
   imageUrl: string | null;
+  resonanceEmbedding: number[] | null;
   surfaceEmbedding: number[] | null;
-  questionEmbedding: number[] | null;
   qualityScore: number | null;
   createdAt: Date;
   authorCohortYear: number | null;
   authorConcentration: string | null;
 }
 
-/** Viewer's embeddings from their posted thoughts, or embedded interests (new user). */
+/** Viewer's embeddings from posted thoughts, or internal interests fallback. */
 export interface ViewerEmbeddings {
-  questionEmbeddings: number[][];
+  resonanceEmbeddings: number[][];
   surfaceEmbeddings: number[][];
-  /** For new users: single embedding from interests text */
+  /** For cold start only: single embedding from internal profile prompts. */
   interestsEmbedding: number[] | null;
 }
 
@@ -68,4 +68,21 @@ export interface RecommendationWeights {
   fWeight: number;
   rWeight: number;
   alpha: number;
+}
+
+// ——— Three-Bucket Feed System ———
+
+export type BucketLabel = "resonance" | "adjacent" | "wildcard";
+
+export type UserStage = "new" | "building" | "established" | "wanderer";
+
+export interface BucketRatios {
+  resonance: number;
+  adjacent: number;
+  wildcard: number;
+}
+
+export interface BucketedCandidate {
+  thought: ThoughtCandidate;
+  bucket: BucketLabel;
 }

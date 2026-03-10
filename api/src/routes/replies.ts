@@ -1,10 +1,11 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { eq, and, isNull } from "drizzle-orm";
 import { db, thoughts, replies, conversations, messages } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
 
-const REPLY_TEXT_MAX = 500;
+const REPLY_TEXT_MIN = 50;
+const REPLY_TEXT_MAX = 300;
 
 interface ReplyBody {
   text?: string;
@@ -29,6 +30,11 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
       const thoughtId = request.params.id;
       const text = typeof request.body?.text === "string" ? request.body.text.trim() : "";
       if (!text) return reply.status(400).send({ error: "text required" });
+      if (text.length < REPLY_TEXT_MIN) {
+        return reply
+          .status(400)
+          .send({ error: `text min ${REPLY_TEXT_MIN} chars` });
+      }
       if (text.length > REPLY_TEXT_MAX)
         return reply.status(400).send({ error: `text max ${REPLY_TEXT_MAX} chars` });
 
@@ -106,7 +112,7 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ conversation_id: conv.id });
   });
 
-  app.post<{ Params: ReplyIdParam }>("/api/replies/:id/delete", async (request, reply) => {
+  const ignoreReply = async (request: FastifyRequest<{ Params: ReplyIdParam }>, reply: FastifyReply) => {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
     const replyId = request.params.id;
@@ -116,5 +122,8 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
     if (!t || t.userId !== userId) return reply.status(403).send();
     await db.update(replies).set({ status: "deleted" }).where(eq(replies.id, replyId));
     return reply.status(200).send();
-  });
+  };
+
+  app.post<{ Params: ReplyIdParam }>("/api/replies/:id/ignore", ignoreReply);
+  app.post<{ Params: ReplyIdParam }>("/api/replies/:id/delete", ignoreReply);
 }

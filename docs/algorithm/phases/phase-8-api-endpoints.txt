@@ -1,182 +1,25 @@
-Build the API endpoints that integrate the recommendation system with the net. app.
-Use Express or Hono (whichever is already in the project).
+Phase 8 API endpoints.
 
-THOUGHT ENDPOINTS:
+Core routes:
 
-POST /api/thoughts
-  Auth required.
-  Body: { sentence: string, context?: string }
-  Validate: sentence max 200 chars, context max 600 chars.
-  Create thought record (without embeddings or image initially).
-  Trigger ThoughtProcessingService.processNewThought() asynchronously (don't block response).
-  Trigger ImageGenerationService.generateThoughtImage() asynchronously.
-  Invalidate feed cache for all users.
-  Return: { id, sentence, context, created_at }
+- `POST /api/thoughts`
+- `GET /api/feed`
+- `GET /api/thoughts/:id`
+- `POST /api/thoughts/:id/reply`
+- `GET /api/notifications`
+- `POST /api/replies/:id/accept`
+- `POST /api/replies/:id/ignore`
+- `GET /api/conversations`
+- `GET /api/conversations/:id`
+- `POST /api/conversations/:id/messages`
+- crossing routes
+- shift routes
+- profile routes
 
-DELETE /api/thoughts/:id
-  Auth required, must be thought owner.
-  Soft delete (mark as deleted, don't remove from DB).
-  Conversations started from this thought are NOT affected.
-  Return: 200
+Behavioral rules:
 
-GET /api/thoughts/:id
-  Auth required.
-  Return full thought with panel data:
-  {
-    panel_1: { sentence, image_url, user: { id, name, photo_url }, warmth_level, created_at },
-    panel_2: { sentence, context },
-    panel_3: { 
-      accepted_replies: [{ id, user: { id, name, photo_url }, text, created_at }],
-      can_reply: boolean
-    }
-  }
-  can_reply = false if viewer is the thought author, or if viewer already has a pending reply.
-  accepted_replies = ONLY replies with status='accepted', ordered by created_at.
-  warmth_level: 'none' | 'low' | 'medium' | 'full' based on reply count (none=0, low=1+, medium=3+, full=client-side only).
-
-
-FEED ENDPOINT:
-
-GET /api/feed
-  Auth required.
-  Query params: limit (default 20), offset (default 0).
-  Call FeedService.getFeed().
-  Response is an array, each item:
-  {
-    id, sentence, image_url, created_at,
-    user: { id, name, photo_url },
-    warmth_level: 'none' | 'low' | 'medium' | 'full',
-    has_context: boolean
-  }
-  NEVER return counts of any kind. No reply count, no view count, nothing numerical.
-
-
-REPLY ENDPOINTS:
-
-POST /api/thoughts/:id/reply
-  Auth required.
-  Body: { text: string }
-  Validate: text max 500 chars.
-  Cannot reply to own thought (return 403).
-  Cannot reply if already have a pending reply on this thought (return 409).
-  Create reply with status 'pending'.
-  Track engagement event 'reply_sent'.
-  Return: { id, status: 'pending', created_at }
-
-POST /api/replies/:id/accept
-  Auth required, must be the thought owner (not the replier).
-  Set reply status to 'accepted'.
-  Create conversation: participant_a = thought author, participant_b = replier.
-  Create first message in conversation with the reply text.
-  Return: { conversation_id }
-
-POST /api/replies/:id/delete
-  Auth required, must be the thought owner.
-  Set reply status to 'deleted'.
-  SILENT — no notification, no signal sent to the replier. This is critical.
-  Return: 200
-
-
-NOTIFICATION ENDPOINT:
-
-GET /api/notifications
-  Auth required.
-  Return pending replies on the authenticated user's thoughts:
-  [{
-    reply_id,
-    replier: { id, name, photo_url },
-    reply_preview: string (first 100 chars of reply text),
-    thought: { id, sentence },
-    created_at
-  }]
-  Ordered by created_at DESC.
-  NO count in response body or headers. The orange dot presence/absence is handled client-side based on whether this array is non-empty.
-
-
-CONVERSATION ENDPOINTS:
-
-GET /api/conversations
-  Auth required.
-  Return conversations where user is participant_a or participant_b.
-  Ordered by last_message_at DESC.
-  Each item:
-  {
-    id,
-    other_user: { id, name, photo_url },
-    last_message_preview: string (first 100 chars),
-    last_message_at: timestamp,
-    is_dormant: boolean (true if last_message_at > 30 days ago),
-    unread: boolean
-  }
-
-GET /api/conversations/:id/messages
-  Auth required, must be a participant.
-  Query: limit (default 50), before_id (cursor-based pagination).
-  Return messages ordered by created_at ASC.
-  Each: { id, sender_id, text, created_at }
-  The first message is always the reply that started the conversation.
-
-POST /api/conversations/:id/messages
-  Auth required, must be a participant.
-  Body: { text: string }
-  Create message.
-  Update conversation: last_message_at = now, message_count += 1.
-  If conversation was dormant (is_dormant = true), set is_dormant = false.
-  Return: { id, text, created_at }
-
-
-ENGAGEMENT ENDPOINT:
-
-POST /api/engagement/track
-  Auth required.
-  Body: { events: [{ event_type, thought_id, session_id, metadata?, timestamp }] }
-  Validate event_types against enum: 'view_p1', 'swipe_p2', 'swipe_p3', 'type_start', 'reply_sent'.
-  Add user_id from auth.
-  Bulk insert to engagement_events.
-  Return: 200 (empty body)
-
-
-PROFILE ENDPOINTS:
-
-GET /api/users/:id/profile
-  Auth required.
-  Return:
-  {
-    id, name, photo_url, interests: string[],
-    thoughts: [{ id, sentence, image_url, warmth_level, created_at }]
-  }
-  thoughts = user's posted thoughts showing Panel 1 data only, ordered by created_at DESC.
-  No follower count. No view count. No connection count.
-  No profile view tracking — the viewer's visit is NOT recorded anywhere.
-
-PUT /api/me/profile
-  Auth required.
-  Body: { name?, photo_url?, interests?: string[] }
-  interests: max 3 items, each freeform text.
-  If interests change, re-embed them (call EmbeddingService) for fallback matching.
-  Return updated profile.
-
-
-DEBUG ENDPOINT (development only):
-
-GET /api/feed/debug
-  Only available when ENABLE_DEBUG_ENDPOINTS=true env var is set.
-  Same as GET /api/feed but each item also includes:
-  {
-    _debug: {
-      phase_used: 'pre-data' | 'learning',
-      scores: { Q, D, F, R, final_rank },
-      underlying_questions: string (the LLM-extracted questions),
-      surface_similarity: number,
-      question_similarity: number
-    }
-  }
-  NEVER expose in production. For tuning and debugging only.
-
-
-MIDDLEWARE:
-- Authentication on all endpoints (JWT or session-based)
-- Rate limiting: 60 requests/minute per user
-- Feed endpoint: cache response 5 minutes per user
-- CORS: configured for your frontend domain
-- Request logging with correlation IDs
+- replies start pending
+- accept creates the conversation
+- ignore is silent
+- delete-thought is soft delete only
+- conversations created from a deleted thought remain intact

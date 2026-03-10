@@ -1,0 +1,513 @@
+﻿WEBSITE STRUCTURE GUIDE
+
+
+WEBSITE STRUCTURE GUIDE
+Where Your Thoughts Find Someone
+Conceptual Arc & Page-by-Page Copywriting Guide
+Two sections: Landing Page + Mission Page
+
+
+This guide defines what each page does, what each section says, and why — so that when you build, every word has a job.
+
+
+
+
+GUIDING PRINCIPLE
+One Rule for the Whole Site
+The Landing Page makes someone feel it. The Mission Page makes someone believe it. Never reverse this. The landing creates desire through clarity and restraint. The mission earns depth through argument and vision. Each section has one job. No section does another section’s job.
+➔  If a sentence could live on either page, it belongs on the Mission page. The Landing page earns its power by saying less.
+
+
+PAGE 1
+Landing Page
+
+
+Job: Make someone feel it and get it in 30 seconds. Create desire, not understanding. Show what it is, hint at why it matters, invite them deeper.
+➔  Reference: Hinge’s homepage does three things — emotional hook, simple mechanic, one invitation to go deeper. Yours should do the same.
+
+
+BEAT 1 — THE HOOK
+The first thing anyone sees. Tagline + the four-step mechanic. This is your entire product explained in the time it takes to read a sentence.
+
+
+Tagline: Where your thoughts find someone.
+Mechanic (displayed as a visual sequence):
+Post a thought.
+Someone replies.
+You accept.
+The most unexpected, genuine conversation happens.
+➔  These four lines ARE the product. They tell the visitor what it is and how it’s different in one breath. Every word here is load-bearing — do not add to this sequence.
+
+
+BEAT 2 — THE EMOTIONAL WHY
+One sentence that names the feeling, then one that claims the space. This is not where you explain the problem. That belongs on the Mission page. Here, you just name the ache and say you’re building the answer.
+
+
+The feeling of being truly heard is rarer than ever. We’re designing what comes next.
+➔  Resist the urge to add the examination, the I-Thou philosophy, or the vision here. That’s the mission page. This section should feel like a breath, not a manifesto.
+
+
+BEAT 3 — THE BRIDGE
+A single line that invites the visitor to go deeper. This is the equivalent of Hinge’s “How we do it” link. It signals: there’s a bigger idea here if you want it.
+
+
+Example: A link or button that reads something like “Our Mission” or “Why we’re building this.”
+
+
+LANDING PAGE SUMMARY
+Section
+	Content
+	Hook
+	Tagline + 4-step mechanic
+	Emotional Why
+	Two sentences: name the feeling, claim the space
+	Bridge
+	One line invitation to Mission page
+	
+
+
+
+PAGE 2
+Mission Page
+
+
+Job: Make someone believe in what you’re building. This is where you earn the right to go deep. The visitor already felt something on the landing page. Now give them the argument, the philosophy, the vision.
+➔  Structure follows a narrative arc: Name the world as it is → Name what you’re building → Name where this is going.
+
+
+BEAT 1 — THE WORLD AS IT IS
+Section title suggestion: "2026" or "Examination"
+This section names the problem with specificity and emotional precision. The goal is for the reader to think: “yes, that’s exactly what I feel but couldn’t articulate.”
+
+
+Core argument: 
+People are more connected than ever, yet intellectually lonelier than ever. This loneliness is not about lacking relationships. It is about lacking resonance — the feeling of being truly heard by someone who meets your thought where it lives.
+
+
+Supporting texture: 
+Technology has made us directed, optimized, goal-oriented — eroding the wandering thought. We move through cities with airpods in, eyes on screens. Cities once put different people in proximity around shared context — the accidental conversation, the unexpected encounter. That infrastructure has collapsed.
+
+
+The closer: 
+People hunger for genuine encounter but reach for safer substitutes — parasocial relationships, simulated depth. It is not a lack of relationships. It is a lack of resonance.
+➔  Anchor sentence: “It is not a lack of relationships. It is a lack of resonance.” Everything in this section builds toward this line. Cut anything that doesn’t serve it.
+
+
+BEAT 2 — WHAT WE’RE BUILDING
+Section title suggestion: "The Space" or untitled
+This section explains what the product actually is, then layers in the philosophy. The order matters: concrete first, then meaning.
+
+
+Lead with the mechanic: 
+A space where shared thoughts become invitations for one-on-one conversations with strangers who resonate.
+Then the philosophy: 
+We believe in the I-Thou moment — when two people meet as full human beings, with no agenda, nothing to gain, just the pure experience of being heard and understood.
+
+
+We believe that at the end of everything, what matters is human. Not technology, not efficiency. Just people.
+
+
+We make wandering among humans possible again — and through technology, more possible than ever before.
+➔  The I-Thou framing is powerful, but it lands much harder AFTER the reader already understands what happens on the platform. Don’t lead with philosophy. Lead with the thing, then name why the thing matters.
+
+
+BEAT 3 — WHERE THIS IS GOING
+Section title suggestion: "Vision"
+This section expands from “here’s what we built” to “here’s what this means for how humans relate.” By this point, stop positioning against others. Describe a world.
+
+
+We envision a world where the I-Thou moment — always rare, always accidental — becomes something anyone can find.
+
+
+A new form of human relationship — born entirely from resonance between two present individuals, without any titles.
+
+
+Something latent in human nature that existing social structures were never designed to hold. We are building the first space that can.
+➔  Your strongest vision line is the last one — “something latent in human nature that existing structures were never designed to hold.” Build the section so it crescendos toward this. Cut “not networking, not following, not matching” — by the vision section, you should be past comparison.
+
+
+MISSION PAGE SUMMARY
+Section
+	Core Move
+	Anchor Line
+	The World As It Is
+	Name the problem with precision
+	“It is not a lack of relationships. It is a lack of resonance.”
+	What We’re Building
+	Concrete mechanic → then philosophy
+	“Thoughts become invitations for conversations with strangers who resonate.”
+	Where This Is Going
+	Describe the world you’re creating
+	“Something latent in human nature that existing structures were never designed to hold.”
+	
+
+
+
+KEY DECISIONS & WARNINGS
+What to Watch For
+
+
+1. Kill the repetition between pages.
+“Truly heard,” “resonance,” “I-Thou,” and “infrastructure collapsed” currently appear on both pages. Each phrase should live in exactly one place. The landing page gets “truly heard” and “what comes next.” The mission page gets “resonance,” “I-Thou,” and the full infrastructure argument.
+2. The four-step mechanic is your most valuable asset.
+Post / Reply / Accept / Conversation — this sequence is clearer than any paragraph of philosophy. Use it on the landing page. Reference it on the mission page. It’s the thing people will actually remember and tell others about.
+3. Philosophy after concreteness, always.
+Every section on the mission page should establish what the product does before explaining what it means. The I-Thou framing is beautiful but abstract. It becomes powerful only when grounded in something the reader already understands.
+4. The vision section should describe a world, not position against competitors.
+“Not networking. Not following. Not matching.” — this defines you by what you’re not. By the vision section, the reader should already know what you’re not. Now tell them what the world looks like when you succeed.
+5. Keep the landing page to one scroll.
+Three beats. Tagline, emotional why, bridge. If someone spends 20 seconds on your landing page and leaves, they should still be able to tell a friend what your product is.
+
+
+
+
+FULL ARC AT A GLANCE
+The Visitor’s Journey
+
+
+“Where your thoughts find someone.”
+↓
+Oh — you post a thought, someone replies, you accept, and a real conversation happens. Simple.
+↓
+The feeling of being truly heard is rarer than ever. They’re building what comes next.
+↓
+I want to know more. [clicks Mission]
+↓
+Yes — I’ve felt this exact loneliness. It’s not about relationships, it’s about resonance.
+↓
+So the product creates a space for that. Thoughts become invitations. The I-Thou moment.
+↓
+They’re building something that’s never existed before. Something human nature has always needed.
+↓
+I believe in this.
+
+
+End of guide. Build from here.
+Design guide
+
+
+ ohm organic logomark 
+
+
+
+ohm.
+The unit of resonance.
+
+
+VISUAL DESIGN SPECIFICATION
+DOCUMENT    Design Spec v3
+YEAR    2026
+TITLE TYPEFACE    Comico
+BODY TYPEFACE    Sentient
+PRIMARY ACCENT    #EB4101
+SECONDARY    #979C5B
+SCREENS    3
+________________
+
+
+01
+Design Principles
+ohm. has one visual job: make a thought feel worth stopping for. Every decision — layout, colour, type, spacing — serves that single moment.
+The feed is warm, quiet, analogue in feeling. It does not perform energy. Cards sit on warm off-white. Images are desaturated and cinematic. Type is minimal and restrained. The product recedes so the thought can come forward.
+The design recedes. The thought comes forward.
+PRINCIPLES
+Background feel
+	Warm off-white — paper, not screen. Never clinical white, never pure black.
+	Image treatment
+	Desaturated, low contrast, ~70% brightness. Film still, not social card.
+	Type register
+	Comico + Sentient only. Light weights. Minimal size range. Nothing decorative.
+	Colour role
+	Depth (panels darkening) and warmth (connection forming). Never decorative.
+	Accent
+	#EB4101 — one colour, specific meaning only.
+	Ground
+	#979C5B — earthen stability, the olive that holds everything.
+	Motion
+	Gestural. Swipe left deeper, swipe right back. No bounce, no snap.
+	
+
+Design inspirations
+
+
+________________
+
+
+02
+Colour System
+Colour communicates exactly two things: depth (which panel you are on) and warmth (whether a connection is forming). It is never used decoratively.
+The palette draws from the earth. Vermillion is fired clay — the heat of connection. Olive is terroir — the ground everything grows from. Chartreuse is new growth — the brightness of a fresh thought. These are colours with origins, not choices from a picker.
+FULL PALETTE
+ 
+	#EB4101
+	Vermillion  —  Primary accent — notification · post · edge bar · logo period
+	 
+	#979C5B
+	Olive  —  Earthen ground — logo background · secondary accent · muted states
+	 
+	#D0D37C
+	Chartreuse  —  Fresh accent — onboarding highlights · crossing indicator · new thought
+	 
+	#F5F0EA
+	Warm Ground  —  Feed background — paper, not screen
+	 
+	#EDE8E2
+	Card Ground  —  Thought card surface
+	 
+	#0C0C0A
+	Panel Dark  —  Panel 2; beneath Panel 1 image
+	 
+	#080604
+	Panel Deep  —  Panel 3, deepest layer
+	 
+	#1A1A16
+	Type Dark  —  Body text on light surfaces
+	 
+	#9A9A98
+	Type Muted  —  Labels, timestamps, dormant states
+	 
+	#FFFFFF
+	Type White  —  Thought sentence on Panel 1
+	
+
+Never use pure black (#000000). The warmth in the dark values makes darkness feel like depth, not void.
+LEFT EDGE BAR — ENGAGEMENT WARMTH
+No bar
+	No replies sent yet on this thought
+	Vermillion ~30%
+	At least one reply sent
+	Vermillion ~60%
+	Multiple replies, active engagement
+	Vermillion #EB4101 full
+	Current user is actively typing. The visual equivalent of making eye contact.
+	VERMILLION — 5 USES ONLY
+1  Edge bar at full warmth
+2  Reply label on Panel 3
+3  Notification circle
+4  Post button
+5  Logo period
+OLIVE — GROUNDING USES
+Olive appears where the system communicates stability and calm: the logo background, muted interaction states, dormant conversation indicators, and as a tonal complement to vermillion in the brand gradient. It is never used for calls to action.
+BRAND GRADIENT
+Fired clay to olive earth. #EB4101 → #979C5B → #D0D37C. Used only in the logo environment and cover treatments. Never in the product UI.
+________________
+
+
+03
+Typography
+Two typefaces. One system. Comico for all display and structural text — headings, the logo wordmark, section numbers, navigation. Sentient for all reading text — thought sentences, context, replies, body copy. Both from Fontshare, both free for commercial use.
+Comico is organic, expressive, and bold — it carries the same energy as the logomark. Sentient is warm, literate, and restrained — it recedes so the thought comes forward. Together they create the tension between expression and quiet that defines ohm.
+No italic. No third typeface. If a design requires something else to work, the design is wrong.
+TYPE SCALE
+Thought sentence — P1
+	Sentient Light · 12–13px · white · no background box
+	Context — P2
+	Sentient Light · 9–10px · muted white
+	Reply input — P3
+	Sentient Light · 11–12px
+	Names / labels
+	Comico · 7–8px · UPPERCASE · wide tracking
+	Card metadata
+	Comico · 7px · muted · UPPERCASE
+	Section numbers
+	Comico · 10–12px · muted
+	Logo wordmark
+	Comico Bold · lowercase · vermillion period
+	TYPE PAIRING RATIONALE
+Comico’s organic, hand-drawn character echoes the logomark — both share the same DNA of flowing, natural forms. It gives the brand its distinctive voice in small, structural moments: a section header, a navigation label, the wordmark itself.
+Sentient provides the counterweight. As a refined serif designed for extended reading, it creates the quiet space where thoughts actually live. The pairing is deliberate: the brand speaks in Comico, the people speak in Sentient.
+________________
+
+
+04
+Logo System
+The logo system has two components: the organic logomark and the wordmark. They work independently and together.
+THE LOGOMARK
+ Organic flowing form in vermillion 
+
+The logomark is an organic, flowing form in vermillion (#EB4101). Its shapes are inspired by natural growth — a plant reaching, a hand opening, the moment before two forms connect. It is alive, not geometric. It breathes.
+On its own, the logomark sits on olive (#979C5B) ground. This is its natural habitat. In product, it may appear at reduced opacity or in single-colour treatments, but never distorted, outlined, or reconstructed.
+THE WORDMARK
+ohm.
+ohm. — Comico Bold, lowercase. The period is always vermillion (#EB4101). The letters are always dark (#1A1A16) on light grounds or white on dark grounds. The period never changes colour.
+SYMBOL SYSTEM
+Three marks, one family:
+Ω  The omega symbol — the literal ohm sign. Beautiful as a logomark reference. Already iconic, already recognized, newly recontextualized.
+◎  Concentric circle — resonance radiating outward. Used as a secondary graphic element.
+ohm.  The wordmark itself — the primary brand identifier.
+BRAND GRADIENT
+Fired clay to weathered bronze. #EB4101 → #979C5B → #D0D37C. Ancient and grounded. Used in the logo environment, marketing materials, and cover treatments. Never inside the product UI.
+ 
+	 
+	 
+	#EB4101    #979C5B    #D0D37C
+________________
+
+
+05
+Header — Screen 1
+Three elements. One row. Nothing else, ever.
+LEFT — NOTIFICATION
+A single small filled circle in #EB4101. Diameter ~20px. Absent state: circle disappears entirely. No grey placeholder. Present state: vermillion circle appears. Tapping reveals the inline notification panel. No bell icon. No counter badge. The circle’s presence is the notification.
+CENTRE — LOGO
+ohm. — Comico Bold, lowercase, ~18px. o, h, m in dark (#1A1A16). The period in vermillion (#EB4101).
+RIGHT — COMPOSE
+A + icon. Thin stroke, ~18px. Not a floating action button. Posting is deliberate, not the default.
+
+
+________________
+
+
+06
+Feed Layout
+The feed is a vertical stack of thought cards on warm off-white (#F5F0EA). At any scroll position the user sees approximately 2.5 cards — one fully in view, the next partially visible, a sliver of the third. Partial visibility creates ambient pull without forcing movement.
+Free scroll. No snap-to-card. The user moves at their own pace.
+The card should look like a film still with a caption. If it reads as a social media post, the design is wrong.
+CARD ANATOMY — PANEL 1
+Card width
+	Full screen minus 16px each side
+	Image ratio
+	4:3, AI-generated landscape, desaturated, low contrast, ~70% brightness
+	Corner radius
+	8px
+	Sentence
+	Bottom of image. Sentient Light 12–13px, white, no background box
+	Below image
+	Card surface #EDE8E2. Profile photo (~24px circle) + name in Comico 7–8px uppercase
+	Date
+	Top-right of card metadata, Comico 7px
+	Left edge bar
+	2px vertical, full card height. Colour reflects engagement state
+	Right edge
+	Three barely-visible dots. Not a button — a whisper
+	Gap between cards
+	12px
+	Top padding
+	12px below header
+	________________
+
+
+07
+Thought Panels
+Every card has three panels. Swipe left to go deeper. Swipe right to go back. Horizontal slide — no fade, no bounce. Each panel occupies the full screen. Each is darker than the one before.
+PANEL 1 — THE FRONT
+Background: #0C0C0A beneath image. Image: full width, 4:3, desaturated landscape. AI-generated from sentence + profile photo. Sentence: Sentient Light 12–13px, white, bottom, no box. Profile photo + name below image. Left edge bar reflects engagement warmth.
+PANEL 2 — THE BACK
+Background: solid #0C0C0A. Sentence repeats at top, slightly smaller — anchors the reader. Context: up to 3 sentences, Sentient Light 9–10px, muted white. Hard limit: 3 sentences.
+PANEL 3 — REPLIES
+Background: #080604 — deepest panel. Top: accepted replies. Each shows profile photo, name, reply text. Bottom: text input. Label “reply” in #EB4101. Placeholder: “what this thought surfaces in you...”
+Typing: left edge bar turns full vermillion the moment the user starts typing. Sent: brief haptic + visual pulse. Returns to Panel 1.
+A reply is a thought, not a reaction. The friction of writing is correct.
+________________
+
+
+08
+Bottom Navigation
+Three screens. Three monochrome icons. No colour. No labels. Each icon carries its meaning without words.
+○  Worlds — The feed. Discovery. Screen 1.
+Our logo  Conversations — Accepted threads. Screen 2.
+○(but filled)  Me — Your profile. Your deck. Screen 3.
+BAR DESIGN
+Background
+	Warm ground (#F5F0EA), matching the feed
+	Active icon
+	100% opacity
+	Inactive icon
+	~40% opacity
+	Labels
+	None. No colour. Ever.
+	Borders
+	No borders, dividers, or shadows above the bar
+	________________
+
+
+09
+Notification Panel
+Not a separate screen. Slides down inline from the top of Screen 1 when the vermillion circle is tapped. The feed below shifts down to accommodate it.
+Each row: replier’s profile photo + name + first words of reply + which thought they replied to. Two actions per row: Accept — Ignore.
+Accept: reply visible on Panel 3. Conversation created in Screen 2. Replier sees no special notification. Ignore: dismissed silently. Replier receives no signal.
+No counter. No label. The vermillion circle is the only indicator.
+________________
+
+
+10
+Crossing & Shift
+Two collaborative artefacts available after 10 or more exchanges. Both are quiet — findable, never prompted. Both require both people to complete.
+CROSSING — WHERE TWO THOUGHTS MET
+Joint thought: sentence + up to 3 sentences context + AI image from both profile photos. Both write a sentence version. Non-initiator chooses or writes new. Context written jointly in alternating turns, up to 3 sentences total. Lives only on both profiles. Never in the feed.
+SHIFT — WHERE THINKING MOVED
+Two-halved card: Before → After for each person, side by side. Each half: profile photo + before sentence (muted) + after sentence (full). No AI image. The two arcs are the content. Appears in both people’s Worlds feed. The conversation always stays private.
+The crossing is where two thoughts met. The shift is proof that something moved.
+________________
+
+
+11
+Component States
+NOTIFICATION CIRCLE
+Absent
+	No pending replies. Circle does not appear.
+	Present
+	One or more pending replies. Vermillion #EB4101 ~20px.
+	Panel open
+	Circle remains. Panel slides down below header.
+	THOUGHT EDGE BAR
+No bar
+	No replies on this thought yet.
+	Vermillion 30%
+	At least one reply sent.
+	Vermillion 60%
+	Multiple replies, active.
+	Vermillion 100%
+	Actively typing. Eye contact.
+	CONVERSATION ROWS
+Active
+	Full opacity, no dot.
+	Unread
+	Full opacity + small vermillion dot.
+	Dormant
+	30+ days quiet. Muted to olive tones. No nudge ever.
+	CROSSING / SHIFT
+Available
+	Quiet at thread bottom after 10+ exchanges.
+	Initiated
+	One started. Sits silently until other finds it.
+	Complete
+	Both halves done. Saved to both profiles.
+	Abandoned
+	Either opts out. Dissolves silently.
+	________________
+
+
+12
+Non-Negotiables
+These decisions must survive the build. If a technical constraint creates pressure to change one of them, flag it before changing it.
+Replies require acceptance before they appear
+A reply waits in the notification centre until accepted. This is the gate that keeps the product from becoming a comment platform. Do not remove it, even under time pressure.
+No metrics exposed to users
+No counts of any kind. The left-edge warmth bar is the only engagement signal, and it is visual, not numerical.
+No editing after posting
+A thought is final when posted. Editing would retroactively change what someone responded to.
+Replies must be written text
+No preset replies, no emojis as primary action, no like button. If a user cannot find words, they do not reply. That friction is correct.
+Dormancy is valid
+A conversation going quiet is not a failure state. No automated nudges, no reconnect suggestions.
+The interests field is not a skills field
+It asks what the user is into right now. Not professional skills. Not a job title. Never use the word “skills” near it.
+The crossing is private
+Never in the feed, never in discovery, never visible to anyone outside the conversation it came from.
+The shift conversation stays private
+The shift appears in the feed. The thread never does. Only the arc — before and after — is ever visible.
+Neither crossing nor shift is ever prompted
+The options exist quietly after 10 exchanges. People find them when ready, or they don’t.
+
+
+Post a thought. Someone replies. You accept. You talk.
+
+
+ohm.  Visual Design Specification  ·  2026
+
+
+
+
+Design inspirations
+https://www.pentagram.com/work/chateau-engalin

@@ -13,7 +13,7 @@ async def lifespan(app: FastAPI):
     yield
     print("ML service shutting down...")
 
-app = FastAPI(title="net. ML service", lifespan=lifespan)
+app = FastAPI(title="ohm. ML service", lifespan=lifespan)
 
 app.include_router(embeddings.router, prefix="/embed")
 app.include_router(images.router, prefix="/image")

@@ -1,125 +1,17 @@
-Build a RecommendationLearningService that improves recommendations based on reply and conversation data.
+Phase 7 learning loop.
 
-This runs as periodic batch jobs. It can ship as stubs initially — the interfaces exist, the actual logic fills in once there's real user data.
+The system should learn from:
 
-DAILY JOB — runDailyLearning():
+- which replies get accepted
+- which conversations sustain
+- which cross-domain pairings deepen
+- where the user's posting patterns differ from their replying patterns
 
-1. CROSS-DOMAIN AFFINITY MAP
-   For every conversation created or updated in the last 24 hours:
-   - Get concentration_a (thought author), concentration_b (replier)
-   - Get cohort_year_a, cohort_year_b
-   - Check whether conversation has reached 5+ messages, 10+ messages
-   
-   Maintain a running affinity matrix. Store as rows in a cross_domain_affinity table:
-   {
-     concentration_a: string,
-     concentration_b: string,
-     total_conversations: number,
-     sustained_conversations: number (10+ messages),
-     sustain_rate: number (sustained / total),
-     avg_depth: number (average message count),
-     updated_at: timestamptz
-   }
-   
-   The FeedService uses this: if humanities × engineering has high sustain_rate,
-   boost engineering thoughts in humanities viewers' feeds (via the D score diversity component).
+Hidden health metrics:
 
-2. ADAPTIVE USER WEIGHTS
-   For each user who has 5+ engagement events in the last 7 days:
-   
-   Pull their engagement profile from EngagementTrackingService.getUserEngagementProfile()
-   
-   Adjustment rules (apply small increments, ±0.03 per day):
-   - High cross_cohort_reply_rate (>0.5): increase d_weight by 0.03
-   - High cross_concentration_reply_rate (>0.5): increase alpha by 0.03
-   - User mostly engages with fresh content (>70% of swipes on thoughts < 2 days old): increase f_weight by 0.03
-   - User engages with thoughts that have high question_similarity to their own: increase q_weight by 0.03
-   
-   After adjustments:
-   - Clamp each weight: min 0.10, max 0.60
-   - Clamp alpha: min 0.1, max 0.8
-   - Re-normalize q_weight + d_weight + f_weight + r_weight to sum to 1.0
-   
-   Upsert into user_recommendation_weights table.
+- reply-to-post ratio
+- conversation depth distribution
+- cross-domain connection rate
+- new-user first conversation time
 
-3. TEMPORAL RESONANCE
-   Compute sustain_rate grouped by cohort_distance (|cohort_a - cohort_b|):
-   
-   SELECT 
-     ABS(ua.cohort_year - ub.cohort_year) as cohort_distance,
-     COUNT(*) as total,
-     COUNT(*) FILTER (WHERE c.message_count >= 10) as sustained,
-     AVG(c.message_count) as avg_depth
-   FROM conversations c
-   JOIN users ua ON c.participant_a = ua.id
-   JOIN users ub ON c.participant_b = ub.id
-   GROUP BY cohort_distance
-   
-   If distance=2 consistently outperforms distance=1 in sustain_rate,
-   adjust the cohort_distance component in the D score calculation 
-   to weight distance=2 higher. Store these learned weights in a 
-   system_config table as JSON.
-
-
-WEEKLY JOB — runWeeklyLearning():
-
-4. QUESTION CLUSTER DISCOVERY
-   Only run when there are 100+ thoughts with question_embeddings.
-   
-   Steps:
-   a. Fetch all question_embeddings from thoughts table
-   b. Run k-means clustering. Try k values from 5 to 15, pick the k with best silhouette score.
-      Use a JS clustering library (e.g., ml-kmeans) or call a Python script.
-   c. For each cluster, get 5 representative thoughts (nearest to centroid)
-   d. Call LLM with those 5 thought sentences:
-      "These thoughts share an underlying question. What is it? Express as a single question in under 20 words.
-       Thought 1: [sentence]
-       Thought 2: [sentence]
-       Thought 3: [sentence]
-       Thought 4: [sentence]
-       Thought 5: [sentence]"
-   e. Store in question_clusters table: centroid_embedding, label (LLM output), sample_questions (the 5 sentences), thought_count
-   f. Assign each thought to its nearest cluster (add cluster_id column to thoughts table if not present)
-   
-   Then compute cross_cluster_affinity:
-   For each pair of clusters, look at conversations where thought_author's thought is in cluster_a 
-   and replier's most recent thought is in cluster_b.
-   Record reply_rate, conversation_rate, sustain_rate in cross_cluster_affinity table.
-   
-   These affinities become a recommendation signal: if cluster "What am I becoming?" × cluster "What do I owe where I came from?" has high sustain_rate, actively cross-pollinate in the feed.
-
-5. OPTIONAL — LLM RE-RANKER (add later, when data validates it)
-   After vector retrieval gets top 50 candidates in FeedService, 
-   optionally pass top 15 through a local LLM (Mistral 7B via Ollama) for re-ranking:
-   
-   "Given this user's recent thoughts and interests, rank these candidate thoughts 
-   by likelihood of producing a meaningful written reply. Favor complementary perspectives 
-   over identical ones. Favor thoughts that create a productive gap the viewer might want to fill.
-   
-   User's recent thoughts: [last 3 thought sentences]
-   User's interests: [interests array]
-   
-   Candidates:
-   1. [sentence] — [first 100 chars of context]
-   2. [sentence] — [first 100 chars of context]
-   ...
-   
-   Return ONLY the candidate numbers in ranked order, best first."
-   
-   Only enable this behind a feature flag. Validate by A/B testing re-ranked feeds 
-   vs vector-only feeds on reply-to-conversation conversion rate.
-
-
-LOGGING:
-Log all learning updates to a learning_log table:
-{ id, job_type ('daily' | 'weekly'), timestamp, details (jsonb) }
-
-Include: weight changes per user, new cluster labels, affinity changes, temporal resonance updates.
-This lets you track how the system evolves and debug recommendation quality.
-
-
-CRON SETUP:
-- Daily job: run at 3am UTC
-- Weekly job: run Sunday 4am UTC
-- Both should be idempotent (safe to re-run)
-- Add a lock mechanism to prevent concurrent runs
+The platform should respond to weak health by making resonance easier to find, not by adding urgency mechanics.

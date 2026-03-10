@@ -1,96 +1,22 @@
-Build the three-panel thought detail view. This opens when a user taps a thought card from the feed.
+Thought detail and panels.
 
-Route: app/thought/[id].tsx
-API: GET /api/thoughts/:id — returns panel data for all three panels.
+Every thought has three panels:
 
-CORE MECHANIC:
-Every thought has three panels. Swipe left to go deeper. Swipe right to go back.
-Horizontal slide — no fade, no bounce. Each panel occupies the full screen width.
-Each panel is darker than the one before — a deliberate signal that you are moving inward.
+- Panel 1: image, sentence, author chip, warmth bar
+- Panel 2: sentence anchor plus context
+- Panel 3: accepted replies plus reply input
 
-Use react-native-gesture-handler and react-native-reanimated for the swipe gesture.
-The gesture should feel gestural and fluid, not snappy.
+Interaction rules:
 
+- Swipe left to go deeper
+- Swipe right to go back
+- Each panel gets darker as depth increases
+- Reply input is written text only
+- Typing should push the warmth bar to full vermillion
+- Sending a reply should feel like a deliberate act, not a reaction
 
-PANEL 1 — THE FRONT (default view on open):
+Panel 3 constraints:
 
-  Background: PANEL_DARK (#0C0C0A) beneath and around the image.
-  Image: full width, 4:3. AI-generated cinematic landscape. expo-image component.
-  Sentence: bottom of the image. Sentient Light 12-13px, white (#FFFFFF), no background box.
-  Below image: profile photo (~24px circle) + name (General Sans Medium, 7-8px, UPPERCASE).
-  Left edge bar: WarmthBar reflecting current warmth_level.
-  Right edge: three barely-visible dots indicating swipe availability.
-
-  If the user swipes right from Panel 1, close the detail view and return to the feed.
-
-
-PANEL 2 — THE BACK (swipe left once):
-
-  Background: solid PANEL_DARK (#0C0C0A). No image. Warmer undertone than Panel 1.
-  Top: the sentence repeats, slightly smaller — anchors the reader. Sentient Light 11px, white.
-  Below: context text. Up to 600 characters (about 3 sentences).
-    Sentient Light 9-10px, muted white (~70% opacity).
-  Layout: vertically centered in the available space. Generous padding.
-  The gap between what the sentence says and what the context reveals is the design's purpose.
-  If context is empty (has_context: false), show only the sentence on a dark field.
-
-
-PANEL 3 — REPLIES (swipe left twice):
-
-  Background: PANEL_DEEP (#080604) — the deepest, darkest panel. You are at depth.
-
-  Top section — accepted replies:
-    Scrollable list of accepted replies from the API response (panel_3.accepted_replies).
-    Each reply: profile photo (~20px) + name (UPPERCASE, 7px) + reply text (Sentient Light 10px, white).
-    Replies are ordered by created_at ascending (oldest first).
-    If no accepted replies yet, this area is empty — no placeholder text needed.
-
-  Bottom section — reply input:
-    Text input with label "reply." in ACCENT_ORANGE (#C4622D).
-    Placeholder: "what this thought surfaces in you..."
-    Sentient Light 11-12px.
-    Max 500 characters.
-    Cannot reply to your own thought (hide the input, show nothing in its place).
-    Cannot reply if you already have a pending reply (hide the input).
-
-  Typing behavior:
-    The moment the user starts typing, the left edge bar on this thought turns FULL ORANGE (#C4622D).
-    This is the visual equivalent of making eye contact.
-
-  Send behavior:
-    POST /api/thoughts/:id/reply with { text }
-    On success: brief haptic pulse (expo-haptics) + short visual pulse on the card.
-    The view returns to Panel 1. The gesture is complete.
-    Also fire engagement event: POST /api/engagement/track with event_type 'reply_sent'.
-
-  Engagement tracking:
-    When Panel 1 is viewed: track 'view_p1'
-    When user swipes to Panel 2: track 'swipe_p2'
-    When user swipes to Panel 3: track 'swipe_p3'
-    When user starts typing: track 'type_start'
-    Batch these events and send periodically, not on every action.
-
-
-PANEL INDICATOR:
-  Three small dots at the bottom of the screen indicating which panel is active.
-  Very subtle, ~30% opacity. The current panel's dot is slightly brighter.
-  Do NOT use a prominent page indicator.
-
-
-STATES:
-  - Loading: PANEL_DARK background, skeleton pulse for image
-  - Image loading: use expo-image with blurhash or placeholder colour
-  - No context: Panel 2 shows sentence only on dark field
-  - No replies: Panel 3 top section empty, input still present
-  - Own thought: Panel 3 shows replies but no reply input
-  - Already replied: Panel 3 shows replies but no reply input
-  - Reply sending: input disabled, subtle loading state
-  - Reply sent: haptic + pulse + return to Panel 1
-
-
-WHAT THIS VIEW MUST NEVER DO:
-  - Show reply count or view count
-  - Show who viewed the thought
-  - Auto-advance between panels (user controls all movement)
-  - Use bounce or snap animations on swipe
-  - Show a share button
+- Accepted replies only
+- Reply placeholder: "what this thought surfaces in you..."
+- Replies must pass the acceptance gate before they show up in a conversation

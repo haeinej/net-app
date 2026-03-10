@@ -1,0 +1,24 @@
+ohm.
+Repo mirror of the core spec.
+
+Canonical source:
+/Users/jeonghaein/Desktop/ohm_spec.txt
+
+This repo copy is intentionally shorter. Use the Desktop file above for the full manifesto, algorithm specification, and visual direction.
+
+Core statements:
+
+- Where your thoughts find someone.
+- Post a thought. Someone replies. You accept. You talk.
+- Three screens only: Worlds, Conversations, Me.
+- No follow, like, react, metrics, or popularity engine.
+- Replies are written text and require acceptance before they become visible in a conversation.
+- Crossings are private profile artifacts.
+- Shifts can appear in Worlds, but the underlying conversation stays private.
+
+Current implementation interpretation:
+
+- Interests remain an internal cold-start signal.
+- Interests are no longer shown on the visible profile surface.
+- Resonance signatures replace the older "underlying question" language.
+- The existing `question_embedding` column is used as the primary resonance embedding until a fuller schema migration lands.

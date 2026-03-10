@@ -1,64 +1,29 @@
-Build Screen 1 — Worlds. This is the home feed where discovery happens.
+Screen 1: Worlds
 
-Use the design system already built (theme/colors, typography, spacing). Use Expo Router — this is the index tab screen at app/(tabs)/index.tsx.
+Purpose:
 
-LAYOUT:
-- Vertical scroll. Thoughts stack top to bottom on WARM_GROUND (#F5F0EA) background.
-- At any scroll position, the user sees approximately 2.5 thought cards — one fully visible, the next partially visible below, a sliver of the one after. The partial visibility creates ambient pull without forcing movement.
-- Free scroll. No snap-to-card. The user moves at their own pace.
-- Cards are full-width minus 16px padding each side, 12px gap between cards.
+- discovery
+- notification intake
+- shifts in public view
 
-API:
-- GET /api/feed?limit=20&offset=0
-- Response: array of { id, sentence, image_url, created_at, user: { id, name, photo_url }, warmth_level, has_context }
-- Paginate on scroll — load next 20 when nearing the bottom.
-- Pull-to-refresh at top.
+Rules:
 
-THOUGHT CARD (Panel 1 — the only panel visible in the feed):
-- Full-width card, corner radius 8px.
-- Image: 4:3 aspect ratio, full card width. AI-generated landscape. Display using expo-image.
-- Sentence: positioned at the bottom of the image. Sentient Light 12-13px, white, no background box or overlay. The text sits directly on the image.
-- Below the image: card surface #EDE8E2.
-  - Left: circular profile photo (~24px) + name in UPPERCASE General Sans Medium 7-8px.
-  - Right: relative timestamp ("2h", "3d"), General Sans Regular 7px, muted.
-- Left edge: WarmthBar component, 2px wide, full card height. Reflects warmth_level from API.
-- Right edge: three barely-visible dots (opacity ~20%), indicating swipe is available. Not a button — a whisper.
+- Feed is a stack of thought cards on warm ground
+- Notification center is inline, never a separate screen
+- The header has exactly three elements: notification circle, logo, compose
+- No counts, no urgency badges, no "trending"
 
-TAPPING A CARD:
-- Opens the full thought detail view with three-panel swipe. Navigate to thought/[id] route.
-- The card expands to full screen or navigates to a detail page.
+Notification behavior:
 
-HEADER:
-- Use the Header component from the design system.
-- LEFT: notification circle (orange dot when pending replies exist)
-- CENTRE: "net." logo
-- RIGHT: "+" compose button — navigates to the creation flow
+- Circle only appears when pending replies exist
+- Tap reveals the panel inline from the top
+- Rows show replier, preview, and the thought they replied to
+- Actions are Accept and Ignore
+- Accept creates a conversation
+- Ignore is silent
 
-NOTIFICATION PANEL:
-- Not a separate screen. Slides down inline from the top when the orange circle is tapped.
-- The feed cards below shift down to accommodate it.
-- API: GET /api/notifications — returns array of pending replies
-- Each notification row shows:
-  - Replier's profile photo (~24px) + name (UPPERCASE, 7-8px)
-  - First words of their reply (Sentient Light 9-10px, truncated)
-  - Which of your thoughts they replied to (sentence preview, muted)
-- Two actions per row: Accept | Ignore
-  - Accept: POST /api/replies/:id/accept — creates conversation, reply appears on Panel 3
-  - Ignore: POST /api/replies/:id/delete — dismissed silently, no signal to sender
-- No counter anywhere. No badge number. The orange circle presence is the only indicator.
+Content behavior:
 
-STATES:
-- Loading: skeleton cards with CARD_GROUND colour, pulsing gently
-- Empty feed: centered message "Post your first thought." — not aggressive, not urgent
-- No notifications: orange circle absent (no grey placeholder)
-- Notifications present: orange circle appears
-- Notification panel open: panel slides down, feed shifts
-- Error: subtle inline message, retry on pull-down
-
-WHAT THIS SCREEN MUST NEVER DO:
-- Show any count (reply count, view count, follower count)
-- Show trending labels or popularity indicators
-- Show "people like you also liked" suggestions
-- Show engagement prompts ("reply to this!", "this thought is trending")
-- Use snap-to-card scroll behavior
-- Display the thought context in the feed — only sentence + image (Panel 1)
+- Thought cards dominate the feed
+- Shifts may appear in the feed
+- Crossings never appear in the feed

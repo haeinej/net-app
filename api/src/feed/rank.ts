@@ -7,11 +7,19 @@ import { db, replies, conversations, users } from "../db";
 import { feedConfig } from "./config";
 import type { ThoughtCandidate, ViewerProfile, RecommendationWeights } from "./types";
 
-const { freshnessDecayRate, cohortMaxFraction, windowSize, cohortDemotePositions, concentrationDemotePositions } = feedConfig;
+const { freshnessFullBoostHours, freshnessDecayEndHours, freshnessResidual, cohortMaxFraction, windowSize, cohortDemotePositions, concentrationDemotePositions } = feedConfig;
 
+/**
+ * Piecewise freshness: full boost first 6h, linear decay 6-48h, residual after.
+ */
 function freshnessScore(createdAt: Date): number {
   const hours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
-  return Math.exp(-freshnessDecayRate * hours);
+  if (hours <= freshnessFullBoostHours) return 1.0;
+  if (hours <= freshnessDecayEndHours) {
+    const span = freshnessDecayEndHours - freshnessFullBoostHours;
+    return 1.0 - ((hours - freshnessFullBoostHours) / span) * (1.0 - freshnessResidual);
+  }
+  return freshnessResidual;
 }
 
 function cohortDiversityBonus(thought: ThoughtCandidate, viewer: ViewerProfile): number {

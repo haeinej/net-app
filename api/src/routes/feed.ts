@@ -25,16 +25,20 @@ export async function feedRoutes(app: FastifyInstance): Promise<void> {
       const limit = Math.min(100, Math.max(1, parseInt(request.query.limit ?? "20", 10) || 20));
       const offset = Math.max(0, parseInt(request.query.offset ?? "0", 10) || 0);
       const items = await getFeedWithDebug(userId, limit, offset);
-      const body = items.map((item) => ({
-        id: item.thought.id,
-        sentence: item.thought.sentence,
-        image_url: item.thought.image_url,
-        created_at: item.thought.created_at,
-        user: item.user,
-        warmth_level: item.warmth_level,
-        has_context: item.thought.has_context,
-        _debug: item._debug,
-      }));
+      const body = items.map((item) => {
+        if (item.type === "shift") return { ...item, _debug: (item as any)._debug };
+        const t = item as any;
+        return {
+          id: t.thought?.id,
+          sentence: t.thought?.sentence,
+          image_url: t.thought?.image_url,
+          created_at: t.thought?.created_at,
+          user: t.user,
+          warmth_level: t.warmth_level,
+          has_context: t.thought?.has_context,
+          _debug: t._debug,
+        };
+      });
       return reply.send(body);
     });
   }

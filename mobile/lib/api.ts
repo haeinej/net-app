@@ -103,12 +103,14 @@ export async function acceptReply(replyId: string): Promise<{ conversation_id: s
 
 export async function deleteReply(replyId: string): Promise<void> {
   const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/replies/${replyId}/delete`, {
+  const res = await fetch(`${API_URL}/api/replies/${replyId}/ignore`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("Delete failed");
+  if (!res.ok) throw new Error("Ignore failed");
 }
+
+export const ignoreReply = deleteReply;
 
 // Thought detail (three panels)
 export interface ThoughtPanel1 {
@@ -399,7 +401,7 @@ export interface ProfileResponse {
   id: string;
   name: string | null;
   photo_url: string | null;
-  interests: string[];
+  interests?: string[];
   thoughts: ProfileThought[];
   crossings?: ProfileCrossing[];
 }

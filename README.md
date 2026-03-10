@@ -1,262 +1,58 @@
-# net.
+# ohm.
 
-*Thoughts that connect people.*
+Where your thoughts find someone.
 
-A platform where a single sentence becomes an invitation — and strangers who resonate start a conversation.
+## Source Of Truth
 
----
+The canonical product spec for this repo is:
 
-## The Loop
+- `/Users/jeonghaein/Desktop/ohm_spec.txt`
 
-**Post a thought → someone replies → you accept → you talk.**
+This repository now follows that document for vocabulary, product behavior, prompts, and design direction.
 
-That's it. No feeds to scroll, no follower counts, no algorithmic dopamine. Just one thought, one reply, one conversation at a time.
+## Core Loop
 
----
+Post a thought. Someone replies. You accept. You talk.
 
-## The Problem
+Three screens only:
 
-Intellectual loneliness — the sensation of lacking resonance despite abundant digital connections. People hunger for genuine encounter but reach for safer substitutes. net. is built to close that gap.
+- Worlds: the discovery feed and inline notification panel
+- Conversations: accepted one-on-one threads only
+- Me: your profile surface and deck
 
----
+There is no follow, like, react, count badge, or popularity mechanic.
 
-## How It Works
+## Product Vocabulary
 
-A thought is a single sentence + up to 3 sentences of context. The system deliberately creates gaps — enough to invite a response, not enough to foreclose it.
+- Thought: one image, one sentence, up to 600 characters of context
+- Reply: written text only
+- Accept: creates a conversation
+- Ignore: silently removes a pending reply
+- Conversation: the accepted thread that starts from a reply
+- Crossing: a private shared artifact that lives on both profiles
+- Shift: a before/after arc that can appear in Worlds while the thread stays private
 
-Every thought gets an AI-generated cinematic landscape image, derived from the text + your profile photo via IP-Adapter. The image communicates tone without describing content.
+## Implementation Notes
 
-The recommendation engine matches thoughts not by topic, but by **underlying question**. A philosopher writing about when rigor becomes avoidance and an engineer writing about over-optimization score high together — same question, different surfaces.
+The algorithm spec moved from "underlying question matching" to "resonance signature" generation.
 
-```
-score = question_similarity × (1 + α × surface_distance) × quality_score
-```
+Current runtime compatibility choices:
 
-`surface_distance` is **rewarded**, not penalized. The feed feels like walking through a city where you keep overhearing conversations you didn't know you needed to hear.
+- The LLM now generates a resonance signature JSON shape.
+- The primary resonance embedding is still stored in the legacy `question_embedding` column so the live feed pipeline keeps working.
+- `quality_score` is now treated as an openness-weighted signal.
+- Profile `interests` remain an internal cold-start fallback but are no longer shown on the visible profile surface.
 
----
+## Repo Areas
 
-## Three Screens
+- [`/Users/jeonghaein/Desktop/ohm-app/mobile`](./mobile): Expo mobile client
+- [`/Users/jeonghaein/Desktop/ohm-app/api`](./api): Fastify API, feed logic, auth, routes
+- [`/Users/jeonghaein/Desktop/ohm-app/docs`](./docs): spec mirrors and implementation guidance
+- [`/Users/jeonghaein/Desktop/ohm-app/ml`](./ml): auxiliary ML services and local experimentation
 
-| Screen | Purpose |
-|--------|---------|
-| **Worlds** | Discovery feed — thoughts matched to your underlying questions |
-| **Conversations** | Accepted dialogue threads |
-| **Me** | Personal profile and thought archive |
+## Current Priorities
 
-No social graph. No follower counts. No connection requests. No "people like you."
-
----
-
-## Engagement Signal
-
-A single visual element: an orange left-edge bar that intensifies as warmth increases. No counts of any kind — ever.
-
-`warmth_level`: `none` → `low` → `medium` → `full`
-
----
-
-## Tech Stack
-
-| Layer | Tool | Cost |
-|-------|------|------|
-| Database + Auth | Supabase free tier (PostgreSQL + pgvector, connection pooler port 6543) | $0 |
-| Embeddings | Ollama on your Mac directly (no Docker) | $0 |
-| Question extraction LLM | Ollama on your Mac directly | $0 |
-| API server | Run locally on your Mac | $0 |
-| Image generation | fal.ai Flux Dev + IP-Adapter | Pay-per-use |
-| Mobile | Expo (React Native), run locally | $0 |
-
----
-
-## Architecture
-
-**Three-layer recommendation: embed → retrieve → rank**
-
-1. **Embed** (on thought creation) — dual embeddings per thought:
-   - Surface embedding: what the thought is topically about
-   - Question embedding: what underlying question it's wrestling with (extracted by LLM, then embedded)
-
-2. **Retrieve** (on feed request) — pgvector nearest-neighbor on `question_embeddings` → 100 candidates
-
-3. **Rank** (application-level) — score with formula above, then enforce:
-   - Cross-cohort diversity: max 40% single cohort per 10-item window
-   - Freshness weighting
-   - Reply quality signals
-
-4. **Learn** (daily/weekly batch) — observe which recommendations produce real conversations (reply → accept → 10+ messages), adjust `α` per user, discover question clusters
-
----
-
-## Hard Rules
-
-- No counts in any API response — ever
-- No social graph of any kind
-- No engagement prompts ("you might want to reply to this")
-- No interest taxonomy exposed to users
-- Dormant conversations (30+ days) are never nudged
-- Reply deletion is silent — the replier gets no signal
-- No editing thoughts after posting
-- Replies require acceptance before appearing
-
----
-
-## Project Structure
-
-```
-net-app/
-├── .cursorrules              ← Cursor project rules (auto-loaded)
-├── .gitignore
-├── docker-compose.yml        ← (reference only — not required)
-├── README.md
-├── mobile/                   ← Expo (React Native) — iOS + Android
-│   ├── app/
-│   │   ├── _layout.tsx
-│   │   └── (tabs)/
-│   │       ├── index.tsx         ← Worlds (feed)
-│   │       ├── conversations.tsx ← Conversations
-│   │       └── me.tsx            ← Me (profile)
-│   ├── app.json
-│   ├── package.json
-│   └── tsconfig.json
-├── api/                      ← Node.js + TypeScript (Fastify)
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── types.ts
-│   │   └── db/client.ts
-│   ├── .env.example
-│   ├── package.json
-│   └── tsconfig.json
-├── ml/                       ← Python FastAPI — embeddings + images
-│   ├── main.py
-│   ├── routers/
-│   │   ├── embeddings.py     ← nomic-embed-text + Ollama question extraction
-│   │   └── images.py         ← fal.ai Flux + IP-Adapter
-│   ├── .env.example
-│   └── requirements.txt
-└── docs/
-    ├── net-spec.txt          ← full product + design spec
-    ├── algorithm/
-    │   ├── README.md         ← build guide + phase order
-        ├── cursorrules.txt   ← reference copy of .cursorrules
-        ├── phases/
-        │   ├── phase-1-database-schema.txt
-        │   ├── phase-2-embedding-service.txt
-        │   ├── phase-3-dual-embedding-pipeline.txt
-        │   ├── phase-4-image-generation.txt
-        │   ├── phase-5-matching-and-feed-ranking.txt
-        │   ├── phase-6-engagement-tracking.txt
-        │   ├── phase-7-learning-loop.txt
-        │   └── phase-8-api-endpoints.txt
-        └── testing/
-            └── seed-and-test.txt
-    └── frontend/
-        ├── design-system.txt         ← colours, type, spacing, components
-        ├── screen-1-worlds-feed.txt  ← feed layout + notification panel
-        ├── screen-2-thought-panels.txt ← three-panel swipe interaction
-        ├── screen-3-conversations.txt ← conversation list + thread view
-        ├── screen-4-profile.txt      ← me screen + other user profiles
-        ├── screen-5-compose.txt      ← thought creation flow
-        ├── screen-6-onboarding.txt   ← registration + first thought
-        └── screen-7-crossing-shift.txt ← collaborative artefacts
-```
-
----
-
-## Getting Started
-
-### 1. Set up services (one-time)
-
-**Supabase** (database — free):
-1. Go to [supabase.com](https://supabase.com) → New Project
-2. Enable pgvector: SQL Editor → `create extension vector;`
-3. **Database URL:** Use the **Connection pooling** URI (port **6543**), not the direct one (port 5432).  
-   Dashboard → Project Settings → Database → **Connection string** → **Connection pooling** (Session or Transaction) → copy the URI.  
-   Format: `postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres`  
-   If you get `EHOSTUNREACH` with the direct URL, see [docs/DEBUGGING.md](docs/DEBUGGING.md).
-4. Copy your project URL + anon key + service role key from Settings → API (optional, for future auth/storage).
-
-**Ollama** (embeddings + question extraction LLM — free, run on your Mac directly, no Docker):
-1. Download from [ollama.com](https://ollama.com) → install the Mac app
-2. Pull models:
-   ```bash
-   ollama pull mistral
-   ollama pull nomic-embed-text
-   ```
-
-**fal.ai** (image generation — pay-per-use):
-1. Sign up at [fal.ai](https://fal.ai) → get API key from dashboard
-
-### 2. API server
-
-```bash
-cd api
-cp .env.example .env   # set DATABASE_URL (pooler URI), JWT_SECRET, FAL_KEY
-npm install
-npm run db:ping        # optional: test DB connection
-npm run db:migrate     # creates tables in Supabase
-npm run dev
-```
-
-API server runs locally on your Mac and connects to Supabase (database + auth) via the pooler URL. No separate backend hosting required for development.
-
-### 3. ML service
-
-```bash
-cd ml
-cp .env.example .env
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-```
-
-### 4. Mobile
-
-```bash
-cd mobile
-npm install
-npm start   # scan QR with Expo Go on your phone
-```
-
-### 5. Build the recommendation system
-
-Open this repo in Cursor. Then follow `docs/algorithm/README.md` — paste each phase prompt into Cursor chat in order.
-
----
-
-## What to do next
-
-After setup, run things in this order:
-
-1. **Supabase** — Create project, enable pgvector, set `DATABASE_URL` in `api/.env` (pooler URI, port 6543).
-2. **Ollama** — Install Mac app, run `ollama pull mistral` and `ollama pull nomic-embed-text`.
-3. **API** — From repo root: `cd api && npm install && cp .env.example .env` (edit `.env`), then `npm run db:ping` and `npm run db:migrate`, then `npm run dev`.
-4. **Mobile** — In another terminal: `cd mobile && npm install && npm start`; point device to your machine’s IP (see `docs/DEBUGGING.md`).
-5. **(Optional)** **ML service** — For image generation: `cd ml`, venv + `pip install -r requirements.txt`, set `FAL_KEY` in `api/.env`, run `uvicorn main:app --reload --port 8000`.
-
-Troubleshooting: see [docs/DEBUGGING.md](docs/DEBUGGING.md).
-
----
-
-## Build Order
-
-Start with `docs/algorithm/README.md` — it has the full phase guide.
-
-| Phase | Builds | Effort |
-|-------|--------|--------|
-| 1 | PostgreSQL schema + pgvector | 1 day |
-| 2 | nomic-embed-text wrapper | 0.5 day |
-| 3 | Dual embedding pipeline + quality score | 1 day |
-| 4 | fal.ai image generation | 0.5 day |
-| 5 | Matching + feed ranking | 1.5 days |
-| 6 | Engagement tracking | 0.5 day |
-| 7 | Learning loop (stubs) | 1 day |
-| 8 | API endpoints | 1.5 days |
-
-Phases 2, 3, 4, 6 can run in parallel. **Total: ~7–8 days.**
-
----
-
-## Initial Deployment
-
-Minerva University — students across all active cohorts and geographic rotations, enabling cross-cohort discovery through shared thinking patterns.
+- Keep the feed centered on resonance, not topic similarity
+- Preserve the acceptance gate before replies become conversations
+- Keep the UI quiet: warm, analog, low-friction, and non-performative
+- Avoid exposing metrics or urgency signals anywhere in the product

@@ -408,9 +408,9 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.stepTitle}>Interests</Text>
+          <Text style={styles.stepTitle}>Right now</Text>
           <Text style={styles.stepSubtitle}>
-            What you are into right now — in your own words.
+            What is alive in your thinking right now. This stays internal.
           </Text>
 
           <TextInput
@@ -440,7 +440,7 @@ export default function OnboardingScreen() {
 
           {allInterestsEmpty && (
             <Text style={styles.nudge}>
-              These help us find thoughts that resonate with you
+              These only help with cold start. Your thoughts and replies matter more.
             </Text>
           )}
 
@@ -511,23 +511,16 @@ export default function OnboardingScreen() {
         />
 
         {sentence.trim().length > 0 && (
-          <>
-            {context.length > CONTEXT_COUNT_THRESHOLD && (
-              <Text style={styles.charCount}>
-                {context.length} / {CONTEXT_MAX}
-              </Text>
-            )}
-            <TextInput
-              style={styles.contextInput}
-              placeholder="Context — where this thought came from."
-              placeholderTextColor={colors.TYPE_MUTED}
-              value={context}
-              onChangeText={(t) => setContext(t.slice(0, CONTEXT_MAX))}
-              multiline
-              maxLength={CONTEXT_MAX}
-              editable={!posting}
-            />
-          </>
+          <TextInput
+            style={styles.contextInput}
+            placeholder="600 characters of context — where this thought came from."
+            placeholderTextColor={colors.TYPE_MUTED}
+            value={context}
+            onChangeText={(t) => setContext(t.slice(0, CONTEXT_MAX))}
+            multiline
+            maxLength={CONTEXT_MAX}
+            editable={!posting}
+          />
         )}
 
         <TouchableOpacity
@@ -582,7 +575,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.06)",
+    borderBottomColor: "rgba(26,26,22,0.06)",
   },
   input: {
     fontFamily: typography.label.fontFamily,
@@ -627,7 +620,7 @@ const styles = StyleSheet.create({
   },
   photoOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(26,26,22,0.4)",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -644,7 +637,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cohortBtnActive: {
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
   },
   cohortBtnText: {
     fontFamily: typography.label.fontFamily,
@@ -657,11 +650,11 @@ const styles = StyleSheet.create({
   error: {
     fontFamily: typography.label.fontFamily,
     fontSize: 12,
-    color: colors.ACCENT_ORANGE,
+    color: colors.OLIVE,
     marginBottom: 12,
   },
   continueBtn: {
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
     paddingVertical: 14,
     alignItems: "center",
     borderRadius: 8,
@@ -714,7 +707,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
     opacity: 0.9,
   },
   previewFallback: {
@@ -743,18 +736,11 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
     marginTop: 8,
   },
-  charCount: {
-    ...typography.metadata,
-    fontSize: 7,
-    color: colors.TYPE_MUTED,
-    marginTop: 8,
-    marginLeft: 4,
-  },
   postBtn: {
     marginTop: 32,
     paddingVertical: 14,
     borderRadius: 8,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.VERMILLION,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 48,

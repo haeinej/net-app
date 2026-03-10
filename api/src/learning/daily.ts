@@ -2,7 +2,7 @@
  * Daily learning job (Phase 7): cross-domain affinity, adaptive user weights, temporal resonance.
  */
 
-import { eq, gte, inArray } from "drizzle-orm";
+import { eq, gte, inArray, sql } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -144,7 +144,7 @@ export async function runAdaptiveUserWeights(): Promise<Record<string, unknown>>
 
     if (profile.cross_cohort_reply_rate > crossCohortThreshold) d += dailyIncrement;
     if (profile.cross_concentration_reply_rate > crossConcentrationThreshold) alpha += dailyIncrement;
-    // Stub: fresh content and question_similarity would need event-level data; skip for now
+    // Stub: fresh content and resonance similarity would need event-level data; skip for now
     // if (profile.fresh_engagement_fraction > freshContentFraction) f += dailyIncrement;
     // if (profile.high_q_similarity_engagement) q += dailyIncrement;
 

@@ -287,10 +287,10 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
     if (!draft) return reply.status(404).send();
     const isA = ctx.userId === ctx.participantA;
     const updates: { aBefore?: string; aAfter?: string; bBefore?: string; bAfter?: string } = {};
-    if (typeof body.a_before === "string") updates.aBefore = body.a_before.trim().slice(0, 500) || null;
-    if (typeof body.a_after === "string") updates.aAfter = body.a_after.trim().slice(0, 500) || null;
-    if (typeof body.b_before === "string") updates.bBefore = body.b_before.trim().slice(0, 500) || null;
-    if (typeof body.b_after === "string") updates.bAfter = body.b_after.trim().slice(0, 500) || null;
+    if (typeof body.a_before === "string") updates.aBefore = body.a_before.trim().slice(0, 500) || undefined;
+    if (typeof body.a_after === "string") updates.aAfter = body.a_after.trim().slice(0, 500) || undefined;
+    if (typeof body.b_before === "string") updates.bBefore = body.b_before.trim().slice(0, 500) || undefined;
+    if (typeof body.b_after === "string") updates.bAfter = body.b_after.trim().slice(0, 500) || undefined;
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (isA) {
       if (updates.aBefore !== undefined) set.aBefore = updates.aBefore ?? draft.aBefore;

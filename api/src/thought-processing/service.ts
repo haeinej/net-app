@@ -1,6 +1,6 @@
 /**
  * ThoughtProcessingService — Phase 3.
- * Dual embeddings + quality score for new thoughts; reprocessing queue on failure.
+ * Resonance signature extraction + compatibility embeddings for new thoughts.
  */
 
 import { eq } from "drizzle-orm";
@@ -8,11 +8,10 @@ import { db, thoughts, failedProcessingJobs } from "../db";
 import { getEmbeddingService } from "../embedding";
 import { llmConfig, complete } from "../llm";
 import {
-  EXTRACT_QUESTION_SYSTEM,
-  extractQuestionUser,
-  QUALITY_SCORE_SYSTEM,
-  qualityScoreUser,
-  parseQualityScores,
+  RESONANCE_SIGNATURE_SYSTEM,
+  resonanceSignatureUser,
+  parseResonanceSignature,
+  type ResonanceSignature,
 } from "./prompts";
 
 function fullText(sentence: string, context: string | null): string {
@@ -21,27 +20,35 @@ function fullText(sentence: string, context: string | null): string {
 }
 
 /**
- * Extract 1–2 abstract questions the thought is wrestling with (Step 2).
+ * Extract the hidden resonance signature for a thought.
  */
-export async function extractUnderlyingQuestion(
+export async function extractResonanceSignature(
   sentence: string,
   context: string
-): Promise<string> {
-  const user = extractQuestionUser(sentence, context ?? "");
-  return complete(llmConfig.provider, EXTRACT_QUESTION_SYSTEM, user);
+): Promise<ResonanceSignature> {
+  const user = resonanceSignatureUser(sentence, context ?? "");
+  const text = await complete(
+    llmConfig.provider,
+    RESONANCE_SIGNATURE_SYSTEM,
+    user
+  );
+  return parseResonanceSignature(text);
 }
 
 /**
- * Compute quality score from specificity and openness (Step 3).
+ * The current ranker still expects one scalar. Use openness as the primary
+ * quality signal, with a small boost for structured resonance detail.
  */
 export async function computeQualityScore(
   sentence: string,
   context: string
 ): Promise<number> {
-  const user = qualityScoreUser(sentence, context ?? "");
-  const text = await complete(llmConfig.provider, QUALITY_SCORE_SYSTEM, user);
-  const { specificity, openness } = parseQualityScores(text);
-  return specificity * 0.5 + openness * 0.5;
+  const signature = await extractResonanceSignature(sentence, context);
+  const structureBonus =
+    signature.tensions.length >= 2 || signature.resonance_phrases.length >= 3
+      ? 0.1
+      : 0;
+  return Math.min(1, signature.openness + structureBonus);
 }
 
 async function runPipeline(thoughtId: string): Promise<void> {
@@ -54,15 +61,24 @@ async function runPipeline(thoughtId: string): Promise<void> {
 
   const embedding = getEmbeddingService();
 
-  // Step 1 — surface embedding
+  // Surface embedding remains useful for creative-distance scoring.
   const surfaceEmbedding = await embedding.embed(text, "document");
 
-  // Step 2 — question embedding
-  const abstractQuestions = await extractUnderlyingQuestion(sentence, context);
-  const questionEmbedding = await embedding.embed(abstractQuestions, "document");
-
-  // Step 3 — quality score
-  const qualityScore = await computeQualityScore(sentence, context);
+  // Primary resonance embedding is stored in the legacy question column.
+  const signature = await extractResonanceSignature(sentence, context);
+  const resonanceText = signature.resonance_phrases.join(" ");
+  const tensionText = signature.tensions
+    .map((tension) => tension.description)
+    .join(" ");
+  const resonanceSource = [resonanceText, tensionText].filter(Boolean).join(" ");
+  const questionEmbedding = await embedding.embed(
+    resonanceSource || sentence,
+    "document"
+  );
+  const qualityScore = Math.min(
+    1,
+    signature.openness + (signature.tensions.length > 1 ? 0.1 : 0)
+  );
 
   await db
     .update(thoughts)
@@ -101,6 +117,18 @@ export async function processNewThought(thoughtId: string): Promise<void> {
       });
     }
   }
+}
+
+/**
+ * Backward-compatible export name for callers and docs that still use the
+ * older "underlying question" terminology.
+ */
+export async function extractUnderlyingQuestion(
+  sentence: string,
+  context: string
+): Promise<string> {
+  const signature = await extractResonanceSignature(sentence, context);
+  return signature.resonance_phrases.join(" ");
 }
 
 /**

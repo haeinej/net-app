@@ -43,8 +43,8 @@ export interface UseEngagementTrackingOptions {
 
 export interface UseEngagementTrackingReturn {
   recordViewP1: () => void;
-  recordSwipeP2: (metadata: { dwell_time_p1_ms: number }) => void;
-  recordSwipeP3: (metadata: { dwell_time_p2_ms: number }) => void;
+  recordSwipeP2: () => void;
+  recordSwipeP3: () => void;
   recordTypeStart: () => void;
   recordReplySent: (metadata: { reply_length_chars: number }) => void;
 }
@@ -125,14 +125,8 @@ export function useEngagementTracking({
   }, [flush]);
 
   const recordViewP1 = useCallback(() => push("view_p1"), [push]);
-  const recordSwipeP2 = useCallback(
-    (metadata: { dwell_time_p1_ms: number }) => push("swipe_p2", metadata),
-    [push]
-  );
-  const recordSwipeP3 = useCallback(
-    (metadata: { dwell_time_p2_ms: number }) => push("swipe_p3", metadata),
-    [push]
-  );
+  const recordSwipeP2 = useCallback(() => push("swipe_p2"), [push]);
+  const recordSwipeP3 = useCallback(() => push("swipe_p3"), [push]);
   const recordTypeStart = useCallback(() => {
     if (typeStartFiredRef.current) return;
     typeStartFiredRef.current = true;

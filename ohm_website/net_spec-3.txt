@@ -1,0 +1,377 @@
+﻿ohm.
+Where your thoughts find someone.
+
+
+00 — THE PROBLEM
+Intellectual loneliness
+
+
+People are more connected than ever, yet intellectually lonelier than ever.
+
+
+This loneliness is not about lacking relationships or connections — it is about lacking resonance. The feeling of being truly heard by someone who meets your thought where it lives.
+
+
+Technology has made us highly directed, goal-oriented, optimised. Which quietly erodes the sense of wonder and wandering thought. You hop on a subway and move through physical space with airpods in, eyes on screens.Cities once created accidental proximity around shared context — the unexpected conversation, the encounter that shifts a year. But in this era of answers, the infrastructure for serendipitous encounter has collapsed.
+
+
+People hunger for genuine encounter but reach for safer substitutes: parasocial relationships, simulated depth. The feeling of being truly heard — what makes us human — is rarer than ever. 
+
+
+It is not a lack of relationships. It is a lack of resonance.
+
+
+
+
+01 — MISSION
+What this is
+ohm. is a platform where shared thoughts become invitations for one-on-one conversations with strangers who resonate.
+
+
+We believe that at the end of everything, what matters is human. Not technology, not efficiency, just people. 
+
+
+The premise: the most valuable human connections happen when two people realise they are working on the same question from completely different directions. That moment almost never happens by design on existing platforms. ohm. is built to make it happen.
+
+
+We believe in the I-Thou moment — when two people meet as full human beings, with no agenda, nothing to gain, just the pure experience of being heard and understood. We make wandering among humans possible again.
+
+
+The product centres on one loop:
+Post a thought. Someone replies. You accept. You talk.
+
+
+
+
+02 — VOCABULARY
+The words we use
+These are the only terms used in the product, in the codebase, and in every conversation about ohm.
+
+
+Thought  The atomic unit of content. One thought = one AI-generated landscape image + one sentence of text + up to 3 sentences of context on the back.
+
+
+Post = Invitation  The act of publishing a thought. Posting is itself an invitation — you are opening your thinking to the world. The post is the invite.
+
+
+Reply  When someone reads a thought and wants to connect, they write a short response. Always written text — not a like, not a reaction, not a preset response.
+
+
+Accept  When a user receives a reply, they can accept it or ignore it. Accepting opens a conversation. Ignoring removes the notification with no signal sent to the sender.
+
+
+Conversation  The direct message thread created when a reply is accepted. Lives in Screen 2. Text only. Begins from the reply that started it.
+
+
+Profile  A user's page: their photo, name, interests, and the full collection of thoughts they have posted.
+
+
+There is no follow. No connect. No like. No react. If any of these feel necessary during development, come back to the mission and the core loop first.
+
+
+
+
+03 — APP STRUCTURE
+Three screens
+The entire app is three screens. Nothing more in V1.
+
+
+Screen 1 — Worlds  The home feed. Users browse thoughts posted by others. Discovery happens here. The notification centre also lives here — it shows when someone has replied to one of your thoughts.
+
+
+Screen 2 — Conversations  A list of accepted conversation threads, ordered by most recent message. The only place where ongoing connections are visible. 
+
+
+Screen 3 — Me  The user's own profile. Their photo, name, interests, and every thought they have posted — their full deck.
+
+
+Bottom navigation: worlds / conversations / me
+
+
+
+
+04 — THE THOUGHT
+How a thought works
+Every thought has three panels. Swipe left to go deeper. Swipe right to go back. Each panel is darker than the one before — a deliberate signal that you are moving inward, into someone's thinking.
+
+
+Panel 1 — The front
+The face of the thought. What appears in the feed. This is what has to stop someone mid-scroll.
+
+
+* A landscape image, full width, 4:3. AI-generated from two inputs: the user's posted sentence and their profile photo. The image is never generic — it reflects both the idea and the person who had it.
+* The sentence sits at the bottom of the image. One line. Helvetica, white, no box or background behind it.
+* Below the sentence: small circular profile photo and name in small uppercase letters.
+* Colour: the image is desaturated and low contrast. Quiet. The thought does not perform.
+* Right edge: three barely-visible dots, indicating swipe. Not a button — a whisper.
+
+
+Panel 1 should look like a film still with a caption. If it looks like a social media card, the design is wrong. The bar for visual quality here is high.
+
+
+Panel 2 — The back
+Swipe left once from Panel 1. The background deepens to near-black. You are now inside the thought.
+
+
+* Up to 600 Characters of context. Where the thought came from. Why it exists right now. The constraint is intentional.
+
+
+The gap between what the sentence says and what the context reveals is what makes someone want to reply. If the context fully explains the thought, the thought is closed. Keep it open.
+
+
+Panel 3 — Replies
+Swipe left again. The darkest panel. This is where connection begins.
+
+
+* At the top: a list of replies. Each shows the replier's profile photo, name, and the text of their reply. These have been explicitly accepted — they do not appear here automatically.
+* At the bottom: a text input with the label 'reply.' Single line. Placeholder: 'what this thought surfaces in you...'
+* The moment the user starts typing, the left-edge bar of the thought turns fully orange. This is the visual signal that their attention has become intention.
+* When the reply is sent: a brief haptic pulse and a short visual pulse on the thought. The panels return to Panel 1. The gesture is complete.
+
+
+
+
+05 — COLOUR SYSTEM
+Two signals, no decoration
+Colour communicates exactly two things in ohm.: depth (which panel you are on) and warmth (whether a connection is forming). It is never used decoratively.
+
+
+Depth — panels darken as you swipe left
+* Panel 1: landscape image at ~70% brightness, desaturated. Background beneath image: #0C0C0A.
+* Panel 2: solid background, #0C0C0A. No image. Warmer undertone than Panel 1.
+* Panel 3: darkest, #080604. You are at depth.
+
+
+Never use pure black (#000000). The slight warmth in the dark values is intentional — it makes the darkness feel like depth, not void.
+
+
+Left edge bar — warmth
+Every thought in the feed has a 2px vertical bar on its left edge. This is the only engagement signal in the product. It has no number attached to it, ever.
+
+
+* No bar: this thought has had no replies yet.
+* Low opacity orange (~30%): at least one reply has been sent to this thought.
+* Mid opacity orange (~60%): multiple replies, active engagement.
+* Full orange #C4622D: the current user is actively typing a reply right now. The visual equivalent of making eye contact.
+
+
+Accent — one colour, specific meaning
+Single accent: #C4622D. Used only for:
+
+
+* Left edge bar at full warmth
+* Reply input label on Panel 3
+* Notification dot on Screen 1
+* Post button in creation flow
+* Logo mark
+
+
+If you are considering using orange anywhere else, the answer is no.
+
+
+Typography
+Comico regular for title, . No exceptions.
+
+
+* Thought sentence (Panel 1): Light 300, 12–13px, white
+* Context text (Panel 2): Light 300, 9–10px, muted white
+* Names and labels: Regular 400, 7–8px, uppercase, wide letter-spacing
+* Reply input: Light 300, 11–12px
+
+
+
+
+06 — SCREEN 1: WORLDS
+The feed
+
+
+Layout
+Vertical scroll. Thoughts stack top to bottom. At any scroll position, the user sees approximately 2.5 thoughts — one fully visible, the next partially visible below, a sliver of the one after. The partial visibility creates ambient pull without forcing movement.
+Free scroll. No snap-to-thought. The user moves at their own pace.
+
+
+Notification centre
+The notification centre is not a separate screen. It is accessed from Screen 1.
+
+
+* A small orange dot appears in the top-right corner of the status bar when new replies are waiting.
+* Tapping the dot reveals an inline notification list that slides down from the top of the feed. The thoughts below shift down.
+* Each notification shows: the replier's name and photo, the first sentence of their reply, and which of your thoughts they replied to.
+* Two actions per notification: Accept or Delete.
+* Accept: A conversation thread is created in Screen 2. The replier receives special notification — they will simply see a message appear in their conversations.
+* Delete: the notification, and the reply is deleted. The replier receives no signal that they were ignored.
+
+
+
+
+07 — SCREEN 2: CONVERSATIONS
+Accepted threads only
+This screen has one function: show the conversations that are currently happening. It is not a network view. It is not a contact list.
+
+
+What it shows
+* A list of conversation threads ordered by most recent message.
+* Each row: profile photo, name, first line of the last message, time since last message.
+* Tap to open a thread. Full message view, text only.
+* The first message in every thread is the reply that started it — the moment of connection is preserved.
+
+
+What it does not show
+* Not a list of everyone who has replied to your thoughts
+* Not a list of people you've viewed or who've viewed you
+* Not a network, connection count, or mutual contacts view
+* Not a search for people on the platform
+
+
+Dormancy
+A conversation with no messages in 30 or more days is dormant. The row appears visually muted — lower opacity, no urgency markers. It is not archived, deleted, or removed. It is simply quiet.
+Do not send push notifications about dormant conversations. Do not surface 'you haven't talked to X in a while.' A relationship going quiet is valid. The product does not judge the pace of human connection.
+
+
+
+
+08 — SCREEN 3: ME
+The deck
+The profile is not a résumé. It is the collection of thoughts this person has put into the world — their presence on ohm.
+
+
+
+
+  
+
+What the profile contains - looks like apple contact card 
+* Profile photo — blended with the background 
+* Name
+* Interests — short freeform text, 3 items maximum. Placeholder: 'what you are into right now.' This is not a skills field. It is what is currently alive in this person's thinking.
+* Deck — every thought the user has posted, displayed as a scrollable vertical list. Each thought shows Panel 1 only (image + sentence). Tapping opens the full three-panel thought.
+
+
+What it does not contain
+* No follower or connection count
+* No job title field
+* No 'mutual connections' indicator
+* No external links
+* No analytics or view counts
+
+
+Other users can view your profile. You will not know when someone has viewed it. There are no profile view notifications.
+
+
+
+
+09 — CREATION FLOW
+How to post a thought
+The creation entry point is an understated yet easy button — not a prominent floating action button. Posting should feel like a deliberate choice, not the default action, but also not a burden.
+
+
+Step 1 — Write the sentence
+One large text input. Centered. Placeholder: 'A thought you are in the middle of.' One sentence. The design enforces this through presentation, not a character limit — the input should look like it expects one sentence and nothing more.
+
+
+Step 2 — Write the context
+A smaller textarea below. Placeholder[a]: '600 character of context — where this thought came from.' 
+Step 3 — Image generates
+As the user types, image generation runs in the background using their sentence and their profile photo as inputs. A 4:3 preview appears above the text fields, the image forming in near real-time. A small animated dot indicates generation is in progress. When complete, the dot disappears. 
+Image generation API (Replicate, fal.ai, or similar) using the user's profile photo as a reference image via IP-Adapter or equivalent, with the sentence as the text prompt. The output should feel cinematic and landscape — a world shaped by the person's visual presence and the specific idea they wrote. The same sentence from two different people should produce visibly different images.
+
+
+Step 4 — Post
+A single button at the bottom: 'post.' Tapping it publishes the thought. The user is returned to the feed. The thought appears at the top of their profile deck.
+There is no editing after posting. The thought was honest when it was written. If the user wants to remove it, they can delete it from their profile — but deletion does not erase any conversations that began from that thought.
+
+
+
+
+10 — CROSSING
+When two thoughts become one
+A crossing is a joint thought created collaboratively by two people inside an active conversation. It is the tangible artefact of where their thinking met.
+
+
+When it becomes available
+A crossing is only available after a conversation has accumulated at least 10 exchanges. The option appears right above your texting input screen in the middle, a button (round edged rectangle written crossing) inside the conversation thread — not as a prompt or a notification, but as a small, understated element at the bottom of the thread. It is findable, not pushed.
+
+
+How it works
+Either person can initiate. Initiating does not notify the other person — it opens a draft that sits in the conversation until the other person encounters it.
+
+
+The crossing has the same structure as a thought:
+* A sentence: one line that captures the point where the two thinking threads crossed. Both people write a version. The person who did not initiate chooses which sentence to use, or writes a new one.
+* Context: up to 600 characters, written jointly in alternating turns.
+* Image: AI-generated from three inputs — the chosen sentence and both people's profile photos. The image reflects the intersection: two visual presences and one shared idea.
+
+
+Where it lives
+The crossing appears on both profiles — in each person's deck, attributed to both. The crossing is also posted to the feed, yet both of you are able to make it both public or private. 
+
+
+11 — ALL STATES TO BUILD
+Complete state list
+
+
+Thought panels
+* Panel 1 — default view in feed
+* Panel 2 — swiped left once, darker background, context visible
+* Panel 3 — swiped left twice, darkest background, replies + input visible
+* Panel 3 typing — user has started writing a reply; left edge bar turns full orange
+* Panel 3 sent — brief haptic + visual pulse; thought returns to Panel 1
+
+
+Feed / Screen 1
+* No notifications — standard header
+* New reply waiting — orange dot in top-right of status bar
+* Notification panel open — slides down from top of feed
+* Notification accepted — reply appears in Panel 3; conversation created in Screen 2
+* Notification ignored — dismissed, no signal to sender
+
+
+Creation
+* Empty — blank inputs, no image preview
+* Writing — image generating in background, preview appears above inputs
+* Ready — image complete, post button active
+* Posted — user returned to feed, thought visible at top of their profile
+
+
+Conversations / Screen 2
+* Active — recent message, full opacity
+* Unread — new message not yet seen, orange dot on row
+* Dormant — no message in 30+ days, row muted
+
+
+Profile / Screen 3
+* Own profile — editable: name, interests, photo
+* Other user's profile — view only; no follow or connect button present
+
+
+Crossing / Screen 2
+* Available — appears quietly at bottom of thread after 10+ exchanges
+* Draft initiated — one person has started a crossing; sits silently until the other encounters it
+* Sentence selection — both versions displayed; non-initiator chooses or writes new
+* Generating — image generating from both profile photos and chosen sentence
+* Complete — crossing card saved to both profiles; prompt disappears from thread
+* Declined — either person opts not to complete; prompt disappears with no signal
+
+
+
+
+12 — WHAT TO PROTECT
+Non-negotiables
+These decisions must survive the build. If a technical constraint creates pressure to change one of them, flag it before changing it.
+
+
+NO METRICS EXPOSED TO USERS
+No counts of any kind. Not reply counts, not view counts, not profile visit counts. The left-edge warmth bar is the only engagement signal, and it is visual, not numerical.
+
+
+THE INTERESTS FIELD IS NOT A SKILLS FIELD
+The profile interests field asks what the user is into right now — not their professional skills, not their job title. The placeholder text, the field label, and any onboarding copy must all reflect this. Never use the word 'skills' anywhere near it.
+
+
+
+
+Post a thought. Someone replies. You accept. You talk.
+Build that loop until it feels like the most natural thing in the world.
+
+
+ohm.
+[a]tbd

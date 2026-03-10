@@ -1,5 +1,6 @@
 /**
  * FeedService — Phase 5. getFeed orchestrates retrieve → score → rank → diversity → FeedItem[].
+ * Three-bucket system with wild card interspersion.
  */
 
 import { and, eq, inArray, sql, or, desc } from "drizzle-orm";
@@ -13,7 +14,7 @@ import {
   shifts,
 } from "../db";
 import { getEmbeddingService } from "../embedding";
-import { getCandidates } from "./retrieve";
+import { getCandidates, getBucketedCandidates } from "./retrieve";
 import { scoreThought } from "./score";
 import {
   rankScorePhase1,
@@ -31,6 +32,8 @@ import type {
   FeedItem,
   FeedItemThought,
   WarmthLevel,
+  BucketLabel,
+  BucketedCandidate,
 } from "./types";
 
 const {
@@ -46,7 +49,7 @@ const CACHE_MAX_ITEMS = 100;
 
 function getWarmthLevel(acceptedReplyCount: number): WarmthLevel {
   if (acceptedReplyCount === 0) return "none";
-  if (acceptedReplyCount <= 2) return "low";
+  if (acceptedReplyCount === 1) return "low";
   return "medium";
 }
 
@@ -79,7 +82,7 @@ async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
     db.select().from(users).where(eq(users.id, viewerId)).limit(1),
     db
       .select({
-        questionEmbedding: thoughts.questionEmbedding,
+        resonanceEmbedding: thoughts.questionEmbedding,
         surfaceEmbedding: thoughts.surfaceEmbedding,
       })
       .from(thoughts)
@@ -97,15 +100,17 @@ async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
     concentration: viewer[0]?.concentration ?? null,
   };
 
-  const questionEmbeddings: number[][] = [];
+  const resonanceEmbeddings: number[][] = [];
   const surfaceEmbeddings: number[][] = [];
   for (const t of viewerThoughts) {
-    if (Array.isArray(t.questionEmbedding)) questionEmbeddings.push(t.questionEmbedding as number[]);
+    if (Array.isArray(t.resonanceEmbedding)) {
+      resonanceEmbeddings.push(t.resonanceEmbedding as number[]);
+    }
     if (Array.isArray(t.surfaceEmbedding)) surfaceEmbeddings.push(t.surfaceEmbedding as number[]);
   }
 
   let interestsEmbedding: number[] | null = null;
-  if (questionEmbeddings.length === 0 && viewer[0]?.interests) {
+  if (resonanceEmbeddings.length === 0 && viewer[0]?.interests) {
     const interestsText = (viewer[0].interests as string[]).filter(Boolean).join(" ");
     if (interestsText) {
       const emb = getEmbeddingService();
@@ -125,7 +130,7 @@ async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
 
   return {
     embeddings: {
-      questionEmbeddings,
+      resonanceEmbeddings,
       surfaceEmbeddings,
       interestsEmbedding,
     },
@@ -135,8 +140,26 @@ async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
 }
 
 /**
- * getFeed(userId, limit, offset): Layer 1 → load viewer → Layer 2 → Layer 3 → diversity → slice → FeedItem[].
- * Cache 5 min per user; no counts in response.
+ * Intersperse wild cards evenly among main items.
+ * Wild cards placed at positions floor(T/(W+1)) * i for i=1..W.
+ */
+function intersperseWildcards<T>(
+  mainItems: T[],
+  wildcardItems: T[]
+): T[] {
+  if (wildcardItems.length === 0) return mainItems;
+  const result = [...mainItems];
+  const interval = Math.max(1, Math.floor(mainItems.length / (wildcardItems.length + 1)));
+  for (let i = 0; i < wildcardItems.length; i++) {
+    const pos = Math.min(interval * (i + 1) + i, result.length);
+    result.splice(pos, 0, wildcardItems[i]!);
+  }
+  return result;
+}
+
+/**
+ * getFeed(userId, limit, offset): Three-bucket pipeline.
+ * Load viewer → bucketed retrieve → score → rank per bucket → diversity → intersperse wild cards → FeedItem[].
  */
 export async function getFeed(
   userId: string,
@@ -148,42 +171,68 @@ export async function getFeed(
     return hit.items.slice(offset, offset + limit);
   }
 
-  const candidates = await getCandidates(userId);
-  if (candidates.length === 0) return [];
-
+  // Load viewer first (needed for bucket assignment)
   const { embeddings, profile, weights } = await loadViewerEmbeddingsAndProfile(userId);
 
+  // Three-bucket retrieval
+  const { candidates, stage } = await getBucketedCandidates(userId, embeddings);
+  if (candidates.length === 0) return [];
+
+  // Score all candidates
   const layer2Scores = new Map<string, number>();
   let layer2Max = 0;
-  for (const thought of candidates) {
+  for (const { thought } of candidates) {
     const s = scoreThought(thought, embeddings, profile, weights.alpha);
     layer2Scores.set(thought.id, s);
     if (s > layer2Max) layer2Max = s;
   }
 
+  // Phase detection
   const engagementCount = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(engagementEvents);
   const totalEngagements = engagementCount[0]?.count ?? 0;
   const isPhase1 =
-    embeddings.questionEmbeddings.length < phase1ViewerThoughtThreshold ||
+    embeddings.resonanceEmbeddings.length < phase1ViewerThoughtThreshold ||
     totalEngagements < phase1SystemEngagementThreshold;
 
-  const withRank: Array<{ thought: ThoughtCandidate; rankScore: number }> = [];
-  for (const thought of candidates) {
+  // Rank all candidates
+  const bucketMap = new Map<string, BucketLabel>();
+  const withRank: Array<{ thought: ThoughtCandidate; rankScore: number; bucket: BucketLabel }> = [];
+  for (const { thought, bucket } of candidates) {
+    bucketMap.set(thought.id, bucket);
     const layer2 = layer2Scores.get(thought.id) ?? 0;
     const rankScore = isPhase1
       ? rankScorePhase1(thought, profile, layer2)
       : await rankScorePhase2(thought, profile, layer2, weights, layer2Max);
-    withRank.push({ thought, rankScore });
+    withRank.push({ thought, rankScore, bucket });
   }
 
-  const afterDiversity = applyDiversityEnforcement(withRank);
-  const slice = afterDiversity.slice(0, CACHE_MAX_ITEMS);
+  // Split by bucket, apply diversity per bucket
+  const b1Items = withRank.filter((x) => x.bucket === "resonance");
+  const b2Items = withRank.filter((x) => x.bucket === "adjacent");
+  const b3Items = withRank.filter((x) => x.bucket === "wildcard");
 
+  const ratios = feedConfig.bucketRatios[stage];
+  const targetTotal = CACHE_MAX_ITEMS;
+  const b1Count = Math.ceil(targetTotal * ratios.resonance);
+  const b2Count = Math.ceil(targetTotal * ratios.adjacent);
+  const b3Count = Math.max(1, Math.ceil(targetTotal * ratios.wildcard));
+
+  // Diversity enforcement on main buckets
+  const b1Diverse = applyDiversityEnforcement(b1Items).slice(0, b1Count);
+  const b2Diverse = applyDiversityEnforcement(b2Items).slice(0, b2Count);
+  // Wild cards: sort by rank but no diversity enforcement (they're already random)
+  const b3Sorted = [...b3Items].sort((a, b) => b.rankScore - a.rankScore).slice(0, b3Count);
+
+  // Merge B1+B2 by rank score, then intersperse wild cards
+  const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
+  const allItems = intersperseWildcards(mainMerged, b3Sorted);
+
+  // Hydrate FeedItemThought
+  const slice = allItems.slice(0, CACHE_MAX_ITEMS);
   const thoughtIds = slice.map((x) => x.thought.id);
   const replyCounts = await getAcceptedReplyCounts(thoughtIds);
-
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
   const authorRows = await db.select().from(users).where(inArray(users.id, authorIds));
   const authorMap = new Map(authorRows.map((u) => [u.id, u]));
@@ -209,6 +258,7 @@ export async function getFeed(
     };
   });
 
+  // Mix in shifts
   const userShifts = await db
     .select()
     .from(shifts)
@@ -252,10 +302,12 @@ export async function getFeed(
 
 export type FeedDebugInfo = {
   phase_used: "pre-data" | "learning";
+  bucket: BucketLabel;
+  stage: string;
   scores: { Q: number; D: number; F: number; R: number; final_rank: number };
-  underlying_questions: string;
+  resonance_summary: string;
   surface_similarity: number;
-  question_similarity: number;
+  resonance_similarity: number;
 };
 
 /** Same as getFeed but skips cache and returns debug for each item. For ENABLE_DEBUG_ENDPOINTS only. */
@@ -264,12 +316,13 @@ export async function getFeedWithDebug(
   limit: number = feedConfig.feedLimit,
   offset: number = 0
 ): Promise<Array<FeedItem & { _debug: FeedDebugInfo }>> {
-  const candidates = await getCandidates(userId);
-  if (candidates.length === 0) return [];
   const { embeddings, profile, weights } = await loadViewerEmbeddingsAndProfile(userId);
+  const { candidates, stage } = await getBucketedCandidates(userId, embeddings);
+  if (candidates.length === 0) return [];
+
   const layer2Scores = new Map<string, number>();
   let layer2Max = 0;
-  for (const thought of candidates) {
+  for (const { thought } of candidates) {
     const s = scoreThought(thought, embeddings, profile, weights.alpha);
     layer2Scores.set(thought.id, s);
     if (s > layer2Max) layer2Max = s;
@@ -279,45 +332,63 @@ export async function getFeedWithDebug(
     .from(engagementEvents);
   const totalEngagements = engagementCount[0]?.count ?? 0;
   const isPhase1 =
-    embeddings.questionEmbeddings.length < phase1ViewerThoughtThreshold ||
+    embeddings.resonanceEmbeddings.length < phase1ViewerThoughtThreshold ||
     totalEngagements < phase1SystemEngagementThreshold;
   const phase_used = isPhase1 ? "pre-data" : "learning";
 
-  const withRank: Array<{ thought: ThoughtCandidate; rankScore: number; Q: number; D: number; F: number; R: number }> = [];
-  for (const thought of candidates) {
+  const withRank: Array<{ thought: ThoughtCandidate; bucket: BucketLabel; rankScore: number; Q: number; D: number; F: number; R: number }> = [];
+  for (const { thought, bucket } of candidates) {
     const layer2 = layer2Scores.get(thought.id) ?? 0;
     if (isPhase1) {
       const rankScore = rankScorePhase1(thought, profile, layer2);
-      const f = Math.exp(-feedConfig.freshnessDecayRate * (Date.now() - thought.createdAt.getTime()) / (1000 * 60 * 60));
-      const d = profile.cohortYear === thought.authorCohortYear ? 0.3 : profile.cohortYear && thought.authorCohortYear ? 1 : 0.5;
-      withRank.push({ thought, rankScore, Q: layer2Max > 0 ? layer2 / layer2Max : 0.5, D: d, F: f, R: 0 });
+      withRank.push({ thought, bucket, rankScore, Q: layer2Max > 0 ? layer2 / layer2Max : 0.5, D: 0, F: 0, R: 0 });
     } else {
       const debugRank = await rankScorePhase2WithDebug(thought, profile, layer2, weights, layer2Max);
-      const f = Math.exp(-feedConfig.freshnessDecayRate * (Date.now() - thought.createdAt.getTime()) / (1000 * 60 * 60));
       withRank.push({
         thought,
+        bucket,
         rankScore: debugRank.score,
         Q: debugRank.Q,
         D: debugRank.D,
-        F: f,
+        F: debugRank.F,
         R: debugRank.R,
       });
     }
   }
-  const byThoughtId = new Map(withRank.map((r) => [r.thought.id, r]));
-  const afterDiversity = applyDiversityEnforcement(
-    withRank.map(({ thought, rankScore }) => ({ thought, rankScore }))
-  );
-  const slice = afterDiversity.slice(0, CACHE_MAX_ITEMS);
+
+  // Apply bucket-based assembly with interspersion
+  const b1Items = withRank.filter((x) => x.bucket === "resonance");
+  const b2Items = withRank.filter((x) => x.bucket === "adjacent");
+  const b3Items = withRank.filter((x) => x.bucket === "wildcard");
+
+  const ratios = feedConfig.bucketRatios[stage];
+  const b1Count = Math.ceil(CACHE_MAX_ITEMS * ratios.resonance);
+  const b2Count = Math.ceil(CACHE_MAX_ITEMS * ratios.adjacent);
+  const b3Count = Math.max(1, Math.ceil(CACHE_MAX_ITEMS * ratios.wildcard));
+
+  // Build lookup map for extra debug fields before diversity enforcement strips them
+  const debugLookup = new Map(withRank.map((x) => [x.thought.id, { bucket: x.bucket, Q: x.Q, D: x.D, F: x.F, R: x.R }]));
+
+  const b1Diverse = applyDiversityEnforcement(b1Items).slice(0, b1Count);
+  const b2Diverse = applyDiversityEnforcement(b2Items).slice(0, b2Count);
+  const b3Sorted = [...b3Items].sort((a, b) => b.rankScore - a.rankScore).slice(0, b3Count);
+
+  const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
+  const allItems = intersperseWildcards(mainMerged, b3Sorted);
+  const slice = allItems.slice(0, CACHE_MAX_ITEMS);
+
   const thoughtIds = slice.map((x) => x.thought.id);
   const replyCounts = await getAcceptedReplyCounts(thoughtIds);
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
   const authorRows = await db.select().from(users).where(inArray(users.id, authorIds));
   const authorMap = new Map(authorRows.map((u) => [u.id, u]));
-  const itemsWithDebug: Array<FeedItemThought & { _debug: FeedDebugInfo }> = slice.map(({ thought }) => {
+
+  const itemsWithDebug: Array<FeedItemThought & { _debug: FeedDebugInfo }> = slice.map((item) => {
+    const { thought, rankScore } = item;
+    const debug = debugLookup.get(thought.id) ?? { bucket: "wildcard" as const, Q: 0, D: 0, F: 0, R: 0 };
+    const { bucket, Q, D, F, R } = debug;
     const author = authorMap.get(thought.userId);
     const acceptedCount = replyCounts.get(thought.id) ?? 0;
-    const rankInfo = byThoughtId.get(thought.id);
     const sims = getSimilarities(thought, embeddings);
     return {
       type: "thought",
@@ -336,16 +407,12 @@ export async function getFeedWithDebug(
       warmth_level: getWarmthLevel(acceptedCount),
       _debug: {
         phase_used,
-        scores: {
-          Q: rankInfo?.Q ?? 0,
-          D: rankInfo?.D ?? 0,
-          F: rankInfo?.F ?? 0,
-          R: rankInfo?.R ?? 0,
-          final_rank: rankInfo?.rankScore ?? 0,
-        },
-        underlying_questions: "",
+        bucket,
+        stage,
+        scores: { Q, D, F, R, final_rank: rankScore },
+        resonance_summary: "",
         surface_similarity: sims.surface_similarity,
-        question_similarity: sims.question_similarity,
+        resonance_similarity: sims.resonance_similarity,
       },
     };
   });

@@ -7,7 +7,7 @@ import { llmConfig, type LLMProvider } from "./config";
 
 const { requestTimeoutMs, maxRetries, retryDelayMs } = llmConfig;
 
-async function withRetry<T>(fn: () => Promise<T>, retriesLeft = maxRetries): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retriesLeft: number = maxRetries): Promise<T> {
   try {
     return await fn();
   } catch (err) {
@@ -29,7 +29,7 @@ async function completeOllama(system: string, user: string): Promise<string> {
       prompt,
       stream: false,
     }),
-    signal: AbortSignal.timeout(requestTimeoutMs),
+    signal: (AbortSignal as any).timeout(requestTimeoutMs) as AbortSignal,
   });
   if (!res.ok) {
     const text = await res.text();
@@ -59,7 +59,7 @@ async function completeOpenAI(system: string, user: string): Promise<string> {
       ],
       max_tokens: 1024,
     }),
-    signal: AbortSignal.timeout(requestTimeoutMs),
+    signal: (AbortSignal as any).timeout(requestTimeoutMs) as AbortSignal,
   });
   if (!res.ok) {
     const text = await res.text();
@@ -89,7 +89,7 @@ async function completeAnthropic(system: string, user: string): Promise<string> 
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(requestTimeoutMs),
+    signal: (AbortSignal as any).timeout(requestTimeoutMs) as AbortSignal,
   });
   if (!res.ok) {
     const text = await res.text();

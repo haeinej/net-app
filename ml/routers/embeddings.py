@@ -1,11 +1,12 @@
 """
-Embedding service — Phase 2 + 3 of the algorithm build.
+Embedding service - Phase 2 + 3 of the algorithm build.
 
-Primary: nomic-embed-text via Ollama (works on Apple Silicon via Metal)
-Fallback: HuggingFace Inference API
+Primary (and only): nomic-embed-text via Ollama on Mac (Apple Silicon, Metal).
+No Docker, no HuggingFace fallback.
 """
 
 import os
+import asyncio
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -13,7 +14,6 @@ from pydantic import BaseModel
 router = APIRouter()
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-HF_TOKEN = os.getenv("HF_TOKEN")
 EMBED_MODEL = "nomic-embed-text"
 
 
@@ -33,14 +33,16 @@ class EmbedResponse(BaseModel):
 
 class DualEmbedResponse(BaseModel):
     thought_id: str
-    surface_embedding: list[float]   # what the thought is about
-    question_embedding: list[float]  # what underlying question it's wrestling with
-    extracted_question: str
-    quality_score: float             # 0–1
+    surface_embedding: list[float]    # raw text surface
+    resonance_embedding: list[float]  # primary resonance vector
+    resonance_summary: str
+    question_embedding: list[float]   # legacy alias for resonance_embedding
+    extracted_question: str           # legacy alias for resonance_summary
+    quality_score: float              # 0–1
 
 
 async def embed_text(text: str) -> list[float]:
-    """Embed text via Ollama (nomic-embed-text), fall back to HuggingFace API."""
+    """Embed text via Ollama (nomic-embed-text)."""
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             r = await client.post(
@@ -49,28 +51,23 @@ async def embed_text(text: str) -> list[float]:
             )
             r.raise_for_status()
             return r.json()["embedding"]
-        except Exception:
-            if not HF_TOKEN:
-                raise HTTPException(503, "Ollama unavailable and HF_TOKEN not set")
-            r = await client.post(
-                "https://api-inference.huggingface.co/models/nomic-ai/nomic-embed-text-v1.5",
-                headers={"Authorization": f"Bearer {HF_TOKEN}"},
-                json={"inputs": text},
+        except Exception as e:
+            raise HTTPException(
+                503,
+                f"Ollama unavailable — make sure Ollama is running (ollama.com): {e}",
             )
-            r.raise_for_status()
-            return r.json()[0]
 
 
 async def extract_question(sentence: str, context: str | None) -> str:
-    """Extract the underlying question a thought is wrestling with via Ollama."""
+    """Extract a compact resonance summary via Ollama."""
     prompt = f"""A person wrote this thought:
 
 Sentence: {sentence}
 {f'Context: {context}' if context else ''}
 
-In one sentence, what is the underlying intellectual or existential question this person is wrestling with?
-Do not describe the topic. Extract the question beneath the topic.
-Respond with only the question, nothing else."""
+In one sentence, describe what this thought is really about at the level of human experience.
+Do not describe the topic. Extract the deeper tension beneath the topic.
+Respond with only the sentence, nothing else."""
 
     async with httpx.AsyncClient(timeout=60) as client:
         try:
@@ -100,7 +97,7 @@ async def embed_dual(req: DualEmbedRequest):
 
     extracted_question = await extract_question(req.sentence, req.context)
 
-    surface_embedding, question_embedding = await asyncio.gather(
+    surface_embedding, resonance_embedding = await asyncio.gather(
         embed_text(f"search_document: {full_text}"),
         embed_text(f"search_document: {extracted_question}"),
     )
@@ -112,10 +109,9 @@ async def embed_dual(req: DualEmbedRequest):
     return DualEmbedResponse(
         thought_id=req.thought_id,
         surface_embedding=surface_embedding,
-        question_embedding=question_embedding,
+        resonance_embedding=resonance_embedding,
+        resonance_summary=extracted_question,
+        question_embedding=resonance_embedding,
         extracted_question=extracted_question,
         quality_score=quality_score,
     )
-
-
-import asyncio  # noqa: E402 — imported here to avoid circular

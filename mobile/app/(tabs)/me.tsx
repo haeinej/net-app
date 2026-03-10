@@ -23,8 +23,6 @@ import {
   type ProfileThought,
 } from "../../lib/api";
 
-const INTERESTS_MAX = 3;
-
 export default function MeScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -33,7 +31,6 @@ export default function MeScreen() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
-  const [editInterests, setEditInterests] = useState<string[]>(["", "", ""]);
   const [saving, setSaving] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
@@ -53,11 +50,6 @@ export default function MeScreen() {
       setProfile(data);
       setEditName(data.name ?? "");
       setEditPhotoUrl(data.photo_url ?? "");
-      setEditInterests(
-        (data.interests ?? []).length > 0
-          ? [...(data.interests ?? []).slice(0, 3), "", "", ""].slice(0, 3)
-          : ["", "", ""]
-      );
     } catch {
       setProfile(null);
     } finally {
@@ -73,8 +65,6 @@ export default function MeScreen() {
     if (profile) {
       setEditName(profile.name ?? "");
       setEditPhotoUrl(profile.photo_url ?? "");
-      const i = (profile.interests ?? []).slice(0, 3);
-      setEditInterests([i[0] ?? "", i[1] ?? "", i[2] ?? ""]);
       setEditing(true);
     }
   }, [profile]);
@@ -87,11 +77,9 @@ export default function MeScreen() {
     if (!profile || saving) return;
     setSaving(true);
     try {
-      const interests = editInterests.map((s) => s.trim()).filter(Boolean);
       await updateProfile({
         name: editName.trim() || undefined,
         photo_url: editPhotoUrl.trim() || undefined,
-        interests: interests.length > 0 ? interests : undefined,
       });
       setProfile((prev) =>
         prev
@@ -99,7 +87,6 @@ export default function MeScreen() {
               ...prev,
               name: editName.trim() || prev.name,
               photo_url: editPhotoUrl.trim() || prev.photo_url,
-              interests: interests,
             }
           : null
       );
@@ -109,7 +96,7 @@ export default function MeScreen() {
     } finally {
       setSaving(false);
     }
-  }, [profile, editName, editPhotoUrl, editInterests, saving]);
+  }, [profile, editName, editPhotoUrl, saving]);
 
   const handleDeleteThought = useCallback(
     (thought: ProfileThought) => {
@@ -212,20 +199,6 @@ export default function MeScreen() {
               value={editName}
               onChangeText={setEditName}
             />
-            {editInterests.map((val, i) => (
-              <TextInput
-                key={i}
-                style={styles.interestInput}
-                placeholder={i === 0 ? "what you are into right now" : ""}
-                placeholderTextColor={colors.TYPE_MUTED}
-                value={val}
-                onChangeText={(t) => {
-                  const next = [...editInterests];
-                  next[i] = t;
-                  setEditInterests(next);
-                }}
-              />
-            ))}
             <View style={styles.editActions}>
               <TouchableOpacity onPress={cancelEdit}>
                 <Text style={styles.cancelBtn}>Cancel</Text>
@@ -242,19 +215,6 @@ export default function MeScreen() {
         ) : (
           <>
             <Text style={styles.name}>{profile.name || "—"}</Text>
-            <View style={styles.interestsWrap}>
-              {(profile.interests ?? []).length > 0
-                ? (profile.interests ?? []).map((s, i) => (
-                    <Text key={i} style={styles.interest}>
-                      {s}
-                    </Text>
-                  ))
-                : (
-                    <Text style={styles.interestPlaceholder}>
-                      what you are into right now
-                    </Text>
-                  )}
-            </View>
             <TouchableOpacity style={styles.editBtn} onPress={startEdit}>
               <Text style={styles.editBtnText}>Edit profile</Text>
             </TouchableOpacity>
@@ -262,9 +222,9 @@ export default function MeScreen() {
         )}
       </View>
 
-      <Text style={styles.deckTitle}>Thoughts</Text>
+      <Text style={styles.deckTitle}>Deck</Text>
       {profile.thoughts.length === 0 ? (
-        <Text style={styles.emptyDeck}>Your thoughts will appear here.</Text>
+        <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
       ) : (
         profile.thoughts.map((t) => (
           <View key={t.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
@@ -328,7 +288,7 @@ const styles = StyleSheet.create({
     color: colors.TYPE_DARK,
     padding: 6,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
+    borderColor: "rgba(26,26,22,0.1)",
     borderRadius: 6,
     width: "100%",
   },
@@ -361,42 +321,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
+    borderColor: "rgba(26,26,22,0.1)",
     borderRadius: 6,
     width: "100%",
     maxWidth: 240,
-  },
-  interestsWrap: {
-    alignSelf: "stretch",
-    marginBottom: 16,
-  },
-  interest: {
-    ...typography.context,
-    fontSize: 10,
-    color: colors.TYPE_MUTED,
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  interestPlaceholder: {
-    ...typography.context,
-    fontSize: 10,
-    color: colors.TYPE_MUTED,
-    fontStyle: "italic",
-    textAlign: "center",
-  },
-  interestInput: {
-    ...typography.context,
-    fontSize: 10,
-    color: colors.TYPE_DARK,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
-    borderRadius: 6,
-    marginBottom: 6,
-    width: "100%",
-    maxWidth: 280,
-    alignSelf: "center",
   },
   editBtn: {
     paddingVertical: 8,
@@ -405,7 +333,7 @@ const styles = StyleSheet.create({
   editBtnText: {
     ...typography.label,
     fontSize: 8,
-    color: colors.ACCENT_ORANGE,
+    color: colors.OLIVE,
   },
   editActions: {
     flexDirection: "row",
@@ -420,7 +348,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 6,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
   },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtnText: {
@@ -461,7 +389,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   retryText: {
-    color: colors.ACCENT_ORANGE,
+    color: colors.OLIVE,
     ...typography.label,
   },
 });

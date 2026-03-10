@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.06)",
+    borderBottomColor: "rgba(26,26,22,0.06)",
   },
   rowDormant: {
     opacity: 0.5,
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
   },
   rowBody: {
     flex: 1,
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   retryText: {
-    color: colors.ACCENT_ORANGE,
+    color: colors.OLIVE,
     ...typography.label,
   },
   skeletonRow: {

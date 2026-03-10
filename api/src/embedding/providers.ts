@@ -9,7 +9,7 @@ const { requestTimeoutMs, retryDelayMs, maxRetries } = embeddingConfig;
 
 async function withRetry<T>(
   fn: () => Promise<T>,
-  retriesLeft = maxRetries
+  retriesLeft: number = maxRetries
 ): Promise<T> {
   try {
     return await fn();
@@ -30,7 +30,7 @@ async function fetchOllama(inputs: string[]): Promise<number[][]> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: embeddingConfig.model, prompt: input }),
-      signal: AbortSignal.timeout(requestTimeoutMs),
+      signal: (AbortSignal as any).timeout(requestTimeoutMs) as AbortSignal,
     });
     if (!res.ok) {
       const body = await res.text();

@@ -6,10 +6,6 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { trackEngagementEvents } from "./track";
 import type { TrackRequestBody } from "./types";
 
-interface AuthenticatedRequest extends FastifyRequest<{ Body: TrackRequestBody }> {
-  user?: { sub: string };
-}
-
 export async function engagementRoutes(app: FastifyInstance): Promise<void> {
   const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -19,10 +15,10 @@ export async function engagementRoutes(app: FastifyInstance): Promise<void> {
     }
   };
 
-  app.post(
+  app.post<{ Body: TrackRequestBody }>(
     "/api/engagement/track",
     { onRequest: [authenticate] },
-    async (request: AuthenticatedRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const userId = (request.user as { sub?: string } | undefined)?.sub;
       if (!userId) {
         return reply.status(401).send();

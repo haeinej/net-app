@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk 'NR>=219 && NR<=310' /Users/jeonghaein/Desktop/ohm_website/ohm-website.html)",
+      "Bash(awk 'NR>=295 && NR<=760' /Users/jeonghaein/Desktop/ohm_website/ohm-website.html)",
+      "Bash(awk 'NR>=776 && NR<=782' /Users/jeonghaein/Desktop/ohm_website/ohm-website.html)",
+      "Bash(python3:*)",
+      "WebFetch(domain:www.pentagram.com)",
+      "mcp__mcp-unframer-co__getProjectXml",
+      "WebFetch(domain:www.cosmos.so)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

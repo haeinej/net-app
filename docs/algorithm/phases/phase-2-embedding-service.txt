@@ -1,36 +1,13 @@
-Build an EmbeddingService that generates vector embeddings using open-source models.
+Phase 2 embedding service.
 
-**Preferred setup (no Docker):** nomic-embed-text (768 dimensions) via Ollama on your Mac directly. Install Ollama from ollama.com, then `ollama pull nomic-embed-text`. The API uses OLLAMA_URL (default http://localhost:11434) and OLLAMA_EMBED_MODEL (default nomic-embed-text).
+The feed should work as retrieval, not live generation.
 
-**Optional alternatives** (if not using Ollama):
-- TEI in Docker: docker run -p 8080:80 ghcr.io/huggingface/text-embeddings-inference:latest --model-id nomic-ai/nomic-embed-text-v1.5
-- Hugging Face Inference API: https://api-inference.huggingface.co/pipeline/feature-extraction/nomic-ai/nomic-embed-text-v1.5
+Required embedding paths:
 
-Current implementation uses Ollama; configure via EMBEDDING_PROVIDER and OLLAMA_* env vars.
+- raw text surface embedding
+- primary resonance embedding derived from the thought processor output
 
-The service should have these methods:
+Cold start:
 
-1. embed(text: string): Promise<number[]>
-   - Returns a 768-dimensional vector
-   - Prepends "search_document: " prefix for documents being stored
-   - Prepends "search_query: " prefix for queries (when searching for similar)
-   (nomic-embed-text uses task prefixes for better performance)
-
-2. embedBatch(texts: string[]): Promise<number[][]>
-   - Batch embed multiple texts in one call
-   - Max batch size: 32 texts per call
-   - Split larger batches automatically
-
-3. cosineSimilarity(a: number[], b: number[]): number
-   - Utility function for comparing embeddings in application code
-   - For database queries, use pgvector's <=> operator instead
-
-Configuration via env vars (Ollama on Mac, no Docker):
-- OLLAMA_URL: default http://localhost:11434
-- OLLAMA_EMBED_MODEL: default nomic-embed-text
-- Optional: EMBEDDING_PROVIDER, EMBEDDING_SERVER_URL (TEI), HF_API_TOKEN (Hugging Face)
-
-Add retry logic (1 retry with 500ms delay) and request timeout (10s).
-Cache embeddings in memory using an LRU cache (max 1000 entries) keyed by text hash.
-
-Note: if we later switch to bge-large-en-v1.5, the interface stays identical — only the model ID and prefix convention change. Keep the model name configurable.
+- use internal profile prompt text only when the user has no processed thoughts
+- once the first thought exists, prioritize thought-derived signal

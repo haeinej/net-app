@@ -35,7 +35,7 @@ async function appliedMigrations(): Promise<string[]> {
   const rows = await sql`
     SELECT name FROM drizzle.__drizzle_migrations ORDER BY name
   `;
-  return (rows as { name: string }[]).map((r) => r.name);
+  return (rows as unknown as { name: string }[]).map((r) => r.name);
 }
 
 async function recordMigration(name: string) {

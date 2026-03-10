@@ -28,7 +28,8 @@ import { WarmthBar, type WarmthLevel } from "../../components/WarmthBar";
 import { fetchThought, postReply, type ThoughtDetailResponse } from "../../lib/api";
 import { useEngagementTracking } from "../../hooks/useEngagementTracking";
 
-const REPLY_MAX_LENGTH = 500;
+const REPLY_MIN_LENGTH = 50;
+const REPLY_MAX_LENGTH = 300;
 
 export default function ThoughtDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,7 +46,6 @@ export default function ThoughtDetailScreen() {
 
   const translateX = useSharedValue(0);
   const gestureStartX = useSharedValue(0);
-  const panelEnterTime = useRef<number>(Date.now());
   const lastPanelIndex = useRef(0);
   const [currentPanelIndex, setCurrentPanelIndex] = useState(0);
 
@@ -82,7 +82,6 @@ export default function ThoughtDetailScreen() {
   const applyPanel = useCallback(
     (index: number) => {
       lastPanelIndex.current = index;
-      panelEnterTime.current = Date.now();
       setCurrentPanelIndex(index);
     },
     []
@@ -90,13 +89,10 @@ export default function ThoughtDetailScreen() {
 
   const handleSwipeToPanel = useCallback(
     (fromIndex: number, toIndex: number) => {
-      const now = Date.now();
       if (fromIndex === 0 && toIndex === 1) {
-        const dwell = now - panelEnterTime.current;
-        recordSwipeP2({ dwell_time_p1_ms: dwell });
+        recordSwipeP2();
       } else if (fromIndex === 1 && toIndex === 2) {
-        const dwell = now - panelEnterTime.current;
-        recordSwipeP3({ dwell_time_p2_ms: dwell });
+        recordSwipeP3();
       }
     },
     [recordSwipeP2, recordSwipeP3]
@@ -154,7 +150,15 @@ export default function ThoughtDetailScreen() {
 
   const handleSendReply = useCallback(async () => {
     const text = replyText.trim();
-    if (!text || !id || !data?.panel_3.can_reply || sending) return;
+    if (
+      !text ||
+      text.length < REPLY_MIN_LENGTH ||
+      !id ||
+      !data?.panel_3.can_reply ||
+      sending
+    ) {
+      return;
+    }
     setSending(true);
     try {
       await postReply(id, text);
@@ -297,10 +301,13 @@ export default function ThoughtDetailScreen() {
                   multiline={false}
                   maxLength={REPLY_MAX_LENGTH}
                 />
+                <Text style={styles.replyHint}>
+                  Minimum {REPLY_MIN_LENGTH} characters. Space for up to {REPLY_MAX_LENGTH}.
+                </Text>
                 <TouchableOpacity
                   style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
                   onPress={handleSendReply}
-                  disabled={!replyText.trim() || sending}
+                  disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
                 >
                   <Text style={styles.sendBtnText}>Send</Text>
                 </TouchableOpacity>
@@ -468,7 +475,7 @@ const styles = StyleSheet.create({
   },
   replyLabel: {
     ...typography.replyInput,
-    color: colors.ACCENT_ORANGE,
+    color: colors.VERMILLION,
     marginBottom: 6,
   },
   replyInput: {
@@ -478,12 +485,17 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(255,255,255,0.2)",
     paddingVertical: 8,
   },
+  replyHint: {
+    ...typography.metadata,
+    color: colors.TYPE_MUTED,
+    marginTop: 8,
+  },
   sendBtn: {
     marginTop: 12,
     paddingVertical: 10,
     alignItems: "center",
     borderRadius: 6,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: {

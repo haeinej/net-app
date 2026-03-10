@@ -102,24 +102,11 @@ export default function UserProfileScreen() {
           )}
         </View>
         <Text style={styles.name}>{profile.name || "—"}</Text>
-        <View style={styles.interestsWrap}>
-          {(profile.interests ?? []).length > 0
-            ? (profile.interests ?? []).map((s, i) => (
-                <Text key={i} style={styles.interest}>
-                  {s}
-                </Text>
-              ))
-            : (
-                <Text style={styles.interestPlaceholder}>
-                  what you are into right now
-                </Text>
-              )}
-        </View>
       </View>
 
-      <Text style={styles.deckTitle}>Thoughts</Text>
+      <Text style={styles.deckTitle}>Deck</Text>
       {profile.thoughts.length === 0 ? (
-        <Text style={styles.emptyDeck}>No thoughts yet.</Text>
+        <Text style={styles.emptyDeck}>No deck yet.</Text>
       ) : (
         profile.thoughts.map((t) => (
           <View key={t.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
@@ -199,23 +186,6 @@ const styles = StyleSheet.create({
     color: colors.TYPE_DARK,
     marginBottom: 8,
   },
-  interestsWrap: {
-    alignSelf: "stretch",
-  },
-  interest: {
-    ...typography.context,
-    fontSize: 10,
-    color: colors.TYPE_MUTED,
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  interestPlaceholder: {
-    ...typography.context,
-    fontSize: 10,
-    color: colors.TYPE_MUTED,
-    fontStyle: "italic",
-    textAlign: "center",
-  },
   deckTitle: {
     ...typography.label,
     fontSize: 8,
@@ -248,7 +218,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   retryText: {
-    color: colors.ACCENT_ORANGE,
+    color: colors.OLIVE,
     ...typography.label,
   },
 });

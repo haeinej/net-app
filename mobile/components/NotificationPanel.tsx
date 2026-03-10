@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: spacing.screenPadding,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.06)",
+    borderBottomColor: "rgba(26,26,22,0.06)",
   },
   row: {
     flexDirection: "row",
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   acceptBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    backgroundColor: colors.ACCENT_ORANGE,
+    backgroundColor: colors.OLIVE,
     borderRadius: 6,
   },
   acceptText: {

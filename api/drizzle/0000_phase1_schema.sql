@@ -1,4 +1,4 @@
--- Phase 1: net. recommendation engine schema (PostgreSQL + pgvector)
+-- Phase 1: ohm. resonance feed schema (PostgreSQL + pgvector)
 -- Run this migration with: npm run db:migrate (or your migration runner)
 
 -- Enable pgvector for embedding similarity search
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS "thoughts" (
   "context" text,
   "image_url" text,
   "surface_embedding" vector(768),
-  "question_embedding" vector(768),
+  "question_embedding" vector(768), -- compatibility slot for the primary resonance embedding
   "quality_score" real,
   "created_at" timestamp with time zone DEFAULT now()
 );
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS "engagement_events" (
 
 CREATE INDEX IF NOT EXISTS "engagement_events_user_thought_type_idx" ON "engagement_events" ("user_id", "thought_id", "event_type");
 
--- 7. question_clusters (populated later, not on launch)
+-- 7. question_clusters (legacy name; now treated as resonance clusters)
 CREATE TABLE IF NOT EXISTS "question_clusters" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "centroid_embedding" vector(768),

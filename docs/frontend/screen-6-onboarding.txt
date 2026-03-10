@@ -1,103 +1,28 @@
-Build the onboarding flow. This is what a new user sees before they reach the feed.
+Onboarding flow.
 
-Route: app/onboarding/ — a multi-step flow outside the main tab navigation.
-The onboarding captures identity context without imposing interest categories. It ends when the user has posted their first thought.
+Step 1: Identity
 
+- name
+- photo
+- cohort year
+- city
+- concentration
+- auth fields
 
-STEP 1 — IDENTITY (30 seconds):
+Step 2: Internal cold-start prompts
 
-  Background: WARM_GROUND (#F5F0EA)
+- collect up to three freeform lines about what is alive in the user's thinking
+- never call these skills
+- keep them internal
+- do not render them on the visible profile surface
 
-  Fields:
-  - Name: text input. General Sans Medium. Required.
-  - Profile photo: circular photo picker, ~80px. Tap to select from camera roll. Required.
-  - Cohort year: selector (2026, 2027, 2028, 2029). Required.
-  - Current city: text input or dropdown of rotation cities. Required.
-  - Concentration: text input or dropdown of Minerva concentrations. Required.
+Step 3: First thought
 
-  These are structural facts, not preferences. The form should feel fast and minimal.
-  No biography field. No job title. No "tell us about yourself."
+- require the first posted thought before entering the app
+- this becomes the user's primary visible signal
 
-  "Continue" button at the bottom. General Sans Medium, UPPERCASE.
+Implementation interpretation:
 
-  API: POST /api/auth/register with all fields.
-
-
-STEP 2 — INTERESTS (freeform):
-
-  Three text inputs stacked vertically.
-  Placeholder for each: "what you are into right now"
-  Sentient Light 11-12px.
-
-  No predefined list. No chips. No categories. No autocomplete.
-  The user writes what is alive in their thinking, in their own words.
-
-  These become part of the profile and are embedded for lightweight matching when the user has no posted thoughts yet. But they are NOT the primary recommendation input — the user's posted thoughts are.
-
-  All three are optional but encouraged. Show a gentle nudge if all three are empty: "These help us find thoughts that resonate with you" in TYPE_MUTED, 8px.
-
-  "Continue" button.
-
-  API: PUT /api/me/profile with { interests }
-
-
-STEP 3 — FIRST THOUGHT:
-
-  This is the most important onboarding step.
-  The system cannot recommend anything to someone who has not revealed what they are thinking about.
-
-  Show the full compose flow (same as screen-5-compose.txt):
-  - Sentence input, large, centered. Placeholder: "A thought you are in the middle of."
-  - Context input appears below.
-  - Image generates in background.
-  - "post" button at the bottom.
-
-  The header says something like: "Your first thought" in General Sans Medium, or just shows the "net." logo.
-
-  The user cannot skip this step. The onboarding is complete ONLY when the user has posted one thought.
-  But do not be aggressive about it — no countdown, no "you must post to continue" warning. The design should make posting feel natural and inviting, not forced.
-
-  On post:
-  - POST /api/thoughts
-  - Navigate to the main app (Screen 1 — Worlds feed)
-  - The user's first thought is now their primary signal in the recommendation system
-
-
-LOGIN FLOW (returning users):
-
-  Route: app/login.tsx
-
-  Simple:
-  - Email + password inputs
-  - "log in" button
-  - "create account" link → navigates to onboarding step 1
-  - POST /api/auth/login → returns JWT → store in expo-secure-store
-  - On success: navigate to main app
-
-  No social login for v1. No magic links. Keep it simple.
-
-
-AUTH STATE:
-  The root layout checks for a stored JWT on launch.
-  - Valid JWT: show main tab navigator
-  - No JWT or expired: show login screen
-  - New user flag: show onboarding flow
-
-
-STATES:
-  - Step 1 incomplete: "Continue" button disabled
-  - Photo uploading: loading indicator on photo circle
-  - Step 2 all empty: subtle encouragement text, but Continue still available
-  - Step 3 empty: "post" button disabled until sentence is non-empty
-  - Registration error: inline error message below relevant field
-  - Login error: "Incorrect email or password" below the form
-  - Network error: generic retry message
-
-
-WHAT ONBOARDING MUST NEVER DO:
-  - Show a list of interests or topics to select from
-  - Show category chips or tags
-  - Use the word "skills" anywhere
-  - Allow skipping the first thought
-  - Show other users' thoughts before the user has posted their own
-  - Collect more information than necessary (no bio, no job title, no links)
+- the spec contains mixed language about interests
+- the app keeps them as internal onboarding-only cold-start data
+- the visible profile surface no longer shows them

@@ -10,6 +10,8 @@ import {
   NEGATIVE_PROMPT,
 } from "./config";
 
+type AnyInput = Record<string, any>;
+
 export type FalImageResult = {
   url: string;
   requestId?: string;
@@ -49,7 +51,7 @@ export async function generateWithFlux(
 
   if (withIpAdapter) {
     try {
-      const result = await fal.subscribe(imageConfig.fluxEndpoint, {
+      const result = await fal.subscribe(imageConfig.fluxEndpoint as any, {
         input: {
           ...baseInput,
           ip_adapters: [
@@ -60,7 +62,7 @@ export async function generateWithFlux(
               scale: imageConfig.ipAdapterScale,
             },
           ],
-        },
+        } as AnyInput,
         logs: false,
       });
       const data = result.data as { images?: Array<{ url?: string }>; seed?: number };
@@ -77,8 +79,8 @@ export async function generateWithFlux(
     }
   }
 
-  const result = await fal.subscribe(imageConfig.fluxEndpoint, {
-    input: baseInput,
+  const result = await fal.subscribe(imageConfig.fluxEndpoint as any, {
+    input: baseInput as AnyInput,
     logs: false,
   });
   const data = result.data as { images?: Array<{ url?: string }>; seed?: number };
@@ -125,8 +127,8 @@ export async function fluxImageToImage(
     ];
   }
 
-  const result = await fal.subscribe(imageConfig.fluxImageToImageEndpoint, {
-    input,
+  const result = await fal.subscribe(imageConfig.fluxImageToImageEndpoint as any, {
+    input: input as AnyInput,
     logs: false,
   });
   const data = result.data as { images?: Array<{ url?: string }>; seed?: number };

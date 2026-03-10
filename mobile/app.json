@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "net.",
-    "slug": "net-app",
+    "name": "ohm.",
+    "slug": "ohm-app",
     "version": "1.0.0",
-    "scheme": "net",
+    "scheme": "ohm",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -11,10 +11,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.net.app"
+      "bundleIdentifier": "com.ohm.app"
     },
     "android": {
-      "package": "com.net.app",
+      "package": "com.ohm.app",
       "adaptiveIcon": {
         "backgroundColor": "#F5F0EA"
       }
