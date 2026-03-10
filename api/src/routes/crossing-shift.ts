@@ -3,7 +3,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { eq, and } from "drizzle-orm";
-import { db, conversations, users, crossingDrafts, crossings, shiftDrafts, shifts } from "../db";
+import { db, conversations, users, crossingDrafts, crossings, shiftDrafts, shifts, failedProcessingJobs } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { generateCrossingImage } from "../image/service";
 
@@ -154,11 +154,13 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
     const photoA = userA?.photoUrl ?? "";
     const photoB = userB?.photoUrl ?? "";
     let imageUrl: string | null = null;
+    let imageFailed = false;
     if (photoA && photoB) {
       try {
         imageUrl = await generateCrossingImage(sentence, photoA, photoB);
-      } catch {
-        // continue without image
+      } catch (e) {
+        imageFailed = true;
+        app.log.error({ err: e }, "Crossing image generation failed, will queue retry");
       }
     }
     const [crossing] = await db
@@ -173,6 +175,15 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
       })
       .returning();
     if (!crossing) return reply.status(500).send();
+    if (imageFailed) {
+      // Queue for retry — reusing thoughtId column for crossing ID (see reprocessFailedJobs)
+      db.insert(failedProcessingJobs).values({
+        thoughtId: crossing.id,
+        jobType: "crossing_image",
+        error: "initial generation failed",
+        retryCount: 0,
+      }).catch(() => {});
+    }
     await db
       .update(crossingDrafts)
       .set({ status: "complete", updatedAt: new Date() })

@@ -20,4 +20,7 @@ export const learningConfig = {
   clusterKMin: 5,
   clusterKMax: 15,
   samplesPerCluster: 5,
+  highResonanceSimThreshold: 0.7,
+  highQSimEngagementRate: 0.5,
+  kmeansMaxIter: 20,
 } as const;

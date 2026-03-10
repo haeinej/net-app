@@ -2,7 +2,7 @@
  * Daily learning job (Phase 7): cross-domain affinity, adaptive user weights, temporal resonance.
  */
 
-import { eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -15,6 +15,8 @@ import {
 } from "../db";
 import { getUserEngagementProfile } from "../engagement/analytics";
 import { learningConfig } from "./config";
+
+import { cosineSimilarity } from "../embedding";
 
 const {
   dailyIncrement,
@@ -29,6 +31,8 @@ const {
   minEngagementEventsForWeights,
   engagementDaysLookback,
   conversationLookbackHours,
+  highResonanceSimThreshold,
+  highQSimEngagementRate,
 } = learningConfig;
 
 /** 1. Cross-domain affinity from conversations (last 24h). */
@@ -144,9 +148,53 @@ export async function runAdaptiveUserWeights(): Promise<Record<string, unknown>>
 
     if (profile.cross_cohort_reply_rate > crossCohortThreshold) d += dailyIncrement;
     if (profile.cross_concentration_reply_rate > crossConcentrationThreshold) alpha += dailyIncrement;
-    // Stub: fresh content and resonance similarity would need event-level data; skip for now
-    // if (profile.fresh_engagement_fraction > freshContentFraction) f += dailyIncrement;
-    // if (profile.high_q_similarity_engagement) q += dailyIncrement;
+
+    // Rule: fresh content engagement fraction
+    const userEvents = await db
+      .select({ thoughtId: engagementEvents.thoughtId })
+      .from(engagementEvents)
+      .where(and(eq(engagementEvents.userId, userId), gte(engagementEvents.createdAt, since)));
+    const engagedThoughtIds = [...new Set(userEvents.map((e) => e.thoughtId))];
+    if (engagedThoughtIds.length > 0) {
+      const freshCutoff = new Date(Date.now() - freshContentDays * 24 * 60 * 60 * 1000);
+      const freshThoughts = await db
+        .select({ id: thoughts.id })
+        .from(thoughts)
+        .where(and(inArray(thoughts.id, engagedThoughtIds), gte(thoughts.createdAt, freshCutoff)));
+      const freshIds = new Set(freshThoughts.map((t) => t.id));
+      const freshCount = userEvents.filter((e) => freshIds.has(e.thoughtId)).length;
+      const freshEngagementFraction = userEvents.length > 0 ? freshCount / userEvents.length : 0;
+      if (freshEngagementFraction > freshContentFraction) f += dailyIncrement;
+    }
+
+    // Rule: high resonance similarity engagement
+    const viewerThoughtRows = await db
+      .select({ questionEmbedding: thoughts.questionEmbedding })
+      .from(thoughts)
+      .where(eq(thoughts.userId, userId));
+    const viewerEmbeddings = viewerThoughtRows
+      .filter((t) => Array.isArray(t.questionEmbedding))
+      .map((t) => t.questionEmbedding as number[]);
+    if (viewerEmbeddings.length > 0 && engagedThoughtIds.length > 0) {
+      const engagedThoughts = await db
+        .select({ questionEmbedding: thoughts.questionEmbedding })
+        .from(thoughts)
+        .where(and(inArray(thoughts.id, engagedThoughtIds), sql`${thoughts.questionEmbedding} IS NOT NULL`));
+      let highSimCount = 0;
+      for (const engaged of engagedThoughts) {
+        const engVec = engaged.questionEmbedding as number[];
+        let maxSim = 0;
+        for (const viewerVec of viewerEmbeddings) {
+          if (viewerVec.length !== engVec.length) continue;
+          const sim = cosineSimilarity(viewerVec, engVec);
+          if (sim > maxSim) maxSim = sim;
+        }
+        if (maxSim > highResonanceSimThreshold) highSimCount++;
+      }
+      if (engagedThoughts.length > 0 && highSimCount / engagedThoughts.length > highQSimEngagementRate) {
+        q += dailyIncrement;
+      }
+    }
 
     q = Math.max(weightMin, Math.min(weightMax, q));
     d = Math.max(weightMin, Math.min(weightMax, d));

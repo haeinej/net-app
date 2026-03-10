@@ -34,6 +34,7 @@ function toCandidate(row: {
     createdAt: t.createdAt ?? new Date(),
     authorCohortYear: row.authorCohortYear,
     authorConcentration: row.authorConcentration,
+    clusterId: t.clusterId ?? null,
   };
 }
 

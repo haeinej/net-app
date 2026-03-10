@@ -92,6 +92,13 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
     const participantB = replierId;
 
     await db.update(replies).set({ status: "accepted" }).where(eq(replies.id, replyId));
+    trackEngagementEvents(userId, [{
+      event_type: "reply_accepted",
+      thought_id: t.id,
+      session_id: "",
+      metadata: { reply_id: replyId, replier_id: replierId },
+      timestamp: new Date().toISOString(),
+    }]).catch(() => {});
     const [conv] = await db
       .insert(conversations)
       .values({

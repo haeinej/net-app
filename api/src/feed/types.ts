@@ -46,6 +46,7 @@ export interface ThoughtCandidate {
   createdAt: Date;
   authorCohortYear: number | null;
   authorConcentration: string | null;
+  clusterId: string | null;
 }
 
 /** Viewer's embeddings from posted thoughts, or internal interests fallback. */

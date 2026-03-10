@@ -8,6 +8,7 @@ export const ENGAGEMENT_EVENT_TYPES = [
   "swipe_p3",
   "type_start",
   "reply_sent",
+  "reply_accepted",
 ] as const;
 
 export type EngagementEventType = (typeof ENGAGEMENT_EVENT_TYPES)[number];

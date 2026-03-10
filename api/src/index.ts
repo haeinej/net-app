@@ -8,6 +8,10 @@ import websocket from "@fastify/websocket";
 async function main() {
   const app = Fastify({ logger: true });
 
+  if (!process.env.FAL_KEY && !process.env.FAL_CREDENTIALS) {
+    app.log.warn("FAL_KEY not set — image generation will fail at runtime");
+  }
+
   await app.register(cors, { origin: process.env.CORS_ORIGIN ?? true });
   await app.register(jwt, { secret: process.env.JWT_SECRET ?? "change-me" });
   await app.register(rateLimit, {
@@ -38,6 +42,9 @@ async function main() {
   await app.register(crossingShiftRoutes);
   await app.register(profileRoutes);
   await app.register(engagementRoutes);
+
+  const { cronPlugin } = await import("./plugins/cron");
+  await app.register(cronPlugin);
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen({ port, host: "0.0.0.0" });

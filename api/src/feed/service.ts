@@ -21,7 +21,11 @@ import {
   rankScorePhase2,
   rankScorePhase2WithDebug,
   applyDiversityEnforcement,
+  loadCrossDomainAffinityMap,
+  loadTemporalResonanceMap,
+  loadClusterAffinityMap,
 } from "./rank";
+import type { LearningMaps } from "./rank";
 import { getSimilarities } from "./score";
 import { feedConfig } from "./config";
 import type {
@@ -171,8 +175,22 @@ export async function getFeed(
     return hit.items.slice(offset, offset + limit);
   }
 
-  // Load viewer first (needed for bucket assignment)
-  const { embeddings, profile, weights } = await loadViewerEmbeddingsAndProfile(userId);
+  // Load viewer + learning data in parallel
+  const [viewerData, affinityMap, resonanceMap, clusterAffinityMap] = await Promise.all([
+    loadViewerEmbeddingsAndProfile(userId),
+    loadCrossDomainAffinityMap(),
+    loadTemporalResonanceMap(),
+    loadClusterAffinityMap(),
+  ]);
+  const { embeddings, profile, weights } = viewerData;
+  const maps: LearningMaps = { affinityMap, resonanceMap, clusterAffinityMap };
+
+  // Get viewer's cluster IDs for cluster novelty scoring
+  const viewerClusterRows = await db
+    .select({ clusterId: thoughts.clusterId })
+    .from(thoughts)
+    .where(and(eq(thoughts.userId, userId), sql`${thoughts.clusterId} IS NOT NULL`));
+  const viewerClusterIds = [...new Set(viewerClusterRows.map((r) => r.clusterId!))];
 
   // Three-bucket retrieval
   const { candidates, stage } = await getBucketedCandidates(userId, embeddings);
@@ -204,7 +222,7 @@ export async function getFeed(
     const layer2 = layer2Scores.get(thought.id) ?? 0;
     const rankScore = isPhase1
       ? rankScorePhase1(thought, profile, layer2)
-      : await rankScorePhase2(thought, profile, layer2, weights, layer2Max);
+      : await rankScorePhase2(thought, profile, layer2, weights, layer2Max, maps, viewerClusterIds);
     withRank.push({ thought, rankScore, bucket });
   }
 
@@ -316,7 +334,21 @@ export async function getFeedWithDebug(
   limit: number = feedConfig.feedLimit,
   offset: number = 0
 ): Promise<Array<FeedItem & { _debug: FeedDebugInfo }>> {
-  const { embeddings, profile, weights } = await loadViewerEmbeddingsAndProfile(userId);
+  const [viewerData, affinityMap, resonanceMap, clusterAffinityMap] = await Promise.all([
+    loadViewerEmbeddingsAndProfile(userId),
+    loadCrossDomainAffinityMap(),
+    loadTemporalResonanceMap(),
+    loadClusterAffinityMap(),
+  ]);
+  const { embeddings, profile, weights } = viewerData;
+  const maps: LearningMaps = { affinityMap, resonanceMap, clusterAffinityMap };
+
+  const viewerClusterRows = await db
+    .select({ clusterId: thoughts.clusterId })
+    .from(thoughts)
+    .where(and(eq(thoughts.userId, userId), sql`${thoughts.clusterId} IS NOT NULL`));
+  const viewerClusterIds = [...new Set(viewerClusterRows.map((r) => r.clusterId!))];
+
   const { candidates, stage } = await getBucketedCandidates(userId, embeddings);
   if (candidates.length === 0) return [];
 
@@ -343,7 +375,7 @@ export async function getFeedWithDebug(
       const rankScore = rankScorePhase1(thought, profile, layer2);
       withRank.push({ thought, bucket, rankScore, Q: layer2Max > 0 ? layer2 / layer2Max : 0.5, D: 0, F: 0, R: 0 });
     } else {
-      const debugRank = await rankScorePhase2WithDebug(thought, profile, layer2, weights, layer2Max);
+      const debugRank = await rankScorePhase2WithDebug(thought, profile, layer2, weights, layer2Max, maps, viewerClusterIds);
       withRank.push({
         thought,
         bucket,

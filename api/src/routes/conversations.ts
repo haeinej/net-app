@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { eq, and, or, desc, asc, lt, inArray } from "drizzle-orm";
 import { db, conversations, messages, users, thoughts, crossingDrafts, crossings, shiftDrafts, shifts } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
+import { trackEngagementEvents } from "../engagement/track";
 
 const DORMANT_DAYS = 30;
 const MESSAGE_PREVIEW_LEN = 100;
@@ -214,14 +215,24 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         .values({ conversationId: convId, senderId: userId, text })
         .returning({ id: messages.id, text: messages.text, createdAt: messages.createdAt });
       if (!msg) return reply.status(500).send();
+      const newCount = (conv.messageCount ?? 0) + 1;
       await db
         .update(conversations)
         .set({
           lastMessageAt: now,
-          messageCount: (conv.messageCount ?? 0) + 1,
+          messageCount: newCount,
           ...(wasDormant ? { isDormant: false } : {}),
         })
         .where(eq(conversations.id, convId));
+      if ([5, 10, 20].includes(newCount)) {
+        trackEngagementEvents(userId, [{
+          event_type: "reply_sent",
+          thought_id: conv.thoughtId,
+          session_id: "",
+          metadata: { conversation_depth_milestone: newCount, conversation_id: convId },
+          timestamp: new Date().toISOString(),
+        }]).catch(() => {});
+      }
       return reply.send({
         id: msg.id,
         text: msg.text,

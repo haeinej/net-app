@@ -4,7 +4,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import { db, thoughts, failedProcessingJobs } from "../db";
+import { db, thoughts, failedProcessingJobs, crossings, users } from "../db";
 import { getEmbeddingService } from "../embedding";
 import { llmConfig, complete } from "../llm";
 import {
@@ -136,7 +136,7 @@ export async function extractUnderlyingQuestion(
  * Handles both 'embedding' and 'image' job types.
  */
 export async function reprocessFailedJobs(): Promise<void> {
-  const { generateThoughtImageByThoughtId } = await import("../image/service");
+  const { generateThoughtImageByThoughtId, generateCrossingImage } = await import("../image/service");
   const jobs = await db.select().from(failedProcessingJobs);
   for (const job of jobs) {
     try {
@@ -146,6 +146,22 @@ export async function reprocessFailedJobs(): Promise<void> {
           await db.delete(failedProcessingJobs).where(eq(failedProcessingJobs.id, job.id));
           continue;
         }
+      } else if (job.jobType === "crossing_image") {
+        // thoughtId column holds the crossing ID for crossing_image jobs
+        const crossingId = job.thoughtId;
+        const [crossing] = await db.select().from(crossings).where(eq(crossings.id, crossingId));
+        if (!crossing || crossing.imageUrl) {
+          await db.delete(failedProcessingJobs).where(eq(failedProcessingJobs.id, job.id));
+          continue;
+        }
+        const [userA] = await db.select({ photoUrl: users.photoUrl }).from(users).where(eq(users.id, crossing.participantA));
+        const [userB] = await db.select({ photoUrl: users.photoUrl }).from(users).where(eq(users.id, crossing.participantB));
+        if (!userA?.photoUrl || !userB?.photoUrl) {
+          await db.delete(failedProcessingJobs).where(eq(failedProcessingJobs.id, job.id));
+          continue;
+        }
+        const url = await generateCrossingImage(crossing.sentence, userA.photoUrl, userB.photoUrl);
+        await db.update(crossings).set({ imageUrl: url }).where(eq(crossings.id, crossingId));
       } else {
         await runPipeline(job.thoughtId);
       }

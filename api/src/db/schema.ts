@@ -28,6 +28,7 @@ export const engagementEventTypeEnum = pgEnum("engagement_event_type", [
   "swipe_p3",
   "type_start",
   "reply_sent",
+  "reply_accepted",
 ]);
 
 export const crossingDraftStatusEnum = pgEnum("crossing_draft_status", [

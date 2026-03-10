@@ -1,13 +1,60 @@
 /**
  * Layer 3 — RANK: diversity, freshness, reply quality; post-ranking enforcement (Phase 5).
+ * Now wires in learning outputs: cross_domain_affinity, temporal_resonance, cross_cluster_affinity.
  */
 
 import { and, eq, inArray } from "drizzle-orm";
-import { db, replies, conversations, users } from "../db";
+import { db, replies, conversations, users, crossDomainAffinity, systemConfig, crossClusterAffinity } from "../db";
 import { feedConfig } from "./config";
 import type { ThoughtCandidate, ViewerProfile, RecommendationWeights } from "./types";
 
 const { freshnessFullBoostHours, freshnessDecayEndHours, freshnessResidual, cohortMaxFraction, windowSize, cohortDemotePositions, concentrationDemotePositions } = feedConfig;
+
+// ——— Learning Data Maps (preloaded per feed request) ———
+
+export type LearningMaps = {
+  affinityMap: Map<string, number> | null;
+  resonanceMap: Map<number, number> | null;
+  clusterAffinityMap: Map<string, number> | null;
+};
+
+/** Load cross-domain affinity sustainRates. Key = sorted concentration pair. */
+export async function loadCrossDomainAffinityMap(): Promise<Map<string, number>> {
+  const rows = await db.select().from(crossDomainAffinity);
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    const key = [r.concentrationA, r.concentrationB].sort().join("\0");
+    map.set(key, r.sustainRate ?? 0);
+  }
+  return map;
+}
+
+/** Load temporal resonance: cohort_distance → sustainRate from system_config. */
+export async function loadTemporalResonanceMap(): Promise<Map<number, number>> {
+  const [row] = await db.select().from(systemConfig).where(eq(systemConfig.key, "temporal_resonance"));
+  const map = new Map<number, number>();
+  if (!row?.value) return map;
+  const val = row.value as { by_distance?: Array<{ cohort_distance: number; sustain_rate: number }> };
+  if (Array.isArray(val.by_distance)) {
+    for (const entry of val.by_distance) {
+      map.set(entry.cohort_distance, entry.sustain_rate);
+    }
+  }
+  return map;
+}
+
+/** Load cross-cluster affinity sustainRates. Key = sorted cluster ID pair. */
+export async function loadClusterAffinityMap(): Promise<Map<string, number>> {
+  const rows = await db.select().from(crossClusterAffinity);
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    const key = [r.clusterAId, r.clusterBId].sort().join("\0");
+    map.set(key, r.sustainRate ?? 0);
+  }
+  return map;
+}
+
+// ——— Scoring Functions ———
 
 /**
  * Piecewise freshness: full boost first 6h, linear decay 6-48h, residual after.
@@ -30,17 +77,58 @@ function cohortDiversityBonus(thought: ThoughtCandidate, viewer: ViewerProfile):
   return 1.0;
 }
 
-function cohortDistance(thought: ThoughtCandidate, viewer: ViewerProfile): number {
+/** Cohort distance with temporal resonance data when available. */
+function cohortDistance(
+  thought: ThoughtCandidate,
+  viewer: ViewerProfile,
+  resonanceMap: Map<number, number> | null
+): number {
   const v = viewer.cohortYear ?? 0;
   const t = thought.authorCohortYear ?? 0;
-  return Math.min(Math.abs(t - v) / 3, 1);
+  const dist = Math.abs(t - v);
+  if (resonanceMap && resonanceMap.size > 0) {
+    const sustainRate = resonanceMap.get(dist);
+    if (sustainRate != null) return sustainRate;
+  }
+  return Math.min(dist / 3, 1);
 }
 
-function concentrationDiff(thought: ThoughtCandidate, viewer: ViewerProfile): number {
+/** Concentration diff with cross-domain affinity data when available. */
+function concentrationDiff(
+  thought: ThoughtCandidate,
+  viewer: ViewerProfile,
+  affinityMap: Map<string, number> | null
+): number {
   const v = (viewer.concentration ?? "").trim();
   const t = (thought.authorConcentration ?? "").trim();
   if (!v || !t) return 0.5;
-  return v.toLowerCase() === t.toLowerCase() ? 0.3 : 1.0;
+  if (v.toLowerCase() === t.toLowerCase()) return 0.3;
+  if (affinityMap && affinityMap.size > 0) {
+    const key = [v.toLowerCase(), t.toLowerCase()].sort().join("\0");
+    const sustainRate = affinityMap.get(key);
+    if (sustainRate != null) return 0.5 + sustainRate * 0.5;
+  }
+  return 1.0;
+}
+
+/** Cluster novelty from cross-cluster affinity. Uses viewer's cluster IDs if available. */
+function clusterNoveltyScore(
+  thought: ThoughtCandidate,
+  viewerClusterIds: string[],
+  clusterAffinityMap: Map<string, number> | null
+): number {
+  if (!thought.clusterId || viewerClusterIds.length === 0 || !clusterAffinityMap || clusterAffinityMap.size === 0) {
+    return 0.5;
+  }
+  let maxAffinity = 0;
+  for (const viewerCluster of viewerClusterIds) {
+    if (viewerCluster === thought.clusterId) return 0.3; // same cluster = less novel
+    const key = [viewerCluster, thought.clusterId].sort().join("\0");
+    const affinity = clusterAffinityMap.get(key);
+    if (affinity != null && affinity > maxAffinity) maxAffinity = affinity;
+  }
+  // Higher cross-cluster affinity = proven interesting pairing = higher novelty score
+  return maxAffinity > 0 ? 0.5 + maxAffinity * 0.5 : 0.5;
 }
 
 /** Reply quality R: accepted reply, sustained conv (10+ msgs), cross-domain ratio. */
@@ -86,19 +174,21 @@ export function rankScorePhase1(
   return f * 0.5 + q * 0.3 + d * 0.2;
 }
 
-/** Phase 2 rank: (Q×w1) + (D×w2) + (F×w3) + (R×w4). Q = layer2 normalized; D = diversity; F = freshness; R = reply quality. */
+/** Phase 2 rank: (Q×w1) + (D×w2) + (F×w3) + (R×w4). Now uses learning data for D. */
 export async function rankScorePhase2(
   thought: ThoughtCandidate,
   viewer: ViewerProfile,
   layer2Score: number,
   weights: RecommendationWeights,
-  layer2Max: number
+  layer2Max: number,
+  maps?: LearningMaps,
+  viewerClusterIds?: string[]
 ): Promise<number> {
   const Q = layer2Max > 0 ? Math.min(1, layer2Score / layer2Max) : 0.5;
-  const cohortDist = cohortDistance(thought, viewer);
-  const concDiff = concentrationDiff(thought, viewer);
-  const clusterNovelty = 0.5;
-  const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNovelty * 0.3;
+  const cohortDist = cohortDistance(thought, viewer, maps?.resonanceMap ?? null);
+  const concDiff = concentrationDiff(thought, viewer, maps?.affinityMap ?? null);
+  const clusterNov = clusterNoveltyScore(thought, viewerClusterIds ?? [], maps?.clusterAffinityMap ?? null);
+  const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNov * 0.3;
   const F = freshnessScore(thought.createdAt);
   const R = await replyQualityScore(thought.id, thought.authorConcentration);
   return Q * weights.qWeight + D * weights.dWeight + F * weights.fWeight + R * weights.rWeight;
@@ -110,13 +200,15 @@ export async function rankScorePhase2WithDebug(
   viewer: ViewerProfile,
   layer2Score: number,
   weights: RecommendationWeights,
-  layer2Max: number
+  layer2Max: number,
+  maps?: LearningMaps,
+  viewerClusterIds?: string[]
 ): Promise<{ score: number; Q: number; D: number; F: number; R: number }> {
   const Q = layer2Max > 0 ? Math.min(1, layer2Score / layer2Max) : 0.5;
-  const cohortDist = cohortDistance(thought, viewer);
-  const concDiff = concentrationDiff(thought, viewer);
-  const clusterNovelty = 0.5;
-  const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNovelty * 0.3;
+  const cohortDist = cohortDistance(thought, viewer, maps?.resonanceMap ?? null);
+  const concDiff = concentrationDiff(thought, viewer, maps?.affinityMap ?? null);
+  const clusterNov = clusterNoveltyScore(thought, viewerClusterIds ?? [], maps?.clusterAffinityMap ?? null);
+  const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNov * 0.3;
   const F = freshnessScore(thought.createdAt);
   const R = await replyQualityScore(thought.id, thought.authorConcentration);
   const score = Q * weights.qWeight + D * weights.dWeight + F * weights.fWeight + R * weights.rWeight;
