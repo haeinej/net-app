@@ -10,9 +10,9 @@ import {
   Alert,
   useWindowDimensions,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
-import { colors, spacing, typography } from "../../theme";
+import { colors, spacing, fontFamily } from "../../theme";
 import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
 import {
   getMyUserId,
@@ -24,7 +24,6 @@ import {
 } from "../../lib/api";
 
 export default function MeScreen() {
-  const router = useRouter();
   const { width } = useWindowDimensions();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,7 +141,7 @@ export default function MeScreen() {
   if (loading && !profile) {
     return (
       <View style={styles.container}>
-        <View style={[styles.photoWrap, styles.skeletonPhoto]} />
+        <View style={styles.skeletonPhoto} />
         <View style={styles.skeletonName} />
         <ActivityIndicator size="small" color={colors.TYPE_MUTED} style={styles.loader} />
       </View>
@@ -168,61 +167,71 @@ export default function MeScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.card}>
-        <View style={styles.photoWrap}>
-          {profile.photo_url && !editing ? (
-            <Image
-              source={{ uri: profile.photo_url }}
-              style={styles.photo}
-            />
-          ) : editing ? (
-            <View style={styles.photoPlaceholder}>
-              <Text style={styles.photoPlaceholderText}>Photo URL</Text>
-              <TextInput
-                style={styles.photoUrlInput}
-                placeholder="https://..."
-                placeholderTextColor={colors.TYPE_MUTED}
-                value={editPhotoUrl}
-                onChangeText={setEditPhotoUrl}
-              />
-            </View>
-          ) : (
-            <View style={[styles.photo, styles.photoEmpty]} />
-          )}
-        </View>
-        {editing ? (
-          <>
-            <TextInput
-              style={styles.nameInput}
-              placeholder="Name"
-              placeholderTextColor={colors.TYPE_MUTED}
-              value={editName}
-              onChangeText={setEditName}
-            />
-            <View style={styles.editActions}>
-              <TouchableOpacity onPress={cancelEdit}>
-                <Text style={styles.cancelBtn}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-                onPress={saveEdit}
-                disabled={saving}
-              >
-                <Text style={styles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+      {/* Hero photo with gradient */}
+      <View style={styles.heroWrap}>
+        {profile.photo_url ? (
+          <Image
+            source={{ uri: profile.photo_url }}
+            style={styles.heroPhoto}
+            contentFit="cover"
+          />
         ) : (
-          <>
-            <Text style={styles.name}>{profile.name || "—"}</Text>
-            <TouchableOpacity style={styles.editBtn} onPress={startEdit}>
-              <Text style={styles.editBtnText}>Edit profile</Text>
-            </TouchableOpacity>
-          </>
+          <View style={[styles.heroPhoto, styles.heroPhotoEmpty]} />
         )}
+        <LinearGradient
+          colors={["transparent", colors.PANEL_DEEP]}
+          style={styles.heroGradient}
+          start={{ x: 0.5, y: 0.1 }}
+          end={{ x: 0.5, y: 1 }}
+        />
       </View>
 
-      <Text style={styles.deckTitle}>Deck</Text>
+      {/* Name */}
+      <Text style={styles.name}>{profile.name || "—"}</Text>
+
+      {/* Action buttons */}
+      {editing ? (
+        <View style={styles.editSection}>
+          <TextInput
+            style={styles.nameInput}
+            placeholder="Name"
+            placeholderTextColor="rgba(245,240,234,0.3)"
+            value={editName}
+            onChangeText={setEditName}
+          />
+          <TextInput
+            style={styles.photoUrlInput}
+            placeholder="Photo URL (https://...)"
+            placeholderTextColor="rgba(245,240,234,0.3)"
+            value={editPhotoUrl}
+            onChangeText={setEditPhotoUrl}
+          />
+          <View style={styles.editActions}>
+            <TouchableOpacity style={styles.glassBtn} onPress={cancelEdit}>
+              <Text style={styles.glassBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+              onPress={saveEdit}
+              disabled={saving}
+            >
+              <Text style={styles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.glassBtn} onPress={startEdit}>
+            <Text style={styles.glassBtnText}>Edit Profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.glassBtn}>
+            <Text style={styles.glassBtnText}>Settings</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Deck */}
+      <Text style={styles.deckTitle}>DECK</Text>
       {profile.thoughts.length === 0 ? (
         <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
       ) : (
@@ -231,6 +240,8 @@ export default function MeScreen() {
             <ProfileThoughtCard
               thought={t}
               onLongPress={() => handleDeleteThought(t)}
+              dark
+              authorName={profile.name ?? undefined}
             />
           </View>
         ))
@@ -242,136 +253,140 @@ export default function MeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.WARM_GROUND,
+    backgroundColor: colors.PANEL_DEEP,
   },
   content: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.belowHeader,
     paddingBottom: 40,
   },
-  card: {
-    backgroundColor: colors.CARD_GROUND,
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 24,
-    alignItems: "center",
-  },
-  photoWrap: {
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  photo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    overflow: "hidden",
-  },
-  photoEmpty: {
-    backgroundColor: colors.TYPE_MUTED,
-    opacity: 0.5,
-  },
-  photoPlaceholder: {
-    width: 80,
-    alignItems: "center",
-  },
-  photoPlaceholderText: {
-    ...typography.metadata,
-    marginBottom: 4,
-  },
-  photoUrlInput: {
-    ...typography.context,
-    fontSize: 10,
-    color: colors.TYPE_DARK,
-    padding: 6,
-    borderWidth: 1,
-    borderColor: "rgba(26,26,22,0.1)",
-    borderRadius: 6,
+  heroWrap: {
     width: "100%",
+    height: 140,
+    marginBottom: -20,
   },
-  skeletonPhoto: {
-    width: 80,
+  heroPhoto: {
+    width: "100%",
+    height: "100%",
+  },
+  heroPhotoEmpty: {
+    backgroundColor: "rgba(245,240,234,0.06)",
+  },
+  heroGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.CARD_GROUND,
-    opacity: 0.6,
   },
-  skeletonName: {
-    width: 120,
-    height: 18,
-    backgroundColor: colors.CARD_GROUND,
-    opacity: 0.6,
+  name: {
+    fontFamily: fontFamily.comico,
+    fontSize: 16,
+    color: colors.WARM_GROUND,
+    textAlign: "center",
     marginBottom: 16,
   },
-  loader: { marginTop: 16 },
-  name: {
-    ...typography.label,
-    fontSize: 14,
-    color: colors.TYPE_DARK,
-    marginBottom: 8,
+  actionRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: spacing.screenPadding,
+    marginBottom: 28,
+  },
+  glassBtn: {
+    backgroundColor: "rgba(245,240,234,0.08)",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  glassBtnText: {
+    fontFamily: fontFamily.comico,
+    fontSize: 6,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: "rgba(245,240,234,0.6)",
+  },
+  editSection: {
+    paddingHorizontal: spacing.screenPadding,
+    marginBottom: 28,
+    alignItems: "center",
   },
   nameInput: {
-    ...typography.label,
+    fontFamily: fontFamily.sentient,
     fontSize: 14,
-    color: colors.TYPE_DARK,
+    color: colors.WARM_GROUND,
     marginBottom: 8,
     paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: "rgba(26,26,22,0.1)",
-    borderRadius: 6,
+    borderColor: "rgba(245,240,234,0.15)",
+    borderRadius: 8,
     width: "100%",
-    maxWidth: 240,
+    maxWidth: 260,
   },
-  editBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  editBtnText: {
-    ...typography.label,
-    fontSize: 8,
-    color: colors.OLIVE,
+  photoUrlInput: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 10,
+    color: colors.WARM_GROUND,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "rgba(245,240,234,0.15)",
+    borderRadius: 8,
+    width: "100%",
+    maxWidth: 260,
+    marginBottom: 12,
   },
   editActions: {
     flexDirection: "row",
-    gap: 16,
-    marginTop: 8,
-  },
-  cancelBtn: {
-    ...typography.metadata,
-    color: colors.TYPE_MUTED,
+    gap: 12,
   },
   saveBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 10,
     backgroundColor: colors.OLIVE,
   },
-  saveBtnDisabled: { opacity: 0.6 },
+  saveBtnDisabled: { opacity: 0.5 },
   saveBtnText: {
-    ...typography.label,
-    fontSize: 8,
+    fontFamily: fontFamily.comico,
+    fontSize: 6,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
     color: colors.TYPE_WHITE,
   },
   deckTitle: {
-    ...typography.label,
-    fontSize: 8,
-    color: colors.TYPE_MUTED,
+    fontFamily: fontFamily.comico,
+    fontSize: 7,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    color: "rgba(245,240,234,0.35)",
+    paddingHorizontal: spacing.screenPadding,
     marginBottom: 12,
   },
   thoughtWrap: {
     marginBottom: spacing.cardGap,
+    paddingHorizontal: spacing.screenPadding,
   },
   emptyDeck: {
-    ...typography.replyInput,
+    fontFamily: fontFamily.sentient,
     fontSize: 11,
-    color: colors.TYPE_MUTED,
+    color: "rgba(245,240,234,0.35)",
     textAlign: "center",
     marginTop: 8,
   },
+  skeletonPhoto: {
+    width: "100%",
+    height: 140,
+    backgroundColor: "rgba(245,240,234,0.04)",
+  },
+  skeletonName: {
+    width: 120,
+    height: 18,
+    backgroundColor: "rgba(245,240,234,0.06)",
+    borderRadius: 4,
+    alignSelf: "center",
+    marginTop: 20,
+    marginBottom: 16,
+  },
+  loader: { marginTop: 16, alignSelf: "center" },
   centered: {
     flex: 1,
     justifyContent: "center",
@@ -379,17 +394,22 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   hint: {
-    ...typography.context,
-    color: colors.TYPE_MUTED,
+    fontFamily: fontFamily.sentient,
+    fontSize: 11,
+    color: "rgba(245,240,234,0.4)",
     textAlign: "center",
   },
   errorText: {
-    ...typography.context,
-    color: colors.TYPE_DARK,
+    fontFamily: fontFamily.sentient,
+    fontSize: 11,
+    color: "rgba(245,240,234,0.6)",
     marginBottom: 12,
   },
   retryText: {
     color: colors.OLIVE,
-    ...typography.label,
+    fontFamily: fontFamily.comico,
+    fontSize: 7,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
 });

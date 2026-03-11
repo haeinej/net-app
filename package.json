@@ -1,0 +1,13 @@
+{
+  "name": "ohm-app",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npm --prefix mobile run start --",
+    "dev": "npm --prefix mobile run start --",
+    "ios": "npm --prefix mobile run ios --",
+    "android": "npm --prefix mobile run android --",
+    "web": "npm --prefix mobile exec expo start --web",
+    "lint": "npm --prefix mobile run lint"
+  }
+}

@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { colors, spacing, typography } from "../../theme";
+import { colors, spacing, typography, fontFamily } from "../../theme";
 import {
   fetchConversations,
   type ConversationListItem,
@@ -156,6 +156,9 @@ export default function ConversationsScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenTitle}>Conversations</Text>
+      </View>
       <FlatList
         data={list}
         keyExtractor={(item) => item.id}
@@ -178,34 +181,45 @@ export default function ConversationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.WARM_GROUND,
+    backgroundColor: colors.CARD_GROUND,
+  },
+  screenHeader: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: 14,
+  },
+  screenTitle: {
+    fontFamily: fontFamily.comico,
+    fontSize: 14,
+    letterSpacing: -0.3,
+    color: colors.TYPE_DARK,
   },
   listContent: {
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.belowHeader,
+    paddingTop: 0,
+    paddingBottom: spacing.cardGap,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(26,26,22,0.06)",
+    backgroundColor: colors.WARM_GROUND,
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 8,
   },
   rowDormant: {
     opacity: 0.5,
   },
   avatarWrap: {
     position: "relative",
-    marginRight: 12,
+    marginRight: 10,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
   avatarPlc: {
-    backgroundColor: colors.TYPE_MUTED,
+    backgroundColor: colors.PANEL_DEEP,
   },
   unreadDot: {
     position: "absolute",
@@ -228,19 +242,23 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 7,
+    letterSpacing: 1,
     color: colors.TYPE_DARK,
     flex: 1,
     marginRight: 8,
   },
   time: {
-    ...typography.metadata,
+    fontFamily: fontFamily.comico,
+    fontSize: 6,
+    letterSpacing: 0.5,
     color: colors.TYPE_MUTED,
   },
   preview: {
     ...typography.context,
-    fontSize: 10,
-    color: colors.TYPE_DARK,
+    fontSize: 8.5,
+    color: colors.TYPE_MUTED,
+    lineHeight: 12,
   },
   textMuted: {
     color: colors.TYPE_MUTED,

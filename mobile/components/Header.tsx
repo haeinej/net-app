@@ -14,25 +14,27 @@ export function Header({ hasNotifications = false, onNotificationPress }: Header
 
   return (
     <View style={styles.row}>
-      <View style={styles.left}>
+      <Text style={styles.logo}>
+        ohm<Text style={styles.logoPeriod}>.</Text>
+      </Text>
+      <View style={styles.right}>
         {hasNotifications ? (
           <TouchableOpacity
             style={styles.notificationDot}
             onPress={onNotificationPress}
             accessibilityLabel="Open notifications"
-          />
+          >
+            <View style={styles.notificationInner} />
+          </TouchableOpacity>
         ) : null}
+        <TouchableOpacity
+          style={styles.compose}
+          onPress={() => router.push("/post")}
+          accessibilityLabel="Post a thought"
+        >
+          <Text style={styles.composeText}>Post</Text>
+        </TouchableOpacity>
       </View>
-      <Text style={styles.logo}>
-        ohm<Text style={styles.logoPeriod}>.</Text>
-      </Text>
-      <TouchableOpacity
-        style={styles.compose}
-        onPress={() => router.push("/post")}
-        accessibilityLabel="Post a thought"
-      >
-        <Text style={styles.plus}>+</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -46,16 +48,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     minHeight: 44,
   },
-  left: {
-    width: spacing.notificationDotSize + 8,
-    alignItems: "flex-start",
-  },
-  notificationDot: {
-    width: spacing.notificationDotSize,
-    height: spacing.notificationDotSize,
-    borderRadius: spacing.notificationDotSize / 2,
-    backgroundColor: colors.VERMILLION,
-  },
   logo: {
     ...typography.logo,
     fontFamily: fontFamily.comico,
@@ -65,15 +57,36 @@ const styles = StyleSheet.create({
   logoPeriod: {
     color: colors.VERMILLION,
   },
-  compose: {
-    width: 36,
-    height: 36,
+  right: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  notificationDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.VERMILLION,
     alignItems: "center",
     justifyContent: "center",
   },
-  plus: {
-    fontSize: 22,
-    fontWeight: "300",
-    color: colors.TYPE_DARK,
+  notificationInner: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "#FFFFFF",
+  },
+  compose: {
+    backgroundColor: colors.PANEL_DEEP,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  composeText: {
+    fontFamily: fontFamily.comico,
+    fontSize: 6,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    color: "#FFFFFF",
   },
 });

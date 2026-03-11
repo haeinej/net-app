@@ -9,15 +9,21 @@ interface WarmthBarProps {
   height: number;
 }
 
+const warmthColorMap: Record<WarmthLevel, string | null> = {
+  none: null,
+  low: colors.CHARTREUSE,
+  medium: colors.OLIVE,
+  full: colors.VERMILLION,
+};
+
 export function WarmthBar({ warmthLevel, height }: WarmthBarProps) {
-  const opacity =
-    warmthLevel === "none" ? 0 : warmthLevel === "low" ? 0.3 : warmthLevel === "medium" ? 0.6 : 1;
+  const bg = warmthColorMap[warmthLevel];
   return (
     <View
       style={[
         styles.bar,
         { height },
-        opacity > 0 && { backgroundColor: colors.VERMILLION, opacity },
+        bg != null && { backgroundColor: bg },
       ]}
     />
   );

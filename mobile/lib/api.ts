@@ -1,4 +1,34 @@
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
+const AUTH_REQUEST_TIMEOUT_MS = 8000;
+
+async function fetchAuth(
+  path: string,
+  init: RequestInit
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(`${API_URL}${path}`, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `API timeout after ${AUTH_REQUEST_TIMEOUT_MS / 1000}s. Check that the API server is running at ${API_URL}.`
+      );
+    }
+
+    if (error instanceof TypeError) {
+      throw new Error(`Cannot reach API at ${API_URL}. Start the API server and verify EXPO_PUBLIC_API_URL.`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export type WarmthLevel = "none" | "low" | "medium" | "full";
 
@@ -487,7 +517,7 @@ export interface AuthResponse {
 }
 
 export async function register(body: RegisterBody): Promise<AuthResponse> {
-  const res = await fetch(`${API_URL}/api/auth/register`, {
+  const res = await fetchAuth("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -498,7 +528,7 @@ export async function register(body: RegisterBody): Promise<AuthResponse> {
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
-  const res = await fetch(`${API_URL}/api/auth/login`, {
+  const res = await fetchAuth("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
