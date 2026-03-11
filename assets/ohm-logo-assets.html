@@ -361,9 +361,8 @@ body {
 }
 .screen-body { padding: 0 12px 12px; }
 
-/* Mini thought card */
+/* Mini thought card — image-based (Panel 1) */
 .mini-card {
-  background: var(--warm);
   border-radius: 6px;
   margin-bottom: 8px;
   display: flex;
@@ -373,34 +372,59 @@ body {
 .mini-warmth--full { background: var(--vermillion); }
 .mini-warmth--mid { background: var(--olive); }
 .mini-warmth--low { background: var(--chartreuse); }
-.mini-content { padding: 10px 12px; flex: 1; }
-.mini-meta {
+.mini-card-inner { flex: 1; display: flex; flex-direction: column; }
+.mini-card-image {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  overflow: hidden;
+}
+.mini-card-image-bg {
+  width: 100%;
+  height: 100%;
+  filter: saturate(.4) brightness(.7) contrast(.9);
+}
+.mini-card-sentence {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 16px 10px 8px;
+  background: linear-gradient(to top, rgba(0,0,0,.55), transparent);
+  font-family: 'Sentient', serif;
+  font-weight: 300;
+  font-size: 7.5px;
+  line-height: 1.5;
+  color: white;
+}
+.mini-card-meta {
+  background: var(--card);
+  padding: 6px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
 }
 .mini-avatar {
-  width: 16px; height: 16px; border-radius: 50%; background: var(--deep);
+  width: 14px; height: 14px; border-radius: 50%; background: var(--deep); flex-shrink: 0;
 }
 .mini-name {
   font-family: 'Comico', serif;
-  font-size: 6px;
+  font-size: 5.5px;
   letter-spacing: 1px;
   text-transform: uppercase;
-}
-.mini-text {
-  font-weight: 300;
-  font-size: 9.5px;
-  line-height: 1.55;
   color: var(--dark);
 }
-.mini-context {
-  font-weight: 300;
-  font-size: 7.5px;
+.mini-card-date {
+  font-family: 'Comico', serif;
+  font-size: 5px;
+  letter-spacing: .5px;
   color: var(--muted);
-  margin-top: 5px;
+  margin-left: auto;
 }
+/* Dark variant for Me screen */
+.mini-card--dark .mini-card-meta {
+  background: rgba(245,240,234,.06);
+}
+.mini-card--dark .mini-name { color: rgba(245,240,234,.5); }
+.mini-card--dark .mini-card-date { color: rgba(245,240,234,.25); }
 
 /* Mini conversation row */
 .mini-convo {
@@ -504,6 +528,84 @@ body {
   text-transform: uppercase;
 }
 .mini-nav-item--active span { color: var(--vermillion); }
+
+/* ── Contact Card Profile (Me screen) ── */
+.mini-contact-poster {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  overflow: hidden;
+}
+.mini-contact-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+.mini-contact-gradient {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 60%;
+  background: linear-gradient(to top, var(--deep) 10%, transparent);
+}
+.mini-contact-name {
+  font-family: 'Comico', serif;
+  font-size: 16px;
+  letter-spacing: -0.3px;
+  color: var(--warm);
+  text-align: center;
+  padding: 8px 12px 12px;
+  margin-top: -8px;
+  position: relative;
+}
+.mini-contact-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px 14px;
+}
+.mini-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: rgba(245,240,234,.08);
+  border-radius: 10px;
+  padding: 8px 14px;
+  flex: 1;
+}
+.mini-action-btn span {
+  font-family: 'Comico', serif;
+  font-size: 5.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(245,240,234,.5);
+}
+.mini-contact-info {
+  padding: 0 12px 12px;
+}
+.mini-info-card {
+  background: rgba(245,240,234,.06);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.mini-info-label {
+  font-family: 'Comico', serif;
+  font-size: 6.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(245,240,234,.35);
+}
+.mini-info-value {
+  font-family: 'Sentient', serif;
+  font-weight: 300;
+  font-size: 8.5px;
+  color: rgba(245,240,234,.6);
+}
 
 /* ── Buttons & Components ── */
 .comp-grid {
@@ -805,28 +907,49 @@ body {
         </div>
       </div>
       <div class="screen-body">
+        <!-- Thought 1 -->
         <div class="mini-card">
           <div class="mini-warmth mini-warmth--full"></div>
-          <div class="mini-content">
-            <div class="mini-meta"><div class="mini-avatar"></div><span class="mini-name">Anonymous</span></div>
-            <p class="mini-text">Sometimes the most honest conversations happen with people who have no reason to lie to you.</p>
-            <p class="mini-context">3h &middot; 12 resonated</p>
+          <div class="mini-card-inner">
+            <div class="mini-card-image">
+              <div class="mini-card-image-bg" style="background: linear-gradient(135deg, #4a3f35 0%, #6b5d4f 30%, #8a7b6a 50%, #5c6654 70%, #3d4a3a 100%);"></div>
+              <p class="mini-card-sentence">Sometimes the most honest conversations happen with people who have no reason to lie to you.</p>
+            </div>
+            <div class="mini-card-meta">
+              <div class="mini-avatar"></div>
+              <span class="mini-name">Anonymous</span>
+              <span class="mini-card-date">3h</span>
+            </div>
           </div>
         </div>
+        <!-- Thought 2 -->
         <div class="mini-card">
           <div class="mini-warmth mini-warmth--mid"></div>
-          <div class="mini-content">
-            <div class="mini-meta"><div class="mini-avatar"></div><span class="mini-name">Anonymous</span></div>
-            <p class="mini-text">What if the person who understands you most is someone you've never met?</p>
-            <p class="mini-context">5h &middot; 8 resonated</p>
+          <div class="mini-card-inner">
+            <div class="mini-card-image">
+              <div class="mini-card-image-bg" style="background: linear-gradient(160deg, #3a4555 0%, #5a6b7a 35%, #7a8a8f 55%, #4a5a50 80%, #2f3a2f 100%);"></div>
+              <p class="mini-card-sentence">What if the person who understands you most is someone you've never met?</p>
+            </div>
+            <div class="mini-card-meta">
+              <div class="mini-avatar"></div>
+              <span class="mini-name">Anonymous</span>
+              <span class="mini-card-date">5h</span>
+            </div>
           </div>
         </div>
+        <!-- Thought 3 -->
         <div class="mini-card">
           <div class="mini-warmth mini-warmth--low"></div>
-          <div class="mini-content">
-            <div class="mini-meta"><div class="mini-avatar"></div><span class="mini-name">Anonymous</span></div>
-            <p class="mini-text">I've been thinking about how silence between two people can mean completely different things.</p>
-            <p class="mini-context">8h &middot; 4 resonated</p>
+          <div class="mini-card-inner">
+            <div class="mini-card-image">
+              <div class="mini-card-image-bg" style="background: linear-gradient(140deg, #5a4a40 0%, #7a6b5a 30%, #9a8a70 50%, #6a6a5a 75%, #4a4540 100%);"></div>
+              <p class="mini-card-sentence">I've been thinking about how silence between two people can mean completely different things.</p>
+            </div>
+            <div class="mini-card-meta">
+              <div class="mini-avatar"></div>
+              <span class="mini-name">Anonymous</span>
+              <span class="mini-card-date">8h</span>
+            </div>
           </div>
         </div>
       </div>
@@ -836,11 +959,11 @@ body {
           <span>Worlds</span>
         </div>
         <div class="mini-nav-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4,4 L20,4 L20,16 L12,16 L8,20 L8,16 L4,16 Z"/></svg>
+          <img src="images/logo_nobackground.png" width="16" height="16" style="object-fit: contain;" alt="">
           <span>Conversations</span>
         </div>
         <div class="mini-nav-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4,20 C4,16 8,13 12,13 C16,13 20,16 20,20"/></svg>
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>
           <span>Me</span>
         </div>
       </div>
@@ -892,58 +1015,81 @@ body {
           <span>Worlds</span>
         </div>
         <div class="mini-nav-item mini-nav-item--active">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--vermillion)" stroke-width="1.5"><path d="M4,4 L20,4 L20,16 L12,16 L8,20 L8,16 L4,16 Z"/></svg>
+          <img src="images/logo_nobackground.png" width="16" height="16" style="object-fit: contain;" alt="">
           <span>Conversations</span>
         </div>
         <div class="mini-nav-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4,20 C4,16 8,13 12,13 C16,13 20,16 20,20"/></svg>
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>
           <span>Me</span>
         </div>
       </div>
     </div>
 
     <!-- Me -->
-    <div class="screen-frame">
-      <div class="screen-status"><span>9:41</span></div>
-      <div class="screen-header">
-        <div class="screen-title">Me</div>
+    <div class="screen-frame" style="background: var(--deep); border-color: rgba(245,240,234,.06);">
+      <div class="screen-status" style="color: rgba(245,240,234,.5);"><span>9:41</span></div>
+      <!-- Photo + Name -->
+      <div class="mini-contact-poster">
+        <img src="images/profile-photo.jpg" alt="" class="mini-contact-photo">
+        <div class="mini-contact-gradient"></div>
       </div>
-      <div class="mini-profile-header">
-        <div class="mini-profile-pic"></div>
-        <p class="mini-profile-name">Your Profile</p>
-        <p class="mini-profile-bio">No followers. No likes. Just thoughts and the people who resonated with them.</p>
-        <div class="mini-stat-row">
-          <div class="mini-stat"><p class="mini-stat-num">7</p><p class="mini-stat-label">Thoughts</p></div>
-          <div class="mini-stat"><p class="mini-stat-num">3</p><p class="mini-stat-label">Crossings</p></div>
-        </div>
-      </div>
-      <div class="screen-body">
-        <div class="mini-card">
+      <div class="mini-contact-name">Haein Jung</div>
+      <!-- Thought cards stack (the deck) -->
+      <div class="screen-body" style="padding: 0 12px 12px;">
+        <div class="mini-card mini-card--dark">
           <div class="mini-warmth mini-warmth--full"></div>
-          <div class="mini-content">
-            <p class="mini-text">The best technology disappears. It leaves only the human on the other side.</p>
-            <p class="mini-context">2d &middot; 24 resonated</p>
+          <div class="mini-card-inner">
+            <div class="mini-card-image">
+              <div class="mini-card-image-bg" style="background: linear-gradient(135deg, #3a3530 0%, #5a4f45 30%, #7a6a5a 55%, #4a5045 80%, #2a2520 100%);"></div>
+              <p class="mini-card-sentence">The best technology disappears. It leaves only the human on the other side.</p>
+            </div>
+            <div class="mini-card-meta">
+              <div class="mini-avatar" style="background: rgba(245,240,234,.2);"></div>
+              <span class="mini-name">Haein Jung</span>
+              <span class="mini-card-date">2d</span>
+            </div>
           </div>
         </div>
-        <div class="mini-card">
+        <div class="mini-card mini-card--dark">
           <div class="mini-warmth mini-warmth--mid"></div>
-          <div class="mini-content">
-            <p class="mini-text">Every great idea started as a half-formed thought someone dared to share.</p>
-            <p class="mini-context">5d &middot; 6 resonated</p>
+          <div class="mini-card-inner">
+            <div class="mini-card-image">
+              <div class="mini-card-image-bg" style="background: linear-gradient(160deg, #40383a 0%, #5a5055 35%, #6a6570 55%, #484550 80%, #302a2f 100%);"></div>
+              <p class="mini-card-sentence">Every great idea started as a half-formed thought someone dared to share.</p>
+            </div>
+            <div class="mini-card-meta">
+              <div class="mini-avatar" style="background: rgba(245,240,234,.2);"></div>
+              <span class="mini-name">Haein Jung</span>
+              <span class="mini-card-date">5d</span>
+            </div>
+          </div>
+        </div>
+        <div class="mini-card mini-card--dark">
+          <div class="mini-warmth mini-warmth--low"></div>
+          <div class="mini-card-inner">
+            <div class="mini-card-image">
+              <div class="mini-card-image-bg" style="background: linear-gradient(145deg, #454035 0%, #6a6050 35%, #8a7a65 50%, #555545 75%, #353025 100%);"></div>
+              <p class="mini-card-sentence">Silence between two people can mean completely different things.</p>
+            </div>
+            <div class="mini-card-meta">
+              <div class="mini-avatar" style="background: rgba(245,240,234,.2);"></div>
+              <span class="mini-name">Haein Jung</span>
+              <span class="mini-card-date">1w</span>
+            </div>
           </div>
         </div>
       </div>
-      <div class="mini-nav">
-        <div class="mini-nav-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="none"/></svg>
+      <div class="mini-nav" style="border-top-color: rgba(245,240,234,.06);">
+        <div class="mini-nav-item" style="color: rgba(245,240,234,.35);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="rgba(245,240,234,.35)" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="none"/></svg>
           <span>Worlds</span>
         </div>
-        <div class="mini-nav-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4,4 L20,4 L20,16 L12,16 L8,20 L8,16 L4,16 Z"/></svg>
+        <div class="mini-nav-item" style="color: rgba(245,240,234,.35);">
+          <img src="images/logo_nobackground.png" width="16" height="16" style="object-fit: contain; opacity: .35;" alt="">
           <span>Conversations</span>
         </div>
         <div class="mini-nav-item mini-nav-item--active">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--vermillion)" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4,20 C4,16 8,13 12,13 C16,13 20,16 20,20"/></svg>
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8" fill="var(--vermillion)"/></svg>
           <span>Me</span>
         </div>
       </div>
