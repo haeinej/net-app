@@ -261,10 +261,10 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 16,
+    bottom: 14,
     fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.2,
+    lineHeight: 26,
+    letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
   },
   previewHint: {

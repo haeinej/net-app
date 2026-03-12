@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   },
   warmTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(60, 45, 30, 0.25)",
+    backgroundColor: "rgba(60, 45, 30, 0.35)",
   },
   content: {
     ...StyleSheet.absoluteFillObject,

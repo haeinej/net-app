@@ -571,6 +571,7 @@ const styles = StyleSheet.create({
   },
   panel1Inner: {
     flexDirection: "row",
+    height: IMAGE_HEIGHT,
   },
   sentence: {
     fontFamily: fontFamily.sentient,
@@ -578,14 +579,11 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 18,
-    fontSize: 24,
-    lineHeight: 27,
-    letterSpacing: -0.35,
+    bottom: 14,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
-    textShadowColor: "rgba(8,6,4,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
   },
   dotsHint: {
     position: "absolute",
