@@ -3,26 +3,41 @@
     "name": "ohm.",
     "slug": "ohm-app",
     "version": "1.0.0",
+    "description": "Share one thought at a time and let it open private conversations.",
     "scheme": "ohm",
     "orientation": "portrait",
-    "icon": "./assets/images/ohm-logo.png",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/images/ohm-app-icon.png",
     "splash": {
       "backgroundColor": "#F5F0EA"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ohm.app"
+      "bundleIdentifier": "com.ohm.app",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSPhotoLibraryUsageDescription": "Allow ohm. to access your photos so you can choose a profile or thought image."
+      }
     },
     "android": {
       "package": "com.ohm.app",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/ohm-app-icon.png",
         "backgroundColor": "#F5F0EA"
       }
     },
     "plugins": [
       "expo-dev-client",
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow ohm. to access your photos so you can choose a profile or thought image."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

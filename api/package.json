@@ -2,8 +2,11 @@
   "name": "ohm-api",
   "version": "1.0.0",
   "scripts": {
-    "dev": "node --dns-result-order=ipv4first node_modules/.bin/tsx watch --tsconfig tsconfig.json src/index.ts",
-    "build": "tsc",
+    "dev": "npm run build && npm run start",
+    "dev:tsx": "node --dns-result-order=ipv4first node_modules/.bin/tsx --tsconfig tsconfig.json src/index.ts",
+    "dev:watch": "node --dns-result-order=ipv4first node_modules/.bin/tsx watch --tsconfig tsconfig.json src/index.ts",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit --pretty false",
+    "build": "node --dns-result-order=ipv4first scripts/build.mjs",
     "start": "node --dns-result-order=ipv4first dist/index.js",
     "db:migrate": "node --dns-result-order=ipv4first -r tsx/cjs src/db/migrate.ts",
     "db:ping": "node --dns-result-order=ipv4first -r tsx/cjs scripts/ping-db.ts",

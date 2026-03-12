@@ -2,6 +2,7 @@
 -- Run this migration with: npm run db:migrate (or your migration runner)
 
 -- Enable pgvector for embedding similarity search
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Enums

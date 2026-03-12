@@ -16,6 +16,7 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
+import { ScreenExitButton } from "../../components/ScreenExitButton";
 import {
   fetchConversationMessages,
   postConversationMessage,
@@ -236,6 +237,7 @@ export default function ConversationThreadScreen() {
         <Text style={styles.headerName} numberOfLines={1}>
           {otherName ? otherName.toUpperCase() : "Conversation"}
         </Text>
+        <ScreenExitButton onPress={() => router.back()} style={styles.headerExit} />
       </View>
 
       {loading && messages.length === 0 ? (
@@ -574,7 +576,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingTop: 20,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(26,26,22,0.06)",
     backgroundColor: colors.WARM_GROUND,
@@ -601,6 +604,9 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: colors.TYPE_DARK,
     flex: 1,
+  },
+  headerExit: {
+    marginLeft: 8,
   },
   loadingWrap: {
     flex: 1,

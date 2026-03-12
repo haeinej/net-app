@@ -1,22 +1,25 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { colors, fontFamily, typography } from "../theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, fontFamily } from "../theme";
 import { spacing } from "../theme/spacing";
+import { BrandLockup } from "./BrandLockup";
 
 interface HeaderProps {
   /** When true, show orange notification dot and allow opening notification panel */
   hasNotifications?: boolean;
   onNotificationPress?: () => void;
+  /** Ref for walkthrough spotlight on the Post button */
+  postButtonRef?: React.RefObject<View | null>;
 }
 
-export function Header({ hasNotifications = false, onNotificationPress }: HeaderProps) {
+export function Header({ hasNotifications = false, onNotificationPress, postButtonRef }: HeaderProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.row}>
-      <Text style={styles.logo}>
-        ohm<Text style={styles.logoPeriod}>.</Text>
-      </Text>
+    <View style={[styles.row, { paddingTop: insets.top + 8 }]}>
+      <BrandLockup size="sm" />
       <View style={styles.right}>
         {hasNotifications ? (
           <TouchableOpacity
@@ -27,13 +30,15 @@ export function Header({ hasNotifications = false, onNotificationPress }: Header
             <View style={styles.notificationInner} />
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity
-          style={styles.compose}
-          onPress={() => router.push("/post")}
-          accessibilityLabel="Post a thought"
-        >
-          <Text style={styles.composeText}>Post</Text>
-        </TouchableOpacity>
+        <View ref={postButtonRef} collapsable={false}>
+          <TouchableOpacity
+            style={styles.compose}
+            onPress={() => router.push("/post")}
+            accessibilityLabel="Post a thought"
+          >
+            <Text style={styles.composeText}>Post</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -45,17 +50,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
+    paddingBottom: 12,
     minHeight: 44,
-  },
-  logo: {
-    ...typography.logo,
-    fontFamily: fontFamily.comico,
-    color: colors.TYPE_DARK,
-    textTransform: "lowercase",
-  },
-  logoPeriod: {
-    color: colors.VERMILLION,
   },
   right: {
     flexDirection: "row",

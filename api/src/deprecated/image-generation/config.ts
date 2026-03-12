@@ -10,17 +10,17 @@ export const imageConfig = {
   cdnUrl: process.env.IMAGE_CDN_URL ?? "",
   /** Max images per user per calendar day */
   dailyCapPerUser: 20,
-  /** fal-ai/flux-general (text-to-image with ip_adapters) */
-  fluxEndpoint: "fal-ai/flux-general",
+  /** fal-ai/flux/dev supports direct profile-photo conditioning */
+  fluxEndpoint: "fal-ai/flux/dev",
   /** fal-ai/flux-general/image-to-image for second-pass (crossing) */
   fluxImageToImageEndpoint: "fal-ai/flux-general/image-to-image",
   /** IP-Adapter scale: mood/palette influence, not literal face (0.3–0.4) */
   ipAdapterScale: 0.35,
-  guidanceScale: 7.5,
+  guidanceScale: 3.5,
   numInferenceSteps: 28,
   imageWidth: 1024,
   imageHeight: 768,
-  /** HuggingFace path for IP-Adapter weights (optional; if unset, text-only fallback when IP fails) */
+  /** Legacy config kept for compatibility with older image-to-image paths. */
   ipAdapterPath: process.env.FAL_IP_ADAPTER_PATH,
   ipAdapterImageEncoderPath:
     process.env.FAL_IP_ADAPTER_IMAGE_ENCODER ?? "openai/clip-vit-large-patch14",
@@ -28,7 +28,7 @@ export const imageConfig = {
 } as const;
 
 export const CINEMATIC_SUFFIX =
-  "Cinematic landscape, desaturated, film grain, low contrast, atmospheric, wide angle, muted color palette, quiet mood, no text, no people, no faces";
+  "Polished imaginative scene, soft cinematic lighting, subtle film grain, grounded textures, muted but rich color palette, expressive subject, no text, no UI, no watermark";
 
 export const NEGATIVE_PROMPT =
-  "social media, bright colors, saturated, text overlay, UI elements, faces, people, portrait, selfie, high contrast, vibrant, cartoon, illustration";
+  "text overlay, UI elements, watermark, duplicate people, extra limbs, deformed hands, blurry face, low detail, oversaturated colors";

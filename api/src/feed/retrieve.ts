@@ -25,6 +25,7 @@ function toCandidate(row: {
     userId: t.userId,
     sentence: t.sentence,
     context: t.context,
+    photoUrl: t.photoUrl,
     imageUrl: t.imageUrl,
     surfaceEmbedding: Array.isArray(t.surfaceEmbedding) ? (t.surfaceEmbedding as number[]) : null,
     resonanceEmbedding: Array.isArray(t.questionEmbedding)

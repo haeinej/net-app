@@ -2,14 +2,15 @@
  * Quick DB connection test. Run: npx tsx scripts/ping-db.ts
  * Use this to verify DATABASE_URL before running migrations.
  */
-import "dotenv/config";
+import { loadEnv } from "../src/env";
+loadEnv();
 import { setDefaultResultOrder } from "node:dns";
 setDefaultResultOrder("ipv4first");
 import postgres from "postgres";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
-  console.error("DATABASE_URL is not set in api/.env");
+  console.error("DATABASE_URL is not set in api/.env.local or api/.env");
   process.exit(1);
 }
 

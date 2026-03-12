@@ -3,7 +3,6 @@ import { eq, and, isNull, inArray, asc } from "drizzle-orm";
 import { db, thoughts, users, replies } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { processNewThought } from "../thought-processing";
-import { generateThoughtImage } from "../image";
 import { invalidateFeedCache } from "../feed";
 
 const SENTENCE_MAX = 200;
@@ -12,6 +11,9 @@ const CONTEXT_MAX = 600;
 interface CreateBody {
   sentence?: string;
   context?: string;
+  photo_url?: string;
+  preview_image_url?: string; // deprecated
+  preview_image_metadata?: Record<string, unknown>; // deprecated
 }
 
 interface ThoughtParams {
@@ -27,6 +29,8 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body ?? {};
     const sentence = typeof body.sentence === "string" ? body.sentence.trim() : "";
     const context = typeof body.context === "string" ? body.context.trim() : "";
+    const photoUrl =
+      typeof body.photo_url === "string" ? body.photo_url.trim() || null : null;
     if (!sentence) return reply.status(400).send({ error: "sentence required" });
     if (sentence.length > SENTENCE_MAX)
       return reply.status(400).send({ error: `sentence max ${SENTENCE_MAX} chars` });
@@ -39,22 +43,30 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         userId,
         sentence,
         context: context || null,
+        photoUrl,
+        imageUrl: null,
+        imageMetadata: null,
       })
-      .returning({ id: thoughts.id, sentence: thoughts.sentence, context: thoughts.context, createdAt: thoughts.createdAt });
+      .returning({
+        id: thoughts.id,
+        sentence: thoughts.sentence,
+        context: thoughts.context,
+        photoUrl: thoughts.photoUrl,
+        imageUrl: thoughts.imageUrl,
+        createdAt: thoughts.createdAt,
+      });
     if (!row) return reply.status(500).send();
 
     const thoughtId = row.id;
     processNewThought(thoughtId).catch(() => {});
-    const [author] = await db.select({ photoUrl: users.photoUrl }).from(users).where(eq(users.id, userId));
-    if (author?.photoUrl) {
-      generateThoughtImage(thoughtId, userId, sentence, author.photoUrl).catch(() => {});
-    }
     invalidateFeedCache();
 
     return reply.status(201).send({
       id: thoughtId,
       sentence: row.sentence,
       context: row.context ?? "",
+      photo_url: row.photoUrl ?? null,
+      image_url: row.imageUrl ?? null,
       created_at: row.createdAt?.toISOString(),
     });
   });
@@ -106,6 +118,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({
       panel_1: {
         sentence: t.sentence,
+        photo_url: t.photoUrl,
         image_url: t.imageUrl,
         user: author
           ? { id: author.id, name: author.name, photo_url: author.photoUrl }

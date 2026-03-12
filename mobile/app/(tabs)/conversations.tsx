@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily } from "../../theme";
 import {
   fetchConversations,
@@ -76,6 +77,7 @@ function ConversationRow({
 
 export default function ConversationsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [list, setList] = useState<ConversationListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -120,7 +122,7 @@ export default function ConversationsScreen() {
 
   if (loading && list.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
@@ -131,7 +133,7 @@ export default function ConversationsScreen() {
 
   if (error && list.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={() => { setLoading(true); load(); }}>
@@ -144,7 +146,7 @@ export default function ConversationsScreen() {
 
   if (list.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
             When you accept a reply, the conversation begins here.
@@ -155,7 +157,7 @@ export default function ConversationsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.screenHeader}>
         <Text style={styles.screenTitle}>Conversations</Text>
       </View>

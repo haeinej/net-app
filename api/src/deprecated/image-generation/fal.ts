@@ -1,6 +1,7 @@
 /**
- * fal.ai Flux + IP-Adapter calls (Phase 4).
- * Uses fal-ai/flux-general (text-to-image) with optional ip_adapters; fallback to text-only.
+ * fal.ai Flux calls (Phase 4).
+ * Uses fal-ai/flux/dev with direct reference-photo conditioning and falls back to text-only
+ * only for non-fatal reference-photo failures.
  */
 
 import { fal } from "@fal-ai/client";
@@ -19,8 +20,35 @@ export type FalImageResult = {
   usedIpAdapter: boolean;
 };
 
-function buildPrompt(sentence: string): string {
-  return `${sentence}. ${CINEMATIC_SUFFIX}`.trim();
+function describeFalError(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error);
+  const maybeError = error as {
+    message?: string;
+    body?: { detail?: string };
+  };
+  return maybeError.body?.detail || maybeError.message || String(error);
+}
+
+function isFatalFalError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { status?: number; body?: { detail?: string } };
+  const detail = maybeError.body?.detail?.toLowerCase() ?? "";
+  return maybeError.status === 401 || maybeError.status === 403 || detail.includes("exhausted balance");
+}
+
+function buildPrompt(sentence: string, context?: string | null): string {
+  const trimmedSentence = sentence.trim();
+  const trimmedContext = context?.trim();
+
+  return [
+    "Create a polished, expressive image inspired by the text.",
+    "When a reference photo is provided, preserve the person's recognizable identity while adapting the pose, outfit, framing, and environment to the idea.",
+    `Thought: ${trimmedSentence}.`,
+    trimmedContext ? `Context: ${trimmedContext}.` : null,
+    CINEMATIC_SUFFIX,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**
@@ -28,13 +56,14 @@ function buildPrompt(sentence: string): string {
  */
 export async function generateWithFlux(
   sentence: string,
-  profilePhotoUrl: string | null
+  profilePhotoUrl: string | null,
+  context?: string | null
 ): Promise<FalImageResult> {
   const key = imageConfig.falKey;
   if (!key) throw new Error("FAL_KEY is required for image generation");
   fal.config({ credentials: key });
 
-  const prompt = buildPrompt(sentence);
+  const prompt = buildPrompt(sentence, context);
   const baseInput = {
     prompt,
     negative_prompt: NEGATIVE_PROMPT,
@@ -44,24 +73,13 @@ export async function generateWithFlux(
     num_images: 1,
   };
 
-  const withIpAdapter =
-    profilePhotoUrl &&
-    imageConfig.ipAdapterPath &&
-    imageConfig.ipAdapterImageEncoderPath;
-
-  if (withIpAdapter) {
+  if (profilePhotoUrl) {
     try {
       const result = await fal.subscribe(imageConfig.fluxEndpoint as any, {
         input: {
           ...baseInput,
-          ip_adapters: [
-            {
-              path: imageConfig.ipAdapterPath!,
-              image_encoder_path: imageConfig.ipAdapterImageEncoderPath,
-              image_url: profilePhotoUrl,
-              scale: imageConfig.ipAdapterScale,
-            },
-          ],
+          ip_adapter_image_url: profilePhotoUrl,
+          ip_adapter_scale: imageConfig.ipAdapterScale,
         } as AnyInput,
         logs: false,
       });
@@ -75,14 +93,22 @@ export async function generateWithFlux(
         usedIpAdapter: true,
       };
     } catch (e) {
+      if (isFatalFalError(e)) {
+        throw new Error(describeFalError(e));
+      }
       // Fallback: text-only Flux (no profile photo influence)
     }
   }
 
-  const result = await fal.subscribe(imageConfig.fluxEndpoint as any, {
-    input: baseInput as AnyInput,
-    logs: false,
-  });
+  let result;
+  try {
+    result = await fal.subscribe(imageConfig.fluxEndpoint as any, {
+      input: baseInput as AnyInput,
+      logs: false,
+    });
+  } catch (error) {
+    throw new Error(describeFalError(error));
+  }
   const data = result.data as { images?: Array<{ url?: string }>; seed?: number };
   const url = data.images?.[0]?.url;
   if (!url) throw new Error("fal response missing images[0].url");

@@ -2,10 +2,23 @@
 # Use this file only if you need local Postgres/Ollama/TEI in containers. See README.md and docs/DEBUGGING.md.
 services:
   postgres:
-    image: ankane/pgvector:latest
+    image: pgvector/pgvector:pg17
     platform: linux/arm64
     container_name: net-postgres
-    # Uncomment to expose for local dev: ports: ["5432:5432"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ohm_local
+      POSTGRES_USER: net
+      POSTGRES_PASSWORD: localdev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U net -d ohm_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   ollama:
     image: ollama/ollama:latest

@@ -10,12 +10,17 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../theme";
 import { login } from "../lib/api";
-import { setAuth, setOnboardingComplete } from "../lib/auth-store";
+import {
+  setAuth,
+  setOnboardingComplete,
+  setOnboardingStep,
+} from "../lib/auth-store";
 import { setCachedUserId } from "../lib/api";
+import { BrandLockup } from "../components/BrandLockup";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -35,11 +40,13 @@ export default function LoginScreen() {
     setError(null);
     setLoading(true);
     try {
-      const { token, user_id } = await login(e, p);
+      const { token, user_id, onboarding_complete, onboarding_step } =
+        await login(e, p);
       await setAuth(token, user_id);
-      await setOnboardingComplete(true);
+      await setOnboardingComplete(onboarding_complete);
+      await setOnboardingStep(onboarding_step);
       setCachedUserId(user_id);
-      router.replace("/(tabs)");
+      router.replace(onboarding_complete ? "/(tabs)" : "/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Incorrect email or password");
     } finally {
@@ -54,7 +61,7 @@ export default function LoginScreen() {
       keyboardVerticalOffset={0}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>ohm.</Text>
+        <BrandLockup style={styles.brand} />
         <Text style={styles.subtitle}>Where your thoughts find someone</Text>
 
         <TextInput
@@ -99,6 +106,14 @@ export default function LoginScreen() {
         >
           <Text style={styles.linkText}>Create account</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.secondaryLink}
+          onPress={() => router.push("/privacy" as Href)}
+          disabled={loading}
+        >
+          <Text style={styles.secondaryLinkText}>Privacy policy</Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -116,10 +131,8 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
   },
-  title: {
-    ...typography.logo,
-    color: colors.TYPE_DARK,
-    marginBottom: 4,
+  brand: {
+    marginBottom: 8,
   },
   subtitle: {
     fontFamily: typography.label.fontFamily,
@@ -170,5 +183,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.TYPE_MUTED,
     textDecorationLine: "underline",
+  },
+  secondaryLink: {
+    marginTop: 12,
+    alignItems: "center",
+  },
+  secondaryLinkText: {
+    fontFamily: typography.label.fontFamily,
+    fontSize: 11,
+    color: colors.TYPE_MUTED,
   },
 });

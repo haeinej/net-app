@@ -14,6 +14,7 @@ import {
   shifts,
 } from "../db";
 import { getEmbeddingService } from "../embedding";
+import { getWarmthLevel } from "../lib/warmth";
 import { getCandidates, getBucketedCandidates } from "./retrieve";
 import { scoreThought } from "./score";
 import {
@@ -50,12 +51,6 @@ const {
 /** Cache per user (up to 100 items), 5 min TTL. */
 const cache = new Map<string, { items: FeedItem[]; expiresAt: number }>();
 const CACHE_MAX_ITEMS = 100;
-
-function getWarmthLevel(acceptedReplyCount: number): WarmthLevel {
-  if (acceptedReplyCount === 0) return "none";
-  if (acceptedReplyCount === 1) return "low";
-  return "medium";
-}
 
 async function getAcceptedReplyCounts(thoughtIds: string[]): Promise<Map<string, number>> {
   if (thoughtIds.length === 0) return new Map();
@@ -263,6 +258,7 @@ export async function getFeed(
       thought: {
         id: thought.id,
         sentence: thought.sentence,
+        photo_url: thought.photoUrl,
         image_url: thought.imageUrl,
         created_at: thought.createdAt.toISOString(),
         has_context: (thought.context ?? "").trim().length > 0,
@@ -427,6 +423,7 @@ export async function getFeedWithDebug(
       thought: {
         id: thought.id,
         sentence: thought.sentence,
+        photo_url: thought.photoUrl,
         image_url: thought.imageUrl,
         created_at: thought.createdAt.toISOString(),
         has_context: (thought.context ?? "").trim().length > 0,

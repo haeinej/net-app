@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useFocusEffect } from "expo-router";
 import {
   View,
@@ -9,11 +9,13 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing, typography } from "../../theme";
 import { Header } from "../../components/Header";
 import { ThoughtCard } from "../../components/ThoughtCard";
 import { ShiftCard } from "../../components/ShiftCard";
 import { NotificationPanel } from "../../components/NotificationPanel";
+import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
 import {
   fetchFeed,
   fetchNotifications,
@@ -22,6 +24,8 @@ import {
   type FeedItem,
   type NotificationItem,
 } from "../../lib/api";
+
+const WALKTHROUGH_SEEN_KEY = "ohm_walkthrough_seen";
 
 const PAGE_SIZE = 20;
 
@@ -37,6 +41,33 @@ export default function WorldsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { width } = useWindowDimensions();
+
+  // Walkthrough state
+  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
+  const postButtonRef = useRef<View>(null);
+  const feedCardRef = useRef<View>(null);
+  const conversationsTabRef = useRef<View>(null);
+
+  const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
+    "walkthrough-post-button": postButtonRef,
+    "walkthrough-feed-card": feedCardRef,
+    "walkthrough-conversations-tab": conversationsTabRef,
+  }).current;
+
+  // Check if walkthrough has been seen
+  useEffect(() => {
+    AsyncStorage.getItem(WALKTHROUGH_SEEN_KEY).then((val) => {
+      if (val !== "true") {
+        // Small delay to let the feed render first
+        setTimeout(() => setWalkthroughVisible(true), 800);
+      }
+    });
+  }, []);
+
+  const handleWalkthroughComplete = useCallback(() => {
+    setWalkthroughVisible(false);
+    AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
+  }, []);
 
   const loadFeed = useCallback(async (off: number, append: boolean) => {
     try {
@@ -133,6 +164,7 @@ export default function WorldsScreen() {
       <Header
         hasNotifications={hasNotifications}
         onNotificationPress={openNotifications}
+        postButtonRef={postButtonRef}
       />
       {notificationPanelOpen && (
         <NotificationPanel
@@ -159,8 +191,12 @@ export default function WorldsScreen() {
         <FlatList
           data={feed}
           keyExtractor={(item) => (item.type === "thought" ? item.thought.id : `shift-${item.id}`)}
-          renderItem={({ item }) => (
-            <View style={[styles.cardWrap, { width: width - spacing.screenPadding * 2 }]}>
+          renderItem={({ item, index }) => (
+            <View
+              ref={index === 0 ? feedCardRef : undefined}
+              collapsable={false}
+              style={[styles.cardWrap, { width: width - spacing.screenPadding * 2 }]}
+            >
               {item.type === "thought" ? (
                 <ThoughtCard item={item} />
               ) : (
@@ -188,6 +224,21 @@ export default function WorldsScreen() {
           }
         />
       )}
+
+      {/* Conversations tab ref anchor — positioned over the tab bar area */}
+      <View
+        ref={conversationsTabRef}
+        collapsable={false}
+        style={styles.conversationsTabAnchor}
+        pointerEvents="none"
+      />
+
+      {/* Onboarding walkthrough overlay */}
+      <OnboardingWalkthrough
+        visible={walkthroughVisible}
+        onComplete={handleWalkthroughComplete}
+        targetRefs={walkthroughRefs}
+      />
     </View>
   );
 }
@@ -231,5 +282,12 @@ const styles = StyleSheet.create({
   footer: {
     paddingVertical: 16,
     alignItems: "center",
+  },
+  conversationsTabAnchor: {
+    position: "absolute",
+    bottom: 0,
+    left: "33%",
+    width: "34%",
+    height: 56,
   },
 });

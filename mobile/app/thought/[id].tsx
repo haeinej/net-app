@@ -24,7 +24,9 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, IMAGE_ASPECT_RATIO } from "../../theme";
+import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { WarmthBar, type WarmthLevel } from "../../components/WarmthBar";
+import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
 import { fetchThought, postReply, type ThoughtDetailResponse } from "../../lib/api";
 import { useEngagementTracking } from "../../hooks/useEngagementTracking";
 
@@ -201,6 +203,11 @@ export default function ThoughtDetailScreen() {
   if (loading || !data) {
     return (
       <View style={[styles.loadingRoot, { paddingTop: insets.top }]}>
+        <ScreenExitButton
+          onPress={() => router.back()}
+          style={[styles.exitButton, { top: insets.top + 12 }]}
+          variant="dark"
+        />
         <View style={[styles.skeletonImage, { width: panelWidth, height: imageHeight }]} />
         <ActivityIndicator size="small" color={colors.TYPE_MUTED} style={styles.loader} />
       </View>
@@ -220,12 +227,13 @@ export default function ThoughtDetailScreen() {
           <View style={[styles.panel, { width: panelWidth, minHeight: fullPanelHeight }]}>
             <View style={styles.panel1Inner}>
               <WarmthBar warmthLevel={warmthForBar} height={imageHeight + 56} />
-              <View style={[styles.imageWrap, { width: panelWidth - spacing.warmthBarWidth, height: imageHeight }]}>
-                {p1.image_url ? (
-                  <Image source={{ uri: p1.image_url }} style={styles.image} contentFit="cover" />
-                ) : (
-                  <View style={[styles.image, styles.imagePlc]} />
-                )}
+              <ThoughtImageFrame
+                thoughtText={p1.sentence}
+                imageUrl={p1.photo_url ?? p1.image_url}
+                aspectRatio={IMAGE_ASPECT_RATIO}
+                borderRadius={0}
+                style={{ width: panelWidth - spacing.warmthBarWidth, height: imageHeight }}
+              >
                 <Text style={styles.sentenceP1} numberOfLines={2}>
                   {p1.sentence}
                 </Text>
@@ -234,7 +242,7 @@ export default function ThoughtDetailScreen() {
                   <View style={styles.dot} />
                   <View style={styles.dot} />
                 </View>
-              </View>
+              </ThoughtImageFrame>
             </View>
             <View style={styles.footerP1}>
               {p1.user?.photo_url ? (
@@ -252,10 +260,13 @@ export default function ThoughtDetailScreen() {
               contentContainerStyle={styles.panel2Content}
               showsVerticalScrollIndicator={false}
             >
+              <Text style={styles.panelLabel}>Context</Text>
               <Text style={styles.sentenceP2}>{p2.sentence}</Text>
               {p2.context ? (
                 <Text style={styles.contextP2}>{p2.context}</Text>
-              ) : null}
+              ) : (
+                <Text style={styles.panelEmpty}>No context shared yet.</Text>
+              )}
             </ScrollView>
           </View>
 
@@ -267,6 +278,10 @@ export default function ThoughtDetailScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
+              <Text style={styles.panelLabel}>Replies</Text>
+              {p3.accepted_replies.length === 0 ? (
+                <Text style={styles.panelEmpty}>No replies yet.</Text>
+              ) : null}
               {p3.accepted_replies.map((r) => (
                 <View key={r.id} style={styles.replyRow}>
                   {r.user?.photo_url ? (
@@ -328,6 +343,11 @@ export default function ThoughtDetailScreen() {
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, styles.pulseOverlay, pulseStyle]}
       />
+      <ScreenExitButton
+        onPress={() => router.back()}
+        style={[styles.exitButton, { top: insets.top + 12 }]}
+        variant="dark"
+      />
     </View>
   );
 }
@@ -348,6 +368,11 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   loader: { marginTop: 16 },
+  exitButton: {
+    position: "absolute",
+    right: spacing.screenPadding,
+    zIndex: 5,
+  },
   row: {
     flexDirection: "row",
     minHeight: "100%",
@@ -358,30 +383,24 @@ const styles = StyleSheet.create({
   panel1Inner: {
     flexDirection: "row",
   },
-  imageWrap: {
-    overflow: "hidden",
-    backgroundColor: colors.PANEL_DARK,
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  imagePlc: {
-    backgroundColor: colors.PANEL_DARK,
-  },
   sentenceP1: {
-    ...typography.thoughtSentence,
+    ...typography.thoughtDisplay,
     position: "absolute",
-    bottom: 12,
-    left: 12,
-    right: 12,
+    left: 18,
+    right: 18,
+    bottom: 18,
+    fontSize: 28,
+    lineHeight: 30,
+    letterSpacing: -0.15,
     color: colors.TYPE_WHITE,
+    textShadowColor: "rgba(8,6,4,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   dots: {
     position: "absolute",
     right: 10,
-    top: "50%",
-    marginTop: -6,
+    top: 18,
     opacity: 0.2,
   },
   dot: {
@@ -394,21 +413,25 @@ const styles = StyleSheet.create({
   footerP1: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
     backgroundColor: colors.PANEL_DARK,
   },
   avatar: {
-    width: spacing.profilePhotoSize,
-    height: spacing.profilePhotoSize,
-    borderRadius: spacing.profilePhotoSize / 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
   },
   avatarPlc: {
     backgroundColor: colors.TYPE_MUTED,
   },
   nameP1: {
-    ...typography.label,
+    fontFamily: typography.label.fontFamily,
+    fontSize: 10,
+    lineHeight: 12,
+    letterSpacing: 1,
+    textTransform: "uppercase",
     color: colors.TYPE_WHITE,
   },
   panel2: {
@@ -420,9 +443,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 40,
   },
+  panelLabel: {
+    ...typography.label,
+    fontSize: 8.5,
+    color: "rgba(255,255,255,0.48)",
+    marginBottom: 16,
+  },
   sentenceP2: {
-    ...typography.thoughtSentence,
-    fontSize: 11,
+    ...typography.thoughtDisplay,
+    fontSize: 15,
+    lineHeight: 19,
     color: colors.TYPE_WHITE,
     marginBottom: 20,
   },
@@ -430,6 +460,10 @@ const styles = StyleSheet.create({
     ...typography.context,
     fontSize: 9.5,
     color: "rgba(255,255,255,0.7)",
+  },
+  panelEmpty: {
+    ...typography.context,
+    color: "rgba(255,255,255,0.4)",
   },
   panel3: {
     backgroundColor: colors.PANEL_DEEP,
@@ -439,7 +473,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   repliesContent: {
-    paddingVertical: 16,
+    paddingVertical: 24,
     paddingBottom: 120,
   },
   replyRow: {

@@ -31,6 +31,9 @@ export default function RootLayout() {
           <Stack.Screen name="conversation/[id]" />
           <Stack.Screen name="user/[id]" />
           <Stack.Screen name="post" options={{ presentation: "modal" }} />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="privacy" />
+          <Stack.Screen name="delete-account" />
         </Stack>
       </GestureHandlerRootView>
     </SafeAreaProvider>

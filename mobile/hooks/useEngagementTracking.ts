@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
+import { API_URL } from "../lib/api-config";
 
 const FLUSH_INTERVAL_MS = 5000;
 const MAX_BUFFER_SIZE = 20;
@@ -54,11 +55,12 @@ const VIEW_P1_DELAY_MS = 1000;
 export function useEngagementTracking({
   thoughtId,
   visible = false,
-  apiUrl = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000",
+  apiUrl = API_URL,
   getToken,
 }: UseEngagementTrackingOptions): UseEngagementTrackingReturn {
   const bufferRef = useRef<EngagementEventPayload[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flushInFlightRef = useRef(false);
   const sessionIdRef = useRef<string>(uuid());
   const lastActivityRef = useRef<number>(Date.now());
   const typeStartFiredRef = useRef<boolean>(false);
@@ -75,12 +77,15 @@ export function useEngagementTracking({
   }, []);
 
   const flush = useCallback(async () => {
+    if (flushInFlightRef.current) return;
     const events = bufferRef.current;
     if (events.length === 0) return;
+
     bufferRef.current = [];
-    const token = getToken ? await getToken() : null;
+    flushInFlightRef.current = true;
     try {
-      await fetch(`${apiUrl.replace(/\/$/, "")}/api/engagement/track`, {
+      const token = getToken ? await getToken() : null;
+      const response = await fetch(`${apiUrl.replace(/\/$/, "")}/api/engagement/track`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -88,8 +93,13 @@ export function useEngagementTracking({
         },
         body: JSON.stringify({ events }),
       });
+      if (!response.ok) {
+        throw new Error("Engagement tracking failed");
+      }
     } catch {
       bufferRef.current = events.concat(bufferRef.current);
+    } finally {
+      flushInFlightRef.current = false;
     }
   }, [apiUrl, getToken]);
 

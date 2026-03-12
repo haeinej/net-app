@@ -31,6 +31,7 @@ export async function feedRoutes(app: FastifyInstance): Promise<void> {
         return {
           id: t.thought?.id,
           sentence: t.thought?.sentence,
+          photo_url: t.thought?.photo_url,
           image_url: t.thought?.image_url,
           created_at: t.thought?.created_at,
           user: t.user,

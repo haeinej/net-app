@@ -12,19 +12,27 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
+import { useRouter, type Href } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, fontFamily } from "../../theme";
 import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
 import {
   getMyUserId,
   fetchProfile,
+  isSessionInvalidError,
+  setCachedUserId,
   updateProfile,
   deleteThought,
   type ProfileResponse,
   type ProfileThought,
 } from "../../lib/api";
+import { clearAuth } from "../../lib/auth-store";
 
 export default function MeScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const heroSize = Math.min(width - spacing.screenPadding * 2, 380);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -32,6 +40,13 @@ export default function MeScreen() {
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  const resetBrokenSession = useCallback(async () => {
+    await clearAuth();
+    setCachedUserId(null);
+    setMyUserId(null);
+    router.replace("/login");
+  }, [router]);
 
   useEffect(() => {
     getMyUserId().then(setMyUserId);
@@ -49,12 +64,16 @@ export default function MeScreen() {
       setProfile(data);
       setEditName(data.name ?? "");
       setEditPhotoUrl(data.photo_url ?? "");
-    } catch {
+    } catch (error) {
+      if (isSessionInvalidError(error)) {
+        await resetBrokenSession();
+        return;
+      }
       setProfile(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resetBrokenSession]);
 
   useEffect(() => {
     if (myUserId) load();
@@ -128,11 +147,17 @@ export default function MeScreen() {
 
   if (!myUserId) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.centered}>
           <Text style={styles.hint}>
-            Set EXPO_PUBLIC_MOCK_USER_ID to your user id to see your profile.
+            Your session has ended. Log in again to manage your profile.
           </Text>
+          <TouchableOpacity
+            style={styles.reauthButton}
+            onPress={() => router.replace("/login")}
+          >
+            <Text style={styles.reauthButtonText}>Go to login</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -140,8 +165,8 @@ export default function MeScreen() {
 
   if (loading && !profile) {
     return (
-      <View style={styles.container}>
-        <View style={styles.skeletonPhoto} />
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        <View style={[styles.skeletonPhoto, { width: heroSize, height: heroSize }]} />
         <View style={styles.skeletonName} />
         <ActivityIndicator size="small" color={colors.TYPE_MUTED} style={styles.loader} />
       </View>
@@ -150,7 +175,7 @@ export default function MeScreen() {
 
   if (!profile) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.centered}>
           <Text style={styles.errorText}>Could not load profile</Text>
           <TouchableOpacity onPress={load}>
@@ -164,11 +189,11 @@ export default function MeScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* Hero photo with gradient */}
-      <View style={styles.heroWrap}>
+      <View style={[styles.heroWrap, { width: heroSize, height: heroSize }]}>
         {profile.photo_url ? (
           <Image
             source={{ uri: profile.photo_url }}
@@ -224,7 +249,10 @@ export default function MeScreen() {
           <TouchableOpacity style={styles.glassBtn} onPress={startEdit}>
             <Text style={styles.glassBtnText}>Edit Profile</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.glassBtn}>
+          <TouchableOpacity
+            style={styles.glassBtn}
+            onPress={() => router.push("/settings" as Href)}
+          >
             <Text style={styles.glassBtnText}>Settings</Text>
           </TouchableOpacity>
         </View>
@@ -242,6 +270,7 @@ export default function MeScreen() {
               onLongPress={() => handleDeleteThought(t)}
               dark
               authorName={profile.name ?? undefined}
+              authorPhotoUrl={profile.photo_url}
             />
           </View>
         ))
@@ -257,11 +286,14 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 40,
+    alignItems: "center",
   },
   heroWrap: {
-    width: "100%",
-    height: 140,
-    marginBottom: -20,
+    alignSelf: "center",
+    borderRadius: 28,
+    overflow: "hidden",
+    marginBottom: 20,
+    backgroundColor: "rgba(245,240,234,0.04)",
   },
   heroPhoto: {
     width: "100%",
@@ -275,14 +307,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 80,
+    height: "38%",
   },
   name: {
     fontFamily: fontFamily.comico,
     fontSize: 16,
     color: colors.WARM_GROUND,
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: 18,
   },
   actionRow: {
     flexDirection: "row",
@@ -358,6 +390,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: "uppercase",
     color: "rgba(245,240,234,0.35)",
+    alignSelf: "flex-start",
     paddingHorizontal: spacing.screenPadding,
     marginBottom: 12,
   },
@@ -373,8 +406,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   skeletonPhoto: {
-    width: "100%",
-    height: 140,
+    alignSelf: "center",
+    borderRadius: 28,
     backgroundColor: "rgba(245,240,234,0.04)",
   },
   skeletonName: {
@@ -398,6 +431,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "rgba(245,240,234,0.4)",
     textAlign: "center",
+  },
+  reauthButton: {
+    marginTop: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: colors.WARM_GROUND,
+  },
+  reauthButtonText: {
+    color: colors.PANEL_DEEP,
+    fontFamily: fontFamily.comico,
+    fontSize: 7,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   errorText: {
     fontFamily: fontFamily.sentient,

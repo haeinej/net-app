@@ -10,13 +10,16 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
 import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
+import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { fetchProfile, type ProfileResponse } from "../../lib/api";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,9 +41,18 @@ export default function UserProfileScreen() {
     load();
   }, [load]);
 
+  const navigationHeader = (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <Text style={styles.backArrow}>←</Text>
+      </TouchableOpacity>
+      <ScreenExitButton onPress={() => router.back()} style={styles.headerExit} />
+    </View>
+  );
+
   if (!id) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.centered}>
           <Text style={styles.hint}>Missing user</Text>
         </View>
@@ -50,12 +62,8 @@ export default function UserProfileScreen() {
 
   if (loading && !profile) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {navigationHeader}
         <View style={[styles.photoWrap, styles.skeletonPhoto]} />
         <View style={styles.skeletonName} />
         <ActivityIndicator size="small" color={colors.TYPE_MUTED} style={styles.loader} />
@@ -65,12 +73,8 @@ export default function UserProfileScreen() {
 
   if (!profile) {
     return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backArrow}>←</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {navigationHeader}
         <View style={styles.centered}>
           <Text style={styles.errorText}>Could not load profile</Text>
           <TouchableOpacity onPress={load}>
@@ -83,15 +87,11 @@ export default function UserProfileScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top + 8 }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backArrow}>←</Text>
-        </TouchableOpacity>
-      </View>
+      {navigationHeader}
 
       <View style={styles.card}>
         <View style={styles.photoWrap}>
@@ -110,7 +110,11 @@ export default function UserProfileScreen() {
       ) : (
         profile.thoughts.map((t) => (
           <View key={t.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
-            <ProfileThoughtCard thought={t} />
+            <ProfileThoughtCard
+              thought={t}
+              authorName={profile.name ?? undefined}
+              authorPhotoUrl={profile.photo_url}
+            />
           </View>
         ))
       )}
@@ -130,6 +134,8 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 8,
     marginBottom: 8,
   },
@@ -139,6 +145,9 @@ const styles = StyleSheet.create({
   backArrow: {
     fontSize: 24,
     color: colors.TYPE_DARK,
+  },
+  headerExit: {
+    marginLeft: 12,
   },
   card: {
     backgroundColor: colors.CARD_GROUND,

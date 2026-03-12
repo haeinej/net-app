@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,16 +11,9 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Alert,
-  Image,
+  Image as NativeImage,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
@@ -28,6 +21,7 @@ import {
   register,
   updateProfile,
   createThought,
+  setCachedUserId,
   type RegisterBody,
 } from "../lib/api";
 import {
@@ -37,13 +31,12 @@ import {
   getOnboardingStep,
   getStoredUserId,
 } from "../lib/auth-store";
-import { setCachedUserId } from "../lib/api";
+import { ScreenExitButton } from "../components/ScreenExitButton";
+import { BrandLockup } from "../components/BrandLockup";
+import { ThoughtImageFrame } from "../components/ThoughtImageFrame";
 
-const COHORT_YEARS = [2026, 2027, 2028, 2029];
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
-const CONTEXT_COUNT_THRESHOLD = 500;
-const DEBOUNCE_MS = 2500;
 const PHOTO_SIZE = 80;
 
 export default function OnboardingScreen() {
@@ -56,9 +49,6 @@ export default function OnboardingScreen() {
   const [name, setName] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
-  const [cohortYear, setCohortYear] = useState<number | null>(null);
-  const [currentCity, setCurrentCity] = useState("");
-  const [concentration, setConcentration] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [regError, setRegError] = useState<string | null>(null);
@@ -74,26 +64,24 @@ export default function OnboardingScreen() {
   // Step 3 (first thought)
   const [sentence, setSentence] = useState("");
   const [context, setContext] = useState("");
+  const [thoughtPhotoUrl, setThoughtPhotoUrl] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
-  const [imageStatus, setImageStatus] = useState<
-    "idle" | "generating" | "after_post"
-  >("idle");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const generatingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const previewWidth = width - spacing.screenPadding * 2;
   const previewHeight = previewWidth / IMAGE_ASPECT_RATIO;
-  const pulseOpacity = useSharedValue(0.5);
+  const selectedProfilePhoto = photoBase64 ?? photoUri;
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [s, token] = await Promise.all([
+      const [savedStep, storedUserId] = await Promise.all([
         getOnboardingStep(),
-        getStoredUserId(), // if we have userId we're past step 1
+        getStoredUserId(),
       ]);
       if (cancelled) return;
-      if (token && s >= 2 && s <= 3) setStepState(s as 1 | 2 | 3);
+      if (storedUserId && savedStep >= 2 && savedStep <= 3) {
+        setStepState(savedStep as 1 | 2 | 3);
+      }
     })();
     return () => {
       cancelled = true;
@@ -101,48 +89,10 @@ export default function OnboardingScreen() {
   }, []);
 
   useEffect(() => {
-    if (imageStatus === "generating") {
-      pulseOpacity.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 600 }),
-          withTiming(0.4, { duration: 600 })
-        ),
-        -1,
-        true
-      );
-    } else {
-      pulseOpacity.value = 0.5;
+    if (step === 3 && !thoughtPhotoUrl) {
+      setThoughtPhotoUrl(selectedProfilePhoto ?? null);
     }
-  }, [imageStatus, pulseOpacity]);
-  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulseOpacity.value }));
-
-  useEffect(() => {
-    if (!sentence.trim()) {
-      setImageStatus("idle");
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = null;
-      }
-      if (generatingRef.current) {
-        clearTimeout(generatingRef.current);
-        generatingRef.current = null;
-      }
-      return;
-    }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      setImageStatus("generating");
-      generatingRef.current = setTimeout(() => {
-        generatingRef.current = null;
-        setImageStatus("after_post");
-      }, 2500);
-    }, DEBOUNCE_MS);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (generatingRef.current) clearTimeout(generatingRef.current);
-    };
-  }, [sentence]);
+  }, [selectedProfilePhoto, step, thoughtPhotoUrl]);
 
   const pickPhoto = useCallback(async () => {
     setUploadingPhoto(true);
@@ -155,10 +105,7 @@ export default function OnboardingScreen() {
         quality: 0.8,
         base64: true,
       });
-      if (result.canceled) {
-        setUploadingPhoto(false);
-        return;
-      }
+      if (result.canceled) return;
       const asset = result.assets[0];
       if (asset?.uri) {
         setPhotoUri(asset.uri);
@@ -176,12 +123,29 @@ export default function OnboardingScreen() {
     }
   }, []);
 
+  const pickThoughtPhoto = useCallback(async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [4, 5],
+        quality: 0.8,
+        base64: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.uri) return;
+      setThoughtPhotoUrl(
+        asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri
+      );
+    } catch {
+      Alert.alert("Error", "Could not select thought photo");
+    }
+  }, []);
+
   const canContinueStep1 =
     name.trim().length > 0 &&
-    (photoUri !== null || photoBase64 !== null) &&
-    cohortYear !== null &&
-    currentCity.trim().length > 0 &&
-    concentration.trim().length > 0 &&
+    Boolean(selectedProfilePhoto) &&
     email.trim().length > 0 &&
     password.length >= 8;
 
@@ -192,18 +156,17 @@ export default function OnboardingScreen() {
     try {
       const body: RegisterBody = {
         name: name.trim(),
-        photo_url: photoBase64 ?? photoUri ?? undefined,
-        cohort_year: cohortYear!,
-        current_city: currentCity.trim(),
-        concentration: concentration.trim(),
+        photo_url: selectedProfilePhoto ?? undefined,
         email: email.trim(),
         password,
       };
-      const { token, user_id } = await register(body);
+      const { token, user_id, onboarding_complete, onboarding_step } =
+        await register(body);
       await setAuth(token, user_id);
-      await setOnboardingStep(2);
+      await setOnboardingComplete(onboarding_complete);
+      await setOnboardingStep(onboarding_step);
       setCachedUserId(user_id);
-      setStepState(2);
+      setStepState(onboarding_step);
     } catch (err) {
       setRegError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -213,11 +176,7 @@ export default function OnboardingScreen() {
     canContinueStep1,
     sendingStep1,
     name,
-    photoBase64,
-    photoUri,
-    cohortYear,
-    currentCity,
-    concentration,
+    selectedProfilePhoto,
     email,
     password,
   ]);
@@ -230,6 +189,7 @@ export default function OnboardingScreen() {
         .filter(Boolean)
         .slice(0, 3);
       await updateProfile({ interests });
+      await setOnboardingComplete(false);
       await setOnboardingStep(3);
       setStepState(3);
     } catch {
@@ -244,7 +204,7 @@ export default function OnboardingScreen() {
     if (!s || posting) return;
     setPosting(true);
     try {
-      await createThought(s, context.trim() || undefined);
+      await createThought(s, context.trim() || undefined, thoughtPhotoUrl || undefined);
       await setOnboardingComplete(true);
       await setOnboardingStep(1);
       const uid = await getStoredUserId();
@@ -254,11 +214,25 @@ export default function OnboardingScreen() {
       setPosting(false);
       Alert.alert("Error", "Could not post. Try again.");
     }
-  }, [sentence, context, posting, router]);
+  }, [sentence, context, posting, thoughtPhotoUrl, router]);
 
   const allInterestsEmpty =
     !interest1.trim() && !interest2.trim() && !interest3.trim();
   const canPostStep3 = sentence.trim().length > 0;
+  const onboardingBusy = uploadingPhoto || sendingStep1 || sendingStep2 || posting;
+
+  const handleExit = useCallback(async () => {
+    if (onboardingBusy) return;
+
+    if (step === 1) {
+      router.replace("/login");
+      return;
+    }
+
+    await setOnboardingComplete(false);
+    await setOnboardingStep(step);
+    router.replace("/(tabs)");
+  }, [onboardingBusy, router, step]);
 
   if (step === 1) {
     return (
@@ -267,6 +241,9 @@ export default function OnboardingScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
+        <View style={styles.topBar}>
+          <ScreenExitButton onPress={handleExit} disabled={onboardingBusy} />
+        </View>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={[
@@ -276,6 +253,7 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <BrandLockup size="sm" style={styles.stepBrand} />
           <Text style={styles.stepTitle}>Identity</Text>
 
           <TextInput
@@ -293,7 +271,7 @@ export default function OnboardingScreen() {
             disabled={uploadingPhoto || sendingStep1}
           >
             {photoUri || photoBase64 ? (
-              <Image
+              <NativeImage
                 source={{
                   uri: photoUri ?? (photoBase64 ?? undefined),
                 }}
@@ -310,47 +288,9 @@ export default function OnboardingScreen() {
               </View>
             )}
           </TouchableOpacity>
-
-          <Text style={styles.label}>Cohort year</Text>
-          <View style={styles.cohortRow}>
-            {COHORT_YEARS.map((y) => (
-              <TouchableOpacity
-                key={y}
-                style={[
-                  styles.cohortBtn,
-                  cohortYear === y && styles.cohortBtnActive,
-                ]}
-                onPress={() => setCohortYear(y)}
-                disabled={sendingStep1}
-              >
-                <Text
-                  style={[
-                    styles.cohortBtnText,
-                    cohortYear === y && styles.cohortBtnTextActive,
-                  ]}
-                >
-                  {y}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Current city"
-            placeholderTextColor={colors.TYPE_MUTED}
-            value={currentCity}
-            onChangeText={(t) => { setCurrentCity(t); setRegError(null); }}
-            editable={!sendingStep1}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Concentration"
-            placeholderTextColor={colors.TYPE_MUTED}
-            value={concentration}
-            onChangeText={(t) => { setConcentration(t); setRegError(null); }}
-            editable={!sendingStep1}
-          />
+          <Text style={styles.photoGuide}>
+            Make sure your full face is visible and clear.
+          </Text>
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -399,6 +339,9 @@ export default function OnboardingScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
+        <View style={styles.topBar}>
+          <ScreenExitButton onPress={handleExit} disabled={onboardingBusy} />
+        </View>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={[
@@ -408,6 +351,7 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <BrandLockup size="sm" style={styles.stepBrand} />
           <Text style={styles.stepTitle}>Right now</Text>
           <Text style={styles.stepSubtitle}>
             What is alive in your thinking right now. This stays internal.
@@ -468,7 +412,11 @@ export default function OnboardingScreen() {
       keyboardVerticalOffset={0}
     >
       <View style={styles.header}>
-        <Text style={styles.firstThoughtTitle}>Your first thought</Text>
+        <View style={styles.headerLead}>
+          <BrandLockup size="sm" />
+          <Text style={styles.firstThoughtTitle}>Your first thought</Text>
+        </View>
+        <ScreenExitButton onPress={handleExit} disabled={onboardingBusy} />
       </View>
 
       <ScrollView
@@ -486,42 +434,80 @@ export default function OnboardingScreen() {
             { width: previewWidth, height: previewHeight },
           ]}
         >
-          <View style={styles.previewPlaceholder} />
-          {imageStatus === "generating" && (
-            <View style={styles.pulseWrap}>
-              <Animated.View style={[styles.pulseDot, pulseStyle]} />
-            </View>
-          )}
-          {imageStatus === "after_post" && (
-            <Text style={styles.previewFallback}>
-              Image will generate after posting
-            </Text>
-          )}
+          <ThoughtImageFrame
+            thoughtText={sentence || "ohm"}
+            imageUrl={thoughtPhotoUrl}
+            aspectRatio={IMAGE_ASPECT_RATIO}
+            borderRadius={spacing.cardRadius}
+            style={styles.previewFrame}
+          >
+            {sentence.trim().length > 0 ? (
+              <Text style={styles.previewSentence} numberOfLines={3}>
+                {sentence}
+              </Text>
+            ) : (
+              <Text style={styles.previewHint}>
+                Your thought will appear here.
+              </Text>
+            )}
+          </ThoughtImageFrame>
         </View>
 
-        <TextInput
-          style={styles.sentenceInput}
-          placeholder="A thought you are in the middle of."
-          placeholderTextColor={colors.TYPE_MUTED}
-          value={sentence}
-          onChangeText={(t) => setSentence(t.slice(0, SENTENCE_MAX))}
-          multiline
-          maxLength={SENTENCE_MAX}
-          editable={!posting}
-        />
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>Photo</Text>
+          <Text style={styles.fieldHint}>
+            Optional. Your profile photo is used by default and you can swap it here.
+          </Text>
+          <View style={styles.photoActionRow}>
+            <TouchableOpacity style={styles.photoActionBtn} onPress={pickThoughtPhoto} disabled={posting}>
+              <Text style={styles.photoActionText}>
+                {thoughtPhotoUrl ? "Change photo" : "Add photo"}
+              </Text>
+            </TouchableOpacity>
+            {thoughtPhotoUrl ? (
+              <TouchableOpacity style={styles.photoActionBtn} onPress={() => setThoughtPhotoUrl(null)} disabled={posting}>
+                <Text style={styles.photoActionText}>Remove</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {!thoughtPhotoUrl ? (
+            <Text style={styles.photoFallbackText}>
+              No photo selected. The fallback mesh pattern will be used.
+            </Text>
+          ) : null}
+        </View>
 
-        {sentence.trim().length > 0 && (
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>One big thought</Text>
+          <Text style={styles.fieldHint}>This becomes the line on your image.</Text>
           <TextInput
-            style={styles.contextInput}
-            placeholder="600 characters of context — where this thought came from."
+            style={[styles.textArea, styles.sentenceInput]}
+            placeholder="The one thought you cannot stop turning over."
+            placeholderTextColor={colors.TYPE_MUTED}
+            value={sentence}
+            onChangeText={(t) => setSentence(t.slice(0, SENTENCE_MAX))}
+            multiline
+            numberOfLines={5}
+            maxLength={SENTENCE_MAX}
+            editable={!posting}
+          />
+        </View>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>Context</Text>
+          <Text style={styles.fieldHint}>Three lines that place the thought.</Text>
+          <TextInput
+            style={[styles.textArea, styles.contextInput]}
+            placeholder="Where it came from, what triggered it, what is underneath it."
             placeholderTextColor={colors.TYPE_MUTED}
             value={context}
             onChangeText={(t) => setContext(t.slice(0, CONTEXT_MAX))}
             multiline
+            numberOfLines={3}
             maxLength={CONTEXT_MAX}
             editable={!posting}
           />
-        )}
+        </View>
 
         <TouchableOpacity
           style={[
@@ -567,15 +553,33 @@ const styles = StyleSheet.create({
   },
   firstThoughtTitle: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 14,
-    color: colors.TYPE_DARK,
-    letterSpacing: 1,
+    fontSize: 8.5,
+    color: colors.TYPE_MUTED,
+    letterSpacing: 1.2,
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
+    paddingTop: 20,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(26,26,22,0.06)",
+  },
+  headerLead: {
+    flex: 1,
+    gap: 6,
+  },
+  topBar: {
+    alignItems: "flex-end",
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  stepBrand: {
+    marginBottom: 12,
   },
   input: {
     fontFamily: typography.label.fontFamily,
@@ -587,16 +591,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 12,
   },
-  label: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 10,
-    color: colors.TYPE_MUTED,
-    marginBottom: 6,
-    letterSpacing: 1,
-  },
   photoWrap: {
     alignSelf: "center",
-    marginBottom: 20,
+    marginBottom: 10,
     width: PHOTO_SIZE,
     height: PHOTO_SIZE,
     borderRadius: PHOTO_SIZE / 2,
@@ -624,28 +621,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  cohortRow: {
-    flexDirection: "row",
-    gap: 10,
+  photoGuide: {
+    fontFamily: typography.context.fontFamily,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.TYPE_MUTED,
+    textAlign: "center",
     marginBottom: 12,
-  },
-  cohortBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: colors.CARD_GROUND,
-    alignItems: "center",
-  },
-  cohortBtnActive: {
-    backgroundColor: colors.OLIVE,
-  },
-  cohortBtnText: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
-    color: colors.TYPE_DARK,
-  },
-  cohortBtnTextActive: {
-    color: colors.TYPE_WHITE,
   },
   error: {
     fontFamily: typography.label.fontFamily,
@@ -688,56 +670,93 @@ const styles = StyleSheet.create({
   previewWrap: {
     alignSelf: "center",
     marginBottom: 24,
-    borderRadius: spacing.cardRadius,
-    overflow: "hidden",
-    backgroundColor: colors.PANEL_DARK,
-    justifyContent: "center",
-    alignItems: "center",
   },
-  previewPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.PANEL_DARK,
+  previewFrame: {
+    width: "100%",
+    height: "100%",
   },
-  pulseWrap: {
+  previewSentence: {
+    ...typography.thoughtDisplay,
     position: "absolute",
-    justifyContent: "center",
-    alignItems: "center",
+    left: 16,
+    right: 16,
+    bottom: 16,
+    fontSize: 25,
+    lineHeight: 27,
+    letterSpacing: -0.1,
+    color: colors.TYPE_WHITE,
+    textShadowColor: "rgba(8,6,4,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.OLIVE,
-    opacity: 0.9,
-  },
-  previewFallback: {
+  previewHint: {
     ...typography.metadata,
-    fontSize: 8,
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
+    color: "rgba(255,255,255,0.75)",
+  },
+  fieldBlock: {
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    ...typography.label,
+    fontSize: 8.5,
     color: colors.TYPE_MUTED,
-    textAlign: "center",
-    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  fieldHint: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.TYPE_MUTED,
+    marginBottom: 10,
+  },
+  photoActionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
+  },
+  photoActionBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: colors.CARD_GROUND,
+  },
+  photoActionText: {
+    ...typography.label,
+    fontSize: 7.5,
+    color: colors.TYPE_DARK,
+  },
+  photoFallbackText: {
+    ...typography.context,
+    color: colors.TYPE_MUTED,
+  },
+  textArea: {
+    backgroundColor: colors.CARD_GROUND,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
   sentenceInput: {
-    ...typography.thoughtSentence,
-    fontSize: 15,
+    fontFamily: fontFamily.comico,
+    fontSize: 18,
+    lineHeight: 24,
     color: colors.TYPE_DARK,
-    paddingVertical: 16,
-    paddingHorizontal: 4,
-    minHeight: 80,
+    minHeight: 148,
     textAlignVertical: "top",
   },
   contextInput: {
-    ...typography.replyInput,
+    fontFamily: fontFamily.sentient,
     fontSize: 11.5,
+    lineHeight: 17,
     color: colors.TYPE_DARK,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    minHeight: 100,
+    minHeight: 88,
     textAlignVertical: "top",
-    marginTop: 8,
   },
   postBtn: {
-    marginTop: 32,
+    marginTop: 16,
     paddingVertical: 14,
     borderRadius: 8,
     backgroundColor: colors.VERMILLION,

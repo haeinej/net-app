@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
+import { colors, spacing, typography, IMAGE_ASPECT_RATIO } from "../theme";
 import { WarmthBar, type WarmthLevel } from "./WarmthBar";
 import type { FeedItemThought } from "../lib/api";
+import { ThoughtImageFrame } from "./ThoughtImageFrame";
 
 interface ThoughtCardProps {
   item: FeedItemThought;
@@ -36,16 +37,13 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
     >
       <View style={styles.cardInner}>
         <WarmthBar warmthLevel={warmth_level} height={imageHeight + 56} />
-        <View style={[styles.imageWrap, { width: cardWidth - spacing.warmthBarWidth, height: imageHeight }]}>
-          {thought.image_url ? (
-            <Image
-              source={{ uri: thought.image_url }}
-              style={styles.image}
-              contentFit="cover"
-            />
-          ) : (
-            <View style={[styles.image, styles.imagePlaceholder]} />
-          )}
+        <ThoughtImageFrame
+          thoughtText={thought.sentence}
+          imageUrl={thought.photo_url ?? thought.image_url}
+          aspectRatio={IMAGE_ASPECT_RATIO}
+          borderRadius={0}
+          style={{ width: cardWidth - spacing.warmthBarWidth, height: imageHeight }}
+        >
           <Text style={styles.sentence} numberOfLines={2}>
             {thought.sentence}
           </Text>
@@ -54,7 +52,7 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
             <View style={styles.dot} />
             <View style={styles.dot} />
           </View>
-        </View>
+        </ThoughtImageFrame>
       </View>
       <View style={styles.footer}>
         <View style={styles.profileRow}>
@@ -83,34 +81,28 @@ const styles = StyleSheet.create({
   cardInner: {
     flexDirection: "row",
   },
-  imageWrap: {
-    overflow: "hidden",
-    backgroundColor: colors.PANEL_DARK,
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  imagePlaceholder: {
-    backgroundColor: colors.PANEL_DARK,
-  },
   sentence: {
-    ...typography.thoughtSentence,
+    ...typography.thoughtDisplay,
     position: "absolute",
-    bottom: 12,
-    left: 12,
-    right: 12,
+    left: 16,
+    right: 16,
+    bottom: 16,
+    fontSize: 25,
+    lineHeight: 27,
+    letterSpacing: -0.1,
     color: colors.TYPE_WHITE,
+    textShadowColor: "rgba(8,6,4,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   dotsHint: {
     position: "absolute",
     right: 10,
-    top: "50%",
-    marginTop: -6,
+    top: 16,
     flexDirection: "column",
     justifyContent: "space-between",
     height: 12,
-    opacity: 0.2,
+    opacity: 0.28,
   },
   dot: {
     width: 3,
@@ -122,31 +114,38 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: colors.CARD_GROUND,
   },
   profileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     flex: 1,
   },
   avatar: {
-    width: spacing.profilePhotoSize,
-    height: spacing.profilePhotoSize,
-    borderRadius: spacing.profilePhotoSize / 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
   },
   avatarPlaceholder: {
     backgroundColor: colors.TYPE_MUTED,
   },
   name: {
-    ...typography.label,
+    fontFamily: typography.label.fontFamily,
+    fontSize: 9.5,
+    lineHeight: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
     color: colors.TYPE_DARK,
     flex: 1,
   },
   timestamp: {
-    ...typography.metadata,
+    fontFamily: typography.metadata.fontFamily,
+    fontSize: 8,
+    lineHeight: 10,
+    letterSpacing: 0.8,
     color: colors.TYPE_MUTED,
   },
 });

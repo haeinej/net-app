@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
 import { WarmthBar, type WarmthLevel } from "./WarmthBar";
 import type { ProfileThought } from "../lib/api";
+import { ThoughtImageFrame } from "./ThoughtImageFrame";
 
 function formatRelativeTime(iso: string): string {
   const d = new Date(iso);
@@ -24,9 +25,17 @@ interface ProfileThoughtCardProps {
   dark?: boolean;
   /** Author name to display in meta row */
   authorName?: string;
+  /** Author photo to display in meta row */
+  authorPhotoUrl?: string | null;
 }
 
-export function ProfileThoughtCard({ thought, onLongPress, dark, authorName }: ProfileThoughtCardProps) {
+export function ProfileThoughtCard({
+  thought,
+  onLongPress,
+  dark,
+  authorName,
+  authorPhotoUrl,
+}: ProfileThoughtCardProps) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const cardWidth = width - spacing.screenPadding * 2;
@@ -42,18 +51,23 @@ export function ProfileThoughtCard({ thought, onLongPress, dark, authorName }: P
       <View style={styles.cardInner}>
         <WarmthBar warmthLevel={thought.warmth_level} height={imageHeight + 34} />
         <View style={{ flex: 1 }}>
-          <View style={[styles.imageWrap, { width: cardWidth - spacing.warmthBarWidth, height: imageHeight }]}>
-            {thought.image_url ? (
-              <Image source={{ uri: thought.image_url }} style={styles.image} contentFit="cover" />
-            ) : (
-              <View style={[styles.image, styles.imagePlc]} />
-            )}
+          <ThoughtImageFrame
+            thoughtText={thought.sentence}
+            imageUrl={thought.photo_url ?? thought.image_url}
+            aspectRatio={IMAGE_ASPECT_RATIO}
+            borderRadius={0}
+            style={{ width: cardWidth - spacing.warmthBarWidth, height: imageHeight }}
+          >
             <Text style={styles.sentence} numberOfLines={2}>
               {thought.sentence}
             </Text>
-          </View>
+          </ThoughtImageFrame>
           <View style={[styles.meta, dark && styles.metaDark]}>
-            <View style={styles.metaAvatarPlc} />
+            {authorPhotoUrl ? (
+              <Image source={{ uri: authorPhotoUrl }} style={styles.metaAvatar} contentFit="cover" />
+            ) : (
+              <View style={styles.metaAvatarPlc} />
+            )}
             <Text style={[styles.metaName, dark && styles.metaNameDark]} numberOfLines={1}>
               {authorName ? authorName.toUpperCase() : "—"}
             </Text>
@@ -76,45 +90,46 @@ const styles = StyleSheet.create({
   cardInner: {
     flexDirection: "row",
   },
-  imageWrap: {
-    overflow: "hidden",
-    backgroundColor: colors.PANEL_DARK,
-  },
-  image: {
-    width: "100%",
-    height: "100%",
-  },
-  imagePlc: {
-    backgroundColor: colors.PANEL_DARK,
-  },
   sentence: {
-    ...typography.thoughtSentence,
+    ...typography.thoughtDisplay,
     position: "absolute",
-    bottom: 12,
-    left: 12,
-    right: 12,
+    left: 16,
+    right: 16,
+    bottom: 16,
+    fontSize: 25,
+    lineHeight: 27,
+    letterSpacing: -0.1,
     color: colors.TYPE_WHITE,
+    textShadowColor: "rgba(8,6,4,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   meta: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.CARD_GROUND,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
   },
   metaDark: {
     backgroundColor: "rgba(245,240,234,0.06)",
   },
+  metaAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
   metaAvatarPlc: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: colors.PANEL_DEEP,
   },
   metaName: {
     fontFamily: fontFamily.comico,
-    fontSize: 5.5,
+    fontSize: 8.5,
+    lineHeight: 10,
     letterSpacing: 1,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
@@ -125,8 +140,9 @@ const styles = StyleSheet.create({
   },
   metaDate: {
     fontFamily: fontFamily.comico,
-    fontSize: 5,
-    letterSpacing: 0.5,
+    fontSize: 7.5,
+    lineHeight: 9,
+    letterSpacing: 0.6,
     color: colors.TYPE_MUTED,
   },
   metaDateDark: {

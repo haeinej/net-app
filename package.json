@@ -3,11 +3,21 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "start": "npm --prefix mobile run start --",
-    "dev": "npm --prefix mobile run start --",
+    "start": "cd mobile && npx expo start",
+    "dev": "cd mobile && npx expo start",
     "ios": "npm --prefix mobile run ios --",
     "android": "npm --prefix mobile run android --",
     "web": "npm --prefix mobile exec expo start --web",
-    "lint": "npm --prefix mobile run lint"
+    "lint": "npm --prefix mobile run lint",
+    "build:ios:preview": "npm --prefix mobile run build:ios:preview",
+    "build:ios:production": "npm --prefix mobile run build:ios:production",
+    "submit:ios": "npm --prefix mobile run submit:ios"
+  },
+  "dependencies": {
+    "expo": "^55.0.6"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
   }
 }

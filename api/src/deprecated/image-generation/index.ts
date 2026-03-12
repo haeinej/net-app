@@ -4,6 +4,7 @@
 
 export {
   generateThoughtImage,
+  generateThoughtPreview,
   generateCrossingImage,
   generateThoughtImageByThoughtId,
 } from "./service";

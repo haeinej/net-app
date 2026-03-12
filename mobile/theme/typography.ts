@@ -11,7 +11,15 @@ export const fontFamily = {
 } as const;
 
 export const typography = {
-  /** Thought sentence on Panel 1 — Sentient Light 12–13px, white */
+  /** Thought sentence on image surfaces — Comico */
+  thoughtDisplay: {
+    fontFamily: fontFamily.comico,
+    fontSize: 12.5,
+    fontWeight: "400" as const,
+    letterSpacing: 0.2,
+    lineHeight: 15,
+  },
+  /** Thought sentence in reading contexts — Sentient Light 12–13px */
   thoughtSentence: {
     fontFamily: fontFamily.sentient,
     fontSize: 12.5,

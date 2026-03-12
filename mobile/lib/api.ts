@@ -1,32 +1,129 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3000";
-const AUTH_REQUEST_TIMEOUT_MS = 8000;
+import {
+  API_URL,
+  getApiReachabilityMessage,
+  getApiTimeoutMessage,
+} from "./api-config";
 
-async function fetchAuth(
+const AUTH_REQUEST_TIMEOUT_MS = 8000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 12000;
+const JSON_HEADERS = { "Content-Type": "application/json" } as const;
+
+interface ApiRequestOptions extends Omit<RequestInit, "headers"> {
+  auth?: boolean;
+  headers?: HeadersInit;
+  timeoutMs?: number;
+}
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export function isSessionInvalidError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 404);
+}
+
+function buildApiUrl(path: string): string {
+  return `${API_URL}${path}`;
+}
+
+function getErrorMessage(
+  data: unknown,
+  fallbackMessage: string
+): string {
+  if (
+    data &&
+    typeof data === "object" &&
+    "error" in data &&
+    typeof data.error === "string" &&
+    data.error.trim()
+  ) {
+    return data.error;
+  }
+
+  return fallbackMessage;
+}
+
+async function readJson<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function requestApi(
   path: string,
-  init: RequestInit
+  { auth = false, headers, timeoutMs, ...init }: ApiRequestOptions = {}
 ): Promise<Response> {
+  const effectiveTimeoutMs = timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+  const token = auth ? await getAuthToken() : null;
+  const requestHeaders = new Headers(headers);
+  if (token) requestHeaders.set("Authorization", `Bearer ${token}`);
 
   try {
-    return await fetch(`${API_URL}${path}`, {
+    return await fetch(buildApiUrl(path), {
       ...init,
-      signal: controller.signal,
+      headers: requestHeaders,
+      signal: init.signal ?? controller.signal,
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(
-        `API timeout after ${AUTH_REQUEST_TIMEOUT_MS / 1000}s. Check that the API server is running at ${API_URL}.`
-      );
+      throw new Error(getApiTimeoutMessage(effectiveTimeoutMs));
     }
 
     if (error instanceof TypeError) {
-      throw new Error(`Cannot reach API at ${API_URL}. Start the API server and verify EXPO_PUBLIC_API_URL.`);
+      throw new Error(getApiReachabilityMessage());
     }
 
     throw error;
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+async function requestJson<T>(
+  path: string,
+  fallbackMessage: string,
+  options?: ApiRequestOptions & { allow404?: false }
+): Promise<T>;
+async function requestJson<T>(
+  path: string,
+  fallbackMessage: string,
+  options: ApiRequestOptions & { allow404: true }
+): Promise<T | null>;
+async function requestJson<T>(
+  path: string,
+  fallbackMessage: string,
+  { allow404 = false, ...options }: ApiRequestOptions & { allow404?: boolean } = {}
+): Promise<T | null> {
+  const response = await requestApi(path, options);
+  if (allow404 && response.status === 404) return null;
+
+  const data = await readJson<T | { error?: string }>(response);
+  if (!response.ok) {
+    throw new ApiError(response.status, getErrorMessage(data, fallbackMessage));
+  }
+
+  return data as T;
+}
+
+async function requestVoid(
+  path: string,
+  fallbackMessage: string,
+  options: ApiRequestOptions = {}
+): Promise<void> {
+  const response = await requestApi(path, options);
+  const data = await readJson<{ error?: string }>(response);
+  if (!response.ok) {
+    throw new ApiError(response.status, getErrorMessage(data, fallbackMessage));
   }
 }
 
@@ -43,6 +140,7 @@ export interface FeedItemThought {
   thought: {
     id: string;
     sentence: string;
+    photo_url: string | null;
     image_url: string | null;
     created_at: string;
     has_context: boolean;
@@ -69,9 +167,6 @@ export interface NotificationItem {
   created_at: string;
 }
 
-/** Mock fallback when no stored auth (e.g. dev). Set EXPO_PUBLIC_MOCK_AUTH_TOKEN to skip login. */
-const MOCK_AUTH_TOKEN = process.env.EXPO_PUBLIC_MOCK_AUTH_TOKEN ?? null;
-
 let cachedUserId: string | null = null;
 
 export async function getStoredUserIdForApi(): Promise<string | null> {
@@ -85,59 +180,43 @@ export function setCachedUserId(id: string | null): void {
   cachedUserId = id;
 }
 
-/** Current user id for sent vs received; from auth store or EXPO_PUBLIC_MOCK_USER_ID. */
+/** Current user id for sent vs received; from auth store. */
 export async function getMyUserId(): Promise<string | null> {
-  const stored = await getStoredUserIdForApi();
-  if (stored) return stored;
-  return process.env.EXPO_PUBLIC_MOCK_USER_ID ?? null;
+  return getStoredUserIdForApi();
 }
 
 async function getAuthToken(): Promise<string | null> {
   const { getStoredToken } = await import("./auth-store");
-  const stored = await getStoredToken();
-  if (stored) return stored;
-  return MOCK_AUTH_TOKEN;
+  return getStoredToken();
 }
 
 export async function fetchFeed(limit: number, offset: number): Promise<FeedItem[]> {
-  const token = await getAuthToken();
-  const res = await fetch(
-    `${API_URL}/api/feed?limit=${limit}&offset=${offset}`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  return requestJson<FeedItem[]>(
+    `/api/feed?limit=${limit}&offset=${offset}`,
+    "Feed failed",
+    { auth: true }
   );
-  if (!res.ok) throw new Error("Feed failed");
-  return res.json();
 }
 
 export async function fetchNotifications(): Promise<NotificationItem[]> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/notifications`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  return requestJson<NotificationItem[]>("/api/notifications", "Notifications failed", {
+    auth: true,
   });
-  if (!res.ok) throw new Error("Notifications failed");
-  return res.json();
 }
 
 export async function acceptReply(replyId: string): Promise<{ conversation_id: string }> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/replies/${replyId}/accept`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-  if (!res.ok) throw new Error("Accept failed");
-  return res.json();
+  return requestJson<{ conversation_id: string }>(
+    `/api/replies/${replyId}/accept`,
+    "Accept failed",
+    { method: "POST", auth: true }
+  );
 }
 
 export async function deleteReply(replyId: string): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/replies/${replyId}/ignore`, {
+  await requestVoid(`/api/replies/${replyId}/ignore`, "Ignore failed", {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    auth: true,
   });
-  if (!res.ok) throw new Error("Ignore failed");
 }
 
 export const ignoreReply = deleteReply;
@@ -145,6 +224,7 @@ export const ignoreReply = deleteReply;
 // Thought detail (three panels)
 export interface ThoughtPanel1 {
   sentence: string;
+  photo_url: string | null;
   image_url: string | null;
   user: { id: string; name: string | null; photo_url: string | null } | null;
   warmth_level: WarmthLevel;
@@ -165,26 +245,22 @@ export interface ThoughtDetailResponse {
 }
 
 export async function fetchThought(id: string): Promise<ThoughtDetailResponse> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/thoughts/${id}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  return requestJson<ThoughtDetailResponse>(`/api/thoughts/${id}`, "Thought not found", {
+    auth: true,
   });
-  if (!res.ok) throw new Error("Thought not found");
-  return res.json();
 }
 
 export async function postReply(thoughtId: string, text: string): Promise<{ id: string; status: string; created_at: string }> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/thoughts/${thoughtId}/reply`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ text }),
-  });
-  if (!res.ok) throw new Error("Reply failed");
-  return res.json();
+  return requestJson<{ id: string; status: string; created_at: string }>(
+    `/api/thoughts/${thoughtId}/reply`,
+    "Reply failed",
+    {
+      method: "POST",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ text }),
+    }
+  );
 }
 
 // Conversations
@@ -205,12 +281,9 @@ export interface ConversationMessage {
 }
 
 export async function fetchConversations(): Promise<ConversationListItem[]> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  return requestJson<ConversationListItem[]>("/api/conversations", "Conversations failed", {
+    auth: true,
   });
-  if (!res.ok) throw new Error("Conversations failed");
-  return res.json();
 }
 
 export async function fetchConversationMessages(
@@ -218,35 +291,29 @@ export async function fetchConversationMessages(
   limit = 50,
   beforeId?: string
 ): Promise<ConversationMessage[]> {
-  const token = await getAuthToken();
   const params = new URLSearchParams({ limit: String(limit) });
   if (beforeId) params.set("before_id", beforeId);
-  const res = await fetch(
-    `${API_URL}/api/conversations/${conversationId}/messages?${params}`,
-    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  return requestJson<ConversationMessage[]>(
+    `/api/conversations/${conversationId}/messages?${params}`,
+    "Messages failed",
+    { auth: true }
   );
-  if (!res.ok) throw new Error("Messages failed");
-  return res.json();
 }
 
 export async function postConversationMessage(
   conversationId: string,
   text: string
 ): Promise<{ id: string; text: string; created_at: string | null }> {
-  const token = await getAuthToken();
-  const res = await fetch(
-    `${API_URL}/api/conversations/${conversationId}/messages`,
+  return requestJson<{ id: string; text: string; created_at: string | null }>(
+    `/api/conversations/${conversationId}/messages`,
+    "Send failed",
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      auth: true,
+      headers: JSON_HEADERS,
       body: JSON.stringify({ text }),
     }
   );
-  if (!res.ok) throw new Error("Send failed");
-  return res.json();
 }
 
 // Conversation detail (message_count, crossing/shift state)
@@ -281,137 +348,119 @@ export interface ConversationDetail {
 }
 
 export async function fetchConversationDetail(conversationId: string): Promise<ConversationDetail> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("Conversation failed");
-  return res.json();
+  return requestJson<ConversationDetail>(
+    `/api/conversations/${conversationId}`,
+    "Conversation failed",
+    { auth: true }
+  );
 }
 
 // Crossing
 export async function startCrossing(conversationId: string): Promise<CrossingDraft & { id: string }> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing/start`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("Start crossing failed");
-  return res.json();
+  return requestJson<CrossingDraft & { id: string }>(
+    `/api/conversations/${conversationId}/crossing/start`,
+    "Start crossing failed",
+    { method: "POST", auth: true }
+  );
 }
 
 export async function getCrossingDraft(conversationId: string): Promise<(CrossingDraft & { id: string }) | null> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error("Get crossing failed");
-  return res.json();
+  return requestJson<CrossingDraft & { id: string }>(
+    `/api/conversations/${conversationId}/crossing`,
+    "Get crossing failed",
+    { auth: true, allow404: true }
+  );
 }
 
 export async function updateCrossingDraft(
   conversationId: string,
   body: { sentence_a?: string; sentence_b?: string; context?: string }
 ): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error("Update crossing failed");
+  await requestVoid(
+    `/api/conversations/${conversationId}/crossing`,
+    "Update crossing failed",
+    {
+      method: "PUT",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }
+  );
 }
 
 export async function completeCrossing(
   conversationId: string,
   body: { sentence: string; context?: string }
 ): Promise<{ id: string; sentence: string; context: string | null; image_url: string | null }> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing/complete`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error("Complete crossing failed");
-  return res.json();
+  return requestJson<{ id: string; sentence: string; context: string | null; image_url: string | null }>(
+    `/api/conversations/${conversationId}/crossing/complete`,
+    "Complete crossing failed",
+    {
+      method: "POST",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }
+  );
 }
 
 export async function abandonCrossing(conversationId: string): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/crossing/abandon`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("Abandon failed");
+  await requestVoid(
+    `/api/conversations/${conversationId}/crossing/abandon`,
+    "Abandon failed",
+    { method: "POST", auth: true }
+  );
 }
 
 // Shift
 export async function startShift(conversationId: string): Promise<ShiftDraft & { id: string }> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift/start`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("Start shift failed");
-  return res.json();
+  return requestJson<ShiftDraft & { id: string }>(
+    `/api/conversations/${conversationId}/shift/start`,
+    "Start shift failed",
+    { method: "POST", auth: true }
+  );
 }
 
 export async function getShiftDraft(conversationId: string): Promise<(ShiftDraft & { id: string }) | null> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error("Get shift failed");
-  return res.json();
+  return requestJson<ShiftDraft & { id: string }>(
+    `/api/conversations/${conversationId}/shift`,
+    "Get shift failed",
+    { auth: true, allow404: true }
+  );
 }
 
 export async function updateShiftDraft(
   conversationId: string,
   body: { a_before?: string; a_after?: string; b_before?: string; b_after?: string }
 ): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift`, {
+  await requestVoid(`/api/conversations/${conversationId}/shift`, "Update shift failed", {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    auth: true,
+    headers: JSON_HEADERS,
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("Update shift failed");
 }
 
 export async function completeShift(conversationId: string): Promise<{ id: string }> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift/complete`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("Complete shift failed");
-  return res.json();
+  return requestJson<{ id: string }>(
+    `/api/conversations/${conversationId}/shift/complete`,
+    "Complete shift failed",
+    { method: "POST", auth: true }
+  );
 }
 
 export async function abandonShift(conversationId: string): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/conversations/${conversationId}/shift/abandon`, {
+  await requestVoid(`/api/conversations/${conversationId}/shift/abandon`, "Abandon failed", {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    auth: true,
   });
-  if (!res.ok) throw new Error("Abandon failed");
 }
 
 // Profile
 export interface ProfileThought {
   id: string;
   sentence: string;
+  photo_url: string | null;
   image_url: string | null;
   warmth_level: WarmthLevel;
   created_at: string | null;
@@ -437,12 +486,9 @@ export interface ProfileResponse {
 }
 
 export async function fetchProfile(userId: string): Promise<ProfileResponse> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/users/${userId}/profile`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  return requestJson<ProfileResponse>(`/api/users/${userId}/profile`, "Profile failed", {
+    auth: true,
   });
-  if (!res.ok) throw new Error("Profile failed");
-  return res.json();
 }
 
 export interface UpdateProfileBody {
@@ -454,59 +500,55 @@ export interface UpdateProfileBody {
 export async function updateProfile(
   body: UpdateProfileBody
 ): Promise<Pick<ProfileResponse, "id" | "name" | "photo_url" | "interests">> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/me/profile`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error("Update failed");
-  return res.json();
+  return requestJson<Pick<ProfileResponse, "id" | "name" | "photo_url" | "interests">>(
+    "/api/me/profile",
+    "Update failed",
+    {
+      method: "PUT",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }
+  );
 }
 
 export async function deleteThought(thoughtId: string): Promise<void> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/thoughts/${thoughtId}`, {
+  await requestVoid(`/api/thoughts/${thoughtId}`, "Delete failed", {
     method: "DELETE",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    auth: true,
   });
-  if (!res.ok) throw new Error("Delete failed");
 }
 
 export interface CreateThoughtResponse {
   id: string;
   sentence: string;
   context: string;
+  photo_url: string | null;
+  image_url: string | null;
   created_at: string | null;
 }
 
 export async function createThought(
   sentence: string,
-  context?: string
+  context?: string,
+  photoUrl?: string
 ): Promise<CreateThoughtResponse> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_URL}/api/thoughts`, {
+  return requestJson<CreateThoughtResponse>("/api/thoughts", "Post failed", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ sentence: sentence.trim(), context: (context ?? "").trim() || undefined }),
+    auth: true,
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      sentence: sentence.trim(),
+      context: (context ?? "").trim() || undefined,
+      photo_url: photoUrl?.trim() || undefined,
+    }),
   });
-  if (!res.ok) throw new Error("Post failed");
-  return res.json();
 }
 
 // Auth (onboarding + login)
 export interface RegisterBody {
   name: string;
   photo_url?: string;
-  cohort_year: number;
-  current_city: string;
-  concentration: string;
   email: string;
   password: string;
 }
@@ -514,26 +556,33 @@ export interface RegisterBody {
 export interface AuthResponse {
   token: string;
   user_id: string;
+  onboarding_step: 1 | 2 | 3;
+  onboarding_complete: boolean;
 }
 
 export async function register(body: RegisterBody): Promise<AuthResponse> {
-  const res = await fetchAuth("/api/auth/register", {
+  return requestJson<AuthResponse>("/api/auth/register", "Registration failed", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: JSON_HEADERS,
     body: JSON.stringify(body),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? "Registration failed");
-  return data as AuthResponse;
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {
-  const res = await fetchAuth("/api/auth/login", {
+  return requestJson<AuthResponse>("/api/auth/login", "Login failed", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: JSON_HEADERS,
     body: JSON.stringify({ email, password }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? "Login failed");
-  return data as AuthResponse;
+}
+
+export async function deleteAccount(password: string): Promise<void> {
+  await requestVoid("/api/me/account", "Account deletion failed", {
+    method: "DELETE",
+    auth: true,
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ password }),
+  });
 }

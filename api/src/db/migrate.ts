@@ -2,7 +2,8 @@
  * Runs pending Drizzle migrations (SQL files in drizzle/).
  * Usage: npm run db:migrate
  */
-import "dotenv/config";
+import { loadEnv } from "../env";
+loadEnv();
 import { setDefaultResultOrder } from "node:dns";
 setDefaultResultOrder("ipv4first");
 import { readFileSync, readdirSync } from "node:fs";
@@ -11,7 +12,7 @@ import postgres from "postgres";
 
 const url = process.env.DATABASE_URL;
 if (!url) {
-  console.error("DATABASE_URL is not set in .env");
+  console.error("DATABASE_URL is not set in api/.env.local or api/.env");
   process.exit(1);
 }
 // Supabase (and most cloud Postgres): use SSL. Local postgres: no SSL.

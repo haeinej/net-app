@@ -10,7 +10,7 @@ import {
   failedProcessingJobs,
   imageGenerations,
   users,
-} from "../db";
+} from "../../db";
 import { generateWithFlux, fluxImageToImage, type FalImageResult } from "./fal";
 import { persistImageUrl } from "./storage";
 import { imageConfig } from "./config";
@@ -82,7 +82,8 @@ export async function generateThoughtImage(
   thoughtId: string,
   userId: string,
   sentence: string,
-  profilePhotoUrl: string
+  profilePhotoUrl: string,
+  context?: string | null
 ): Promise<string> {
   await checkDailyCap(userId);
   const cached = await getCachedImageUrl(userId, sentence);
@@ -95,7 +96,7 @@ export async function generateThoughtImage(
   }
 
   try {
-    const result = await generateWithFlux(sentence, profilePhotoUrl);
+    const result = await generateWithFlux(sentence, profilePhotoUrl, context);
     const permanentUrl = await persistImageUrl(result.url);
     await db.insert(imageGenerations).values({
       userId,
@@ -118,6 +119,20 @@ export async function generateThoughtImage(
     });
     throw e;
   }
+}
+
+export async function generateThoughtPreview(
+  sentence: string,
+  profilePhotoUrl: string,
+  context?: string | null
+): Promise<{ imageUrl: string; imageMetadata: Record<string, unknown> }> {
+  const result = await generateWithFlux(sentence, profilePhotoUrl, context);
+  const imageUrl = await persistImageUrl(result.url);
+
+  return {
+    imageUrl,
+    imageMetadata: metadataFromResult(result),
+  };
 }
 
 /**
@@ -156,6 +171,7 @@ export async function generateThoughtImageByThoughtId(
     thoughtId,
     thought.userId,
     thought.sentence,
-    photoUrl
+    photoUrl,
+    thought.context
   );
 }

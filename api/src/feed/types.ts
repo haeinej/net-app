@@ -15,6 +15,7 @@ export interface FeedItemThought {
   thought: {
     id: string;
     sentence: string;
+    photo_url: string | null;
     image_url: string | null;
     created_at: string;
     has_context: boolean;
@@ -39,6 +40,7 @@ export interface ThoughtCandidate {
   userId: string;
   sentence: string;
   context: string | null;
+  photoUrl: string | null;
   imageUrl: string | null;
   resonanceEmbedding: number[] | null;
   surfaceEmbedding: number[] | null;

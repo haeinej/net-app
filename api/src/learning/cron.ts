@@ -4,7 +4,8 @@
  *        npx tsx src/learning/cron.ts weekly  (Sunday 4am UTC)
  */
 
-import "dotenv/config";
+import { loadEnv } from "../env";
+loadEnv();
 import { runDailyLearning, runWeeklyLearning } from "./service";
 
 const job = process.argv[2] ?? "daily";

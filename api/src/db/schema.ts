@@ -66,8 +66,9 @@ export const thoughts = pgTable(
       .references(() => users.id),
     sentence: text("sentence").notNull(),
     context: text("context"),
-    imageUrl: text("image_url"),
-    imageMetadata: jsonb("image_metadata"), // Phase 4: model, params, fal request ID for debugging
+    photoUrl: text("photo_url"),
+    imageUrl: text("image_url"), // deprecated legacy generated image URL
+    imageMetadata: jsonb("image_metadata"), // deprecated fal.ai metadata
     surfaceEmbedding: vector("surface_embedding", { dimensions: VECTOR_DIMS }),
     questionEmbedding: vector("question_embedding", { dimensions: VECTOR_DIMS }), // primary resonance embedding stored in legacy column
     qualityScore: real("quality_score"), // openness-weighted signal

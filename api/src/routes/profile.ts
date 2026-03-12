@@ -1,7 +1,24 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, inArray, desc, sql, isNull, or } from "drizzle-orm";
-import { db, users, thoughts, replies, crossings } from "../db";
+import {
+  db,
+  users,
+  thoughts,
+  replies,
+  crossings,
+  conversations,
+  messages,
+  crossingDrafts,
+  shiftDrafts,
+  shifts,
+  engagementEvents,
+  failedProcessingJobs,
+  imageGenerations,
+  userRecommendationWeights,
+} from "../db";
 import { getUserId, authenticate } from "../lib/auth";
+import { verifyPassword } from "../lib/password";
+import { getWarmthLevel } from "../lib/warmth";
 const INTERESTS_MAX = 3;
 
 interface UserIdParam {
@@ -14,10 +31,8 @@ interface UpdateProfileBody {
   interests?: string[];
 }
 
-function getWarmthLevel(acceptedCount: number): "none" | "low" | "medium" | "full" {
-  if (acceptedCount === 0) return "none";
-  if (acceptedCount === 1) return "low";
-  return "medium";
+interface DeleteAccountBody {
+  password?: string;
 }
 
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
@@ -27,42 +42,54 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
     const targetId = request.params.id;
-    const [user] = await db.select().from(users).where(eq(users.id, targetId));
+    const [[user], userThoughts, userCrossings] = await Promise.all([
+      db.select().from(users).where(eq(users.id, targetId)).limit(1),
+      db
+        .select()
+        .from(thoughts)
+        .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
+        .orderBy(desc(thoughts.createdAt)),
+      db
+        .select()
+        .from(crossings)
+        .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
+        .orderBy(desc(crossings.createdAt)),
+    ]);
+
     if (!user) return reply.status(404).send();
-    const userThoughts = await db
-      .select()
-      .from(thoughts)
-      .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
-      .orderBy(desc(thoughts.createdAt));
+
     const thoughtIds = userThoughts.map((t) => t.id);
-    let replyCounts = new Map<string, number>();
-    if (thoughtIds.length > 0) {
-      const rows = await db
-        .select({
-          thoughtId: replies.thoughtId,
-          count: sql<number>`count(*)::int`,
-        })
-        .from(replies)
-        .where(and(inArray(replies.thoughtId, thoughtIds), eq(replies.status, "accepted")))
-        .groupBy(replies.thoughtId);
-      replyCounts = new Map(rows.map((r) => [r.thoughtId, r.count]));
-    }
+    const allCrossingIds = [...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB]))];
+    const [replyCountRows, crossingUsers] = await Promise.all([
+      thoughtIds.length > 0
+        ? db
+            .select({
+              thoughtId: replies.thoughtId,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(replies)
+            .where(and(inArray(replies.thoughtId, thoughtIds), eq(replies.status, "accepted")))
+            .groupBy(replies.thoughtId)
+        : Promise.resolve([] as Array<{ thoughtId: string; count: number }>),
+      allCrossingIds.length > 0
+        ? db
+            .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+            .from(users)
+            .where(inArray(users.id, allCrossingIds))
+        : Promise.resolve(
+            [] as Array<{ id: string; name: string | null; photoUrl: string | null }>
+          ),
+    ]);
+
+    const replyCounts = new Map(replyCountRows.map((r) => [r.thoughtId, r.count]));
     const thoughtsForProfile = userThoughts.map((t) => ({
       id: t.id,
       sentence: t.sentence,
+      photo_url: t.photoUrl,
       image_url: t.imageUrl,
       warmth_level: getWarmthLevel(replyCounts.get(t.id) ?? 0),
       created_at: t.createdAt?.toISOString(),
     }));
-    const userCrossings = await db
-      .select()
-      .from(crossings)
-      .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
-      .orderBy(desc(crossings.createdAt));
-    const allCrossingIds = [...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB]))];
-    const crossingUsers = allCrossingIds.length > 0
-      ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, allCrossingIds))
-      : [];
     const userInfoMap = new Map(crossingUsers.map((p) => [p.id, { id: p.id, name: p.name, photo_url: p.photoUrl }]));
     const crossingsForProfile = userCrossings.map((c) => ({
       id: c.id,
@@ -113,4 +140,103 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       interests: (updated.interests ?? []) as string[],
     });
   });
+
+  app.delete<{ Body: DeleteAccountBody }>(
+    "/api/me/account",
+    async (request, reply) => {
+      const userId = getUserId(request);
+      if (!userId) return reply.status(401).send();
+
+      const password =
+        typeof request.body?.password === "string" ? request.body.password : "";
+
+      const [user] = await db
+        .select({
+          id: users.id,
+          passwordHash: users.passwordHash,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!user) return reply.status(404).send({ error: "account not found" });
+
+      if (user.passwordHash && !(await verifyPassword(password, user.passwordHash))) {
+        return reply.status(400).send({ error: "incorrect password" });
+      }
+
+      await db.transaction(async (tx) => {
+        const [userThoughtRows, conversationRows] = await Promise.all([
+          tx
+            .select({ id: thoughts.id })
+            .from(thoughts)
+            .where(eq(thoughts.userId, userId)),
+          tx
+            .select({ id: conversations.id })
+            .from(conversations)
+            .where(
+              or(
+                eq(conversations.participantA, userId),
+                eq(conversations.participantB, userId)
+              )
+            ),
+        ]);
+        const userThoughtIds = userThoughtRows.map((row) => row.id);
+        const conversationIds = conversationRows.map((row) => row.id);
+
+        if (conversationIds.length > 0) {
+          await tx
+            .delete(messages)
+            .where(inArray(messages.conversationId, conversationIds));
+          await tx
+            .delete(crossingDrafts)
+            .where(inArray(crossingDrafts.conversationId, conversationIds));
+          await tx
+            .delete(shiftDrafts)
+            .where(inArray(shiftDrafts.conversationId, conversationIds));
+          await tx
+            .delete(crossings)
+            .where(inArray(crossings.conversationId, conversationIds));
+          await tx
+            .delete(shifts)
+            .where(inArray(shifts.conversationId, conversationIds));
+          await tx
+            .delete(conversations)
+            .where(inArray(conversations.id, conversationIds));
+        }
+
+        await tx
+          .delete(crossingDrafts)
+          .where(eq(crossingDrafts.initiatorId, userId));
+        await tx.delete(shiftDrafts).where(eq(shiftDrafts.initiatorId, userId));
+
+        await tx
+          .delete(userRecommendationWeights)
+          .where(eq(userRecommendationWeights.userId, userId));
+        await tx.delete(imageGenerations).where(eq(imageGenerations.userId, userId));
+        await tx.delete(engagementEvents).where(eq(engagementEvents.userId, userId));
+
+        if (userThoughtIds.length > 0) {
+          await tx
+            .delete(engagementEvents)
+            .where(inArray(engagementEvents.thoughtId, userThoughtIds));
+          await tx
+            .delete(failedProcessingJobs)
+            .where(inArray(failedProcessingJobs.thoughtId, userThoughtIds));
+          await tx
+            .delete(imageGenerations)
+            .where(inArray(imageGenerations.thoughtId, userThoughtIds));
+          await tx
+            .delete(replies)
+            .where(inArray(replies.thoughtId, userThoughtIds));
+          await tx.delete(thoughts).where(inArray(thoughts.id, userThoughtIds));
+        }
+
+        await tx.delete(replies).where(eq(replies.replierId, userId));
+        await tx.delete(users).where(eq(users.id, userId));
+      });
+
+      return reply.status(204).send();
+    }
+  );
 }

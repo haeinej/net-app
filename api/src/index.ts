@@ -1,4 +1,5 @@
-import "dotenv/config";
+import { loadEnv } from "./env";
+loadEnv();
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
@@ -9,11 +10,6 @@ async function main() {
   console.log("[boot] main() entered");
   const app = Fastify({ logger: true });
   console.log("[boot] fastify created");
-
-  if (!process.env.FAL_KEY && !process.env.FAL_CREDENTIALS) {
-    app.log.warn("FAL_KEY not set — image generation will fail at runtime");
-  }
-  console.log("[boot] fal check done");
 
   console.log("[boot] registering cors...");
   await app.register(cors, { origin: process.env.CORS_ORIGIN ?? true });

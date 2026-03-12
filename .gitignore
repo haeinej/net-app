@@ -7,12 +7,19 @@ node_modules/
 .env
 .env.local
 .env.production
+mobile/.env
+mobile/.env.local
+mobile/.env.production
+mobile/.env.development
+mobile/.env.*.local
 
 # Build
 dist/
 build/
 .next/
 out/
+api/.dist-build/
+api/.dist-previous/
 
 # Database
 *.sqlite
@@ -47,9 +54,19 @@ venv/
 *.egg-info/
 
 # Expo / React Native
+.expo/
+.claude/
+/app.json
+/ios/
+/node_modules.root-expo55.bak/
 mobile/.expo/
 mobile/ios/
 mobile/android/
+ohm_website/.claude/
+ohm_website/.DS_Store
+ios/Pods/
+ios/build/
+ios/.xcode.env.local
 
 # Docker
 docker-compose.override.yml
