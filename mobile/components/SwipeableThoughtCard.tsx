@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
-import { colors, spacing, typography, IMAGE_ASPECT_RATIO } from "../theme";
+import { colors, spacing, typography } from "../theme";
 import { WarmthBar } from "./WarmthBar";
 import { PanelIndicator } from "./PanelIndicator";
 import {
@@ -30,6 +30,8 @@ import { useEngagementTracking } from "../hooks/useEngagementTracking";
 const REPLY_MIN_LENGTH = 50;
 const REPLY_MAX_LENGTH = 300;
 const FOOTER_HEIGHT = 40;
+/** Wider aspect for feed cards so ~3 fit on screen (vs 4:3 in detail view) */
+const FEED_IMAGE_ASPECT = 2;
 
 interface SwipeableThoughtCardProps {
   item: FeedItemThought;
@@ -50,7 +52,7 @@ function formatRelativeTime(iso: string): string {
 export function SwipeableThoughtCard({ item }: SwipeableThoughtCardProps) {
   const { width: screenWidth } = useWindowDimensions();
   const cardWidth = screenWidth - spacing.screenPadding * 2;
-  const imageHeight = cardWidth / IMAGE_ASPECT_RATIO;
+  const imageHeight = cardWidth / FEED_IMAGE_ASPECT;
   const cardHeight = imageHeight + FOOTER_HEIGHT;
 
   const { thought, user, warmth_level } = item;
