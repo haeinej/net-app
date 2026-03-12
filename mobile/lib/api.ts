@@ -333,6 +333,7 @@ export interface ConversationListItem {
   other_user: { id: string; name: string | null; photo_url: string | null } | null;
   last_message_preview: string;
   last_message_at: string | null;
+  history_expires_at: string | null;
   is_dormant: boolean;
   unread: boolean;
 }
@@ -394,6 +395,8 @@ export interface ShiftDraft {
   id: string;
   initiator_id: string;
   initiator_name: string | null;
+  participant_a_ready_at: string | null;
+  participant_b_ready_at: string | null;
   a_before: string | null;
   a_after: string | null;
   b_before: string | null;
@@ -415,6 +418,8 @@ export interface ConversationDetail {
   shift_draft: ShiftDraft | null;
   crossing_complete: boolean;
   shift_complete: boolean;
+  history_cleared: boolean;
+  history_expires_at: string | null;
 }
 
 export async function fetchConversationDetail(conversationId: string): Promise<ConversationDetail> {
@@ -524,6 +529,17 @@ export async function abandonShift(conversationId: string): Promise<void> {
     method: "POST",
     auth: true,
   });
+}
+
+export async function ignoreShift(conversationId: string): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(
+    `/api/conversations/${conversationId}/shift/ignore`,
+    "Ignore failed",
+    {
+      method: "POST",
+      auth: true,
+    }
+  );
 }
 
 // Profile

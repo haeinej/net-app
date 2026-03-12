@@ -4,7 +4,9 @@ import { db, conversations, messages, users, thoughts, crossingDrafts, crossings
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
 
-const DORMANT_DAYS = 30;
+const DORMANT_DAYS = 14;
+const HISTORY_RETENTION_DAYS = 14;
+const HISTORY_RETENTION_MS = HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const MESSAGE_PREVIEW_LEN = 100;
 
 interface ConvIdParam {
@@ -39,6 +41,21 @@ async function markConversationRead(
   }
 }
 
+function getHistoryExpiresAt(lastMessageAt: Date | null): Date | null {
+  if (!lastMessageAt) return null;
+  return new Date(lastMessageAt.getTime() + HISTORY_RETENTION_MS);
+}
+
+function isHistoryExpired(lastMessageAt: Date | null, now = Date.now()): boolean {
+  const historyExpiresAt = getHistoryExpiresAt(lastMessageAt);
+  return Boolean(historyExpiresAt && historyExpiresAt.getTime() <= now);
+}
+
+async function clearConversationHistory(conversationIds: string[]): Promise<void> {
+  if (conversationIds.length === 0) return;
+  await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
+}
+
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
@@ -52,6 +69,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(conversations.lastMessageAt));
     const convIds = list.map((c) => c.id);
     if (convIds.length === 0) return reply.send([]);
+    const expiredIds = list
+      .filter((conversation) => isHistoryExpired(conversation.lastMessageAt ?? null))
+      .map((conversation) => conversation.id);
+    await clearConversationHistory(expiredIds);
     const lastMessages = await db
       .select({
         conversationId: messages.conversationId,
@@ -86,6 +107,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const last = lastByConv.get(c.id);
       const seenAt =
         c.participantA === userId ? c.participantASeenAt : c.participantBSeenAt;
+      const historyExpiresAt = getHistoryExpiresAt(c.lastMessageAt ?? null);
       const unread = Boolean(
         last &&
           last.senderId &&
@@ -100,6 +122,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           : null,
         last_message_preview: last ? last.text.slice(0, MESSAGE_PREVIEW_LEN) : "",
         last_message_at: c.lastMessageAt?.toISOString() ?? null,
+        history_expires_at: historyExpiresAt?.toISOString() ?? null,
         is_dormant: (c.lastMessageAt ? c.lastMessageAt < cutoff : true),
         unread,
       };
@@ -118,6 +141,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!conv) return reply.status(404).send();
     if (conv.participantA !== userId && conv.participantB !== userId)
       return reply.status(403).send();
+    const historyCleared = isHistoryExpired(conv.lastMessageAt ?? null);
+    if (historyCleared) {
+      await clearConversationHistory([convId]);
+    }
     await markConversationRead(convId, userId, conv.participantA, conv.participantB);
     const messageCount = conv.messageCount ?? 0;
     const [crossDraft] = await db
@@ -188,6 +215,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             id: shiftDraft.id,
             initiator_id: shiftDraft.initiatorId,
             initiator_name: shiftInitiatorName,
+            participant_a_ready_at: shiftDraft.participantAReadyAt?.toISOString() ?? null,
+            participant_b_ready_at: shiftDraft.participantBReadyAt?.toISOString() ?? null,
             a_before: shiftDraft.aBefore,
             a_after: shiftDraft.aAfter,
             b_before: shiftDraft.bBefore,
@@ -196,6 +225,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         : null,
       crossing_complete: hasCrossing.length > 0,
       shift_complete: hasShift.length > 0,
+      history_cleared: historyCleared,
+      history_expires_at: getHistoryExpiresAt(conv.lastMessageAt ?? null)?.toISOString() ?? null,
     });
   });
 
@@ -212,6 +243,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
+      if (isHistoryExpired(conv.lastMessageAt ?? null)) {
+        await clearConversationHistory([convId]);
+      }
       await markConversationRead(convId, userId, conv.participantA, conv.participantB);
       const limit = Math.min(50, Math.max(1, parseInt(request.query.limit ?? "50", 10) || 50));
       const beforeId = request.query.before_id;
@@ -267,6 +301,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
+      if (isHistoryExpired(conv.lastMessageAt ?? null)) {
+        await clearConversationHistory([convId]);
+      }
       const now = new Date();
       const cutoff = new Date(Date.now() - DORMANT_DAYS * 24 * 60 * 60 * 1000);
       const wasDormant = conv.isDormant === true || (conv.lastMessageAt && conv.lastMessageAt < cutoff);

@@ -69,6 +69,7 @@ export default function OnboardingScreen() {
   const [sentence, setSentence] = useState("");
   const [context, setContext] = useState("");
   const [thoughtPhotoUrl, setThoughtPhotoUrl] = useState<string | null>(null);
+  const [thoughtPhotoInitialized, setThoughtPhotoInitialized] = useState(false);
   const [posting, setPosting] = useState(false);
 
   const previewWidth = width - spacing.screenPadding * 2;
@@ -105,10 +106,10 @@ export default function OnboardingScreen() {
   }, []);
 
   useEffect(() => {
-    if (step === 3 && !thoughtPhotoUrl) {
-      setThoughtPhotoUrl(selectedProfilePhoto ?? null);
-    }
-  }, [selectedProfilePhoto, step, thoughtPhotoUrl]);
+    if (step !== 3 || thoughtPhotoInitialized) return;
+    setThoughtPhotoUrl(selectedProfilePhoto ?? null);
+    setThoughtPhotoInitialized(true);
+  }, [selectedProfilePhoto, step, thoughtPhotoInitialized]);
 
   const pickPhoto = useCallback(async () => {
     setUploadingPhoto(true);
@@ -161,7 +162,6 @@ export default function OnboardingScreen() {
 
   const canContinueStep1 =
     name.trim().length > 0 &&
-    Boolean(selectedProfilePhoto) &&
     email.trim().length > 0 &&
     password.length >= 8;
 
@@ -307,7 +307,7 @@ export default function OnboardingScreen() {
             )}
           </TouchableOpacity>
           <Text style={styles.photoGuide}>
-            Make sure your full face is visible and clear.
+            Optional. If you add one, make sure your full face is visible and clear.
           </Text>
           <TextInput
             style={styles.input}

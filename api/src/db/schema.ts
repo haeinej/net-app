@@ -372,6 +372,8 @@ export const shiftDrafts = pgTable("shift_drafts", {
   initiatorId: uuid("initiator_id")
     .notNull()
     .references(() => users.id),
+  participantAReadyAt: timestamp("participant_a_ready_at", { withTimezone: true }),
+  participantBReadyAt: timestamp("participant_b_ready_at", { withTimezone: true }),
   aBefore: text("a_before"),
   aAfter: text("a_after"),
   bBefore: text("b_before"),

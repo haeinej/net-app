@@ -3,7 +3,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { eq, and, inArray } from "drizzle-orm";
-import { db, conversations, users, crossingDrafts, crossings, crossingReplies, shiftDrafts, shifts } from "../db";
+import { db, conversations, messages, users, crossingDrafts, crossings, crossingReplies, shiftDrafts, shifts } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { invalidateFeedCache } from "../feed";
 import { getWarmthLevel } from "../lib/warmth";
@@ -39,6 +39,33 @@ async function getConvAndParticipant(
     userId,
     participantA: conv.participantA,
     participantB: conv.participantB,
+  };
+}
+
+function getShiftReadySet(
+  userId: string,
+  participantA: string
+): { participantAReadyAt?: Date; participantBReadyAt?: Date } {
+  const now = new Date();
+  return userId === participantA
+    ? { participantAReadyAt: now }
+    : { participantBReadyAt: now };
+}
+
+function serializeShiftDraft(
+  draft: typeof shiftDrafts.$inferSelect,
+  initiatorName: string | null
+) {
+  return {
+    id: draft.id,
+    initiator_id: draft.initiatorId,
+    initiator_name: initiatorName,
+    participant_a_ready_at: draft.participantAReadyAt?.toISOString() ?? null,
+    participant_b_ready_at: draft.participantBReadyAt?.toISOString() ?? null,
+    a_before: draft.aBefore,
+    a_after: draft.aAfter,
+    b_before: draft.bBefore,
+    b_after: draft.bAfter,
   };
 }
 
@@ -310,41 +337,44 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const ctx = await getConvAndParticipant(request, reply);
       if (!ctx) return;
-      const [existing] = await db
+      let [existing] = await db
         .select()
         .from(shiftDrafts)
         .where(and(eq(shiftDrafts.conversationId, ctx.convId), eq(shiftDrafts.status, "draft")))
         .limit(1);
       if (existing) {
+        const isParticipantA = ctx.userId === ctx.participantA;
+        const alreadyReady = isParticipantA
+          ? Boolean(existing.participantAReadyAt)
+          : Boolean(existing.participantBReadyAt);
+        if (!alreadyReady) {
+          await db
+            .update(shiftDrafts)
+            .set({
+              ...getShiftReadySet(ctx.userId, ctx.participantA),
+              updatedAt: new Date(),
+            })
+            .where(eq(shiftDrafts.id, existing.id));
+          [existing] = await db
+            .select()
+            .from(shiftDrafts)
+            .where(eq(shiftDrafts.id, existing.id))
+            .limit(1);
+        }
         const [initiator] = await db.select({ name: users.name }).from(users).where(eq(users.id, existing.initiatorId)).limit(1);
-        return reply.send({
-          id: existing.id,
-          initiator_id: existing.initiatorId,
-          initiator_name: initiator?.name ?? null,
-          a_before: existing.aBefore,
-          a_after: existing.aAfter,
-          b_before: existing.bBefore,
-          b_after: existing.bAfter,
-        });
+        return reply.send(serializeShiftDraft(existing, initiator?.name ?? null));
       }
       const [draft] = await db
         .insert(shiftDrafts)
         .values({
           conversationId: ctx.convId,
           initiatorId: ctx.userId,
+          ...getShiftReadySet(ctx.userId, ctx.participantA),
           status: "draft",
         })
         .returning();
       if (!draft) return reply.status(500).send();
-      return reply.send({
-        id: draft.id,
-        initiator_id: draft.initiatorId,
-        initiator_name: null,
-        a_before: draft.aBefore,
-        a_after: draft.aAfter,
-        b_before: draft.bBefore,
-        b_after: draft.bAfter,
-      });
+      return reply.send(serializeShiftDraft(draft, null));
     }
   );
 
@@ -360,15 +390,7 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
       if (!draft) return reply.status(404).send();
       const [initiator] = await db.select({ name: users.name }).from(users).where(eq(users.id, draft.initiatorId)).limit(1);
-      return reply.send({
-        id: draft.id,
-        initiator_id: draft.initiatorId,
-        initiator_name: initiator?.name ?? null,
-        a_before: draft.aBefore,
-        a_after: draft.aAfter,
-        b_before: draft.bBefore,
-        b_after: draft.bAfter,
-      });
+      return reply.send(serializeShiftDraft(draft, initiator?.name ?? null));
     }
   );
 
@@ -418,6 +440,9 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
       const aAfter = (draft.aAfter ?? "").trim();
       const bBefore = (draft.bBefore ?? "").trim();
       const bAfter = (draft.bAfter ?? "").trim();
+      if (!draft.participantAReadyAt || !draft.participantBReadyAt) {
+        return reply.status(400).send({ error: "both people need to opt in first" });
+      }
       if (!aBefore || !aAfter || !bBefore || !bAfter) {
         return reply.status(400).send({ error: "both people must fill before and after" });
       }
@@ -460,6 +485,38 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
         .set({ status: "abandoned", updatedAt: new Date() })
         .where(eq(shiftDrafts.id, draft.id));
       return reply.send({ ok: true });
+    }
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/api/conversations/:id/shift/ignore",
+    async (request, reply) => {
+      const ctx = await getConvAndParticipant(request, reply);
+      if (!ctx) return;
+      const [draft] = await db
+        .select()
+        .from(shiftDrafts)
+        .where(and(eq(shiftDrafts.conversationId, ctx.convId), eq(shiftDrafts.status, "draft")))
+        .limit(1);
+      if (!draft) return reply.status(404).send({ error: "no collaborative card invite" });
+
+      const crossingRows = await db
+        .select({ id: crossings.id })
+        .from(crossings)
+        .where(eq(crossings.conversationId, ctx.convId));
+      const crossingIds = crossingRows.map((row) => row.id);
+
+      if (crossingIds.length > 0) {
+        await db.delete(crossingReplies).where(inArray(crossingReplies.crossingId, crossingIds));
+        await db.delete(crossings).where(inArray(crossings.id, crossingIds));
+      }
+
+      await db.delete(crossingDrafts).where(eq(crossingDrafts.conversationId, ctx.convId));
+      await db.delete(shiftDrafts).where(eq(shiftDrafts.conversationId, ctx.convId));
+      await db.delete(messages).where(eq(messages.conversationId, ctx.convId));
+      await db.delete(conversations).where(eq(conversations.id, ctx.convId));
+
+      return reply.send({ deleted: true });
     }
   );
 }

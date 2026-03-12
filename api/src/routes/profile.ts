@@ -42,7 +42,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
     const targetId = request.params.id;
-    const [[user], userThoughts, userCrossings] = await Promise.all([
+    const [[user], userThoughts, userCrossings, userShifts] = await Promise.all([
       db.select().from(users).where(eq(users.id, targetId)).limit(1),
       db
         .select()
@@ -54,13 +54,23 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         .from(crossings)
         .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
         .orderBy(desc(crossings.createdAt)),
+      db
+        .select()
+        .from(shifts)
+        .where(or(eq(shifts.participantA, targetId), eq(shifts.participantB, targetId)))
+        .orderBy(desc(shifts.createdAt)),
     ]);
 
     if (!user) return reply.status(404).send();
 
     const thoughtIds = userThoughts.map((t) => t.id);
-    const allCrossingIds = [...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB]))];
-    const [replyCountRows, crossingUsers] = await Promise.all([
+    const participantIds = [
+      ...new Set([
+        ...userCrossings.flatMap((c) => [c.participantA, c.participantB]),
+        ...userShifts.flatMap((s) => [s.participantA, s.participantB]),
+      ]),
+    ];
+    const [replyCountRows, participantUsers] = await Promise.all([
       thoughtIds.length > 0
         ? db
             .select({
@@ -71,11 +81,11 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
             .where(and(inArray(replies.thoughtId, thoughtIds), eq(replies.status, "accepted")))
             .groupBy(replies.thoughtId)
         : Promise.resolve([] as Array<{ thoughtId: string; count: number }>),
-      allCrossingIds.length > 0
+      participantIds.length > 0
         ? db
             .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
             .from(users)
-            .where(inArray(users.id, allCrossingIds))
+            .where(inArray(users.id, participantIds))
         : Promise.resolve(
             [] as Array<{ id: string; name: string | null; photoUrl: string | null }>
           ),
@@ -90,7 +100,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       warmth_level: getWarmthLevel(replyCounts.get(t.id) ?? 0),
       created_at: t.createdAt?.toISOString(),
     }));
-    const userInfoMap = new Map(crossingUsers.map((p) => [p.id, { id: p.id, name: p.name, photo_url: p.photoUrl }]));
+    const userInfoMap = new Map(participantUsers.map((p) => [p.id, { id: p.id, name: p.name, photo_url: p.photoUrl }]));
     const crossingsForProfile = userCrossings.map((c) => ({
       id: c.id,
       sentence: c.sentence,
@@ -100,11 +110,26 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       participant_a: userInfoMap.get(c.participantA) ?? null,
       participant_b: userInfoMap.get(c.participantB) ?? null,
     }));
+    const shiftsForProfile = userShifts.map((s) => ({
+      id: s.id,
+      created_at: s.createdAt?.toISOString(),
+      participant_a: {
+        ...(userInfoMap.get(s.participantA) ?? { id: s.participantA, name: null, photo_url: null }),
+        before: s.aBefore,
+        after: s.aAfter,
+      },
+      participant_b: {
+        ...(userInfoMap.get(s.participantB) ?? { id: s.participantB, name: null, photo_url: null }),
+        before: s.bBefore,
+        after: s.bAfter,
+      },
+    }));
     return reply.send({
       id: user.id,
       name: user.name,
       photo_url: user.photoUrl,
       thoughts: thoughtsForProfile,
+      shifts: shiftsForProfile,
       crossings: crossingsForProfile,
     });
   });

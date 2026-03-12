@@ -13,8 +13,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
 import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
+import { ShiftCard } from "../../components/ShiftCard";
+import { CrossingCard } from "../../components/CrossingCard";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
-import { fetchProfile, type ProfileResponse } from "../../lib/api";
+import {
+  fetchProfile,
+  type ProfileResponse,
+  type FeedItemShift,
+  type FeedItemCrossing,
+} from "../../lib/api";
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -85,6 +92,11 @@ export default function UserProfileScreen() {
     );
   }
 
+  const hasDeckContent =
+    profile.thoughts.length > 0 ||
+    (profile.shifts?.length ?? 0) > 0 ||
+    (profile.crossings?.length ?? 0) > 0;
+
   return (
     <ScrollView
       style={[styles.container, { paddingTop: insets.top + 8 }]}
@@ -105,7 +117,7 @@ export default function UserProfileScreen() {
       </View>
 
       <Text style={styles.deckTitle}>Deck</Text>
-      {profile.thoughts.length === 0 ? (
+      {!hasDeckContent ? (
         <Text style={styles.emptyDeck}>No deck yet.</Text>
       ) : (
         profile.thoughts.map((t) => (
@@ -118,6 +130,39 @@ export default function UserProfileScreen() {
           </View>
         ))
       )}
+      {profile.shifts?.map((s) => {
+        const shiftItem: FeedItemShift = {
+          type: "shift",
+          id: s.id,
+          created_at: s.created_at ?? new Date().toISOString(),
+          participant_a: s.participant_a,
+          participant_b: s.participant_b,
+        };
+        return (
+          <View key={s.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
+            <ShiftCard item={shiftItem} />
+          </View>
+        );
+      })}
+      {profile.crossings?.map((c) => {
+        const crossingItem: FeedItemCrossing = {
+          type: "crossing",
+          crossing: {
+            id: c.id,
+            sentence: c.sentence,
+            context: c.context,
+            created_at: c.created_at ?? new Date().toISOString(),
+          },
+          participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
+          participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
+          warmth_level: "none",
+        };
+        return (
+          <View key={c.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
+            <CrossingCard item={crossingItem} visible />
+          </View>
+        );
+      })}
     </ScrollView>
   );
 }
