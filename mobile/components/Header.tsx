@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fontFamily, typography } from "../theme";
 import { spacing } from "../theme/spacing";
 
@@ -11,28 +12,36 @@ interface HeaderProps {
 
 export function Header({ hasNotifications = false, onNotificationPress }: HeaderProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.row}>
-      <Text style={styles.logo}>
-        ohm<Text style={styles.logoPeriod}>.</Text>
-      </Text>
-      <View style={styles.right}>
+    <View style={[styles.row, { paddingTop: insets.top + 8 }]}>
+      {/* LEFT — Notification circle */}
+      <View style={styles.side}>
         {hasNotifications ? (
           <TouchableOpacity
             style={styles.notificationDot}
             onPress={onNotificationPress}
             accessibilityLabel="Open notifications"
-          >
-            <View style={styles.notificationInner} />
-          </TouchableOpacity>
-        ) : null}
+          />
+        ) : (
+          <View style={styles.notificationPlaceholder} />
+        )}
+      </View>
+
+      {/* CENTRE — Logo */}
+      <Text style={styles.logo}>
+        ohm<Text style={styles.logoPeriod}>.</Text>
+      </Text>
+
+      {/* RIGHT — Compose (+) */}
+      <View style={[styles.side, styles.sideRight]}>
         <TouchableOpacity
           style={styles.compose}
           onPress={() => router.push("/post")}
           accessibilityLabel="Post a thought"
         >
-          <Text style={styles.composeText}>Post</Text>
+          <Text style={styles.composeIcon}>+</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -45,8 +54,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
+    paddingBottom: 8,
     minHeight: 44,
+  },
+  side: {
+    width: 40,
+    alignItems: "flex-start",
+  },
+  sideRight: {
+    alignItems: "flex-end",
+  },
+  notificationPlaceholder: {
+    width: spacing.notificationDotSize,
+    height: spacing.notificationDotSize,
   },
   logo: {
     ...typography.logo,
@@ -57,36 +77,22 @@ const styles = StyleSheet.create({
   logoPeriod: {
     color: colors.VERMILLION,
   },
-  right: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
   notificationDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: spacing.notificationDotSize,
+    height: spacing.notificationDotSize,
+    borderRadius: spacing.notificationDotSize / 2,
     backgroundColor: colors.VERMILLION,
+  },
+  compose: {
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
   },
-  notificationInner: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: "#FFFFFF",
-  },
-  compose: {
-    backgroundColor: colors.PANEL_DEEP,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-  },
-  composeText: {
-    fontFamily: fontFamily.comico,
-    fontSize: 6,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    color: "#FFFFFF",
+  composeIcon: {
+    fontSize: 22,
+    fontWeight: "200",
+    color: colors.TYPE_DARK,
+    lineHeight: 24,
   },
 });

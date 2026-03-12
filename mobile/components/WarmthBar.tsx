@@ -11,8 +11,8 @@ interface WarmthBarProps {
 
 const warmthColorMap: Record<WarmthLevel, string | null> = {
   none: null,
-  low: colors.CHARTREUSE,
-  medium: colors.OLIVE,
+  low: "rgba(235,65,1,0.3)",
+  medium: "rgba(235,65,1,0.6)",
   full: colors.VERMILLION,
 };
 

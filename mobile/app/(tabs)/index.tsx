@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { colors, spacing, typography } from "../../theme";
 import { Header } from "../../components/Header";
-import { ThoughtCard } from "../../components/ThoughtCard";
+import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { ShiftCard } from "../../components/ShiftCard";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import {
@@ -162,7 +162,7 @@ export default function WorldsScreen() {
           renderItem={({ item }) => (
             <View style={[styles.cardWrap, { width: width - spacing.screenPadding * 2 }]}>
               {item.type === "thought" ? (
-                <ThoughtCard item={item} />
+                <SwipeableThoughtCard item={item} />
               ) : (
                 <ShiftCard item={item} />
               )}

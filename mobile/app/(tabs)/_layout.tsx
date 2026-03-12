@@ -1,16 +1,15 @@
 import { Tabs } from "expo-router";
-import { View, Text, StyleSheet } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { Image } from "expo-image";
-import { colors, fontFamily } from "../../theme";
+import { colors } from "../../theme";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../../assets/images/ohm-logo.png");
 
 function WorldsIcon({ focused }: { focused: boolean }) {
-  const c = focused ? colors.VERMILLION : colors.TYPE_DARK;
   return (
-    <View style={[iconStyles.circle, { borderColor: c }]}>
-      {focused && <View style={[iconStyles.dot, { backgroundColor: c }]} />}
+    <View style={[iconStyles.circle, { borderColor: colors.TYPE_DARK, opacity: focused ? 1 : 0.4 }]}>
+      {focused && <View style={[iconStyles.dot, { backgroundColor: colors.TYPE_DARK }]} />}
     </View>
   );
 }
@@ -19,7 +18,7 @@ function ConvoIcon({ focused }: { focused: boolean }) {
   return (
     <Image
       source={ohmLogo}
-      style={[iconStyles.logo, !focused && { opacity: 0.3 }]}
+      style={[iconStyles.logo, !focused && { opacity: 0.4 }]}
       contentFit="contain"
     />
   );
@@ -30,24 +29,10 @@ function MeIcon({ focused }: { focused: boolean }) {
     <View
       style={[
         iconStyles.filled,
-        { backgroundColor: focused ? colors.VERMILLION : colors.TYPE_DARK },
-        !focused && { opacity: 0.3 },
+        { backgroundColor: colors.TYPE_DARK },
+        !focused && { opacity: 0.4 },
       ]}
     />
-  );
-}
-
-function TabLabel({ label, focused }: { label: string; focused: boolean }) {
-  return (
-    <Text
-      style={[
-        tabLabelStyles.text,
-        { color: focused ? colors.VERMILLION : colors.TYPE_DARK },
-        !focused && { opacity: 0.3 },
-      ]}
-    >
-      {label}
-    </Text>
   );
 }
 
@@ -57,9 +42,9 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: colors.VERMILLION,
+        tabBarActiveTintColor: colors.TYPE_DARK,
         tabBarInactiveTintColor: colors.TYPE_MUTED,
-        tabBarShowLabel: true,
+        tabBarShowLabel: false,
       }}
     >
       <Tabs.Screen
@@ -67,7 +52,6 @@ export default function TabLayout() {
         options={{
           title: "Worlds",
           tabBarIcon: ({ focused }) => <WorldsIcon focused={focused} />,
-          tabBarLabel: ({ focused }) => <TabLabel label="Worlds" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -75,7 +59,6 @@ export default function TabLayout() {
         options={{
           title: "Conversations",
           tabBarIcon: ({ focused }) => <ConvoIcon focused={focused} />,
-          tabBarLabel: ({ focused }) => <TabLabel label="Conversations" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -83,7 +66,6 @@ export default function TabLayout() {
         options={{
           title: "Me",
           tabBarIcon: ({ focused }) => <MeIcon focused={focused} />,
-          tabBarLabel: ({ focused }) => <TabLabel label="Me" focused={focused} />,
         }}
       />
     </Tabs>
@@ -109,27 +91,16 @@ const iconStyles = StyleSheet.create({
     height: 18,
   },
   filled: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-  },
-});
-
-const tabLabelStyles = StyleSheet.create({
-  text: {
-    fontFamily: fontFamily.comico,
-    fontSize: 5.5,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginTop: 1,
+    width: 16,
+    height: 16,
+    borderRadius: 2,
   },
 });
 
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: colors.WARM_GROUND,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(26,26,22,0.05)",
+    borderTopWidth: 0,
     elevation: 0,
     shadowOpacity: 0,
     paddingTop: 6,

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily } from "../../theme";
 import {
   fetchConversations,
@@ -76,6 +77,7 @@ function ConversationRow({
 
 export default function ConversationsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [list, setList] = useState<ConversationListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -120,7 +122,7 @@ export default function ConversationsScreen() {
 
   if (loading && list.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
@@ -131,7 +133,7 @@ export default function ConversationsScreen() {
 
   if (error && list.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={() => { setLoading(true); load(); }}>
@@ -144,7 +146,7 @@ export default function ConversationsScreen() {
 
   if (list.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
             When you accept a reply, the conversation begins here.
@@ -156,7 +158,7 @@ export default function ConversationsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.screenHeader}>
+      <View style={[styles.screenHeader, { paddingTop: insets.top + 14 }]}>
         <Text style={styles.screenTitle}>Conversations</Text>
       </View>
       <FlatList
@@ -181,11 +183,11 @@ export default function ConversationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.CARD_GROUND,
+    backgroundColor: colors.WARM_GROUND,
   },
   screenHeader: {
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 14,
+    paddingBottom: 14,
   },
   screenTitle: {
     fontFamily: fontFamily.comico,
@@ -228,7 +230,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.OLIVE,
+    backgroundColor: colors.VERMILLION,
   },
   rowBody: {
     flex: 1,
