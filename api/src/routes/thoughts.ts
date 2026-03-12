@@ -83,6 +83,44 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(200).send();
   });
 
+  app.put<{ Params: ThoughtParams; Body: CreateBody }>("/api/thoughts/:id", async (request, reply) => {
+    const userId = getUserId(request);
+    if (!userId) return reply.status(401).send();
+    const { id } = request.params;
+    const [t] = await db.select().from(thoughts).where(and(eq(thoughts.id, id), isNull(thoughts.deletedAt)));
+    if (!t) return reply.status(404).send();
+    if (t.userId !== userId) return reply.status(403).send();
+    const body = request.body ?? {};
+    const sentence = typeof body.sentence === "string" ? body.sentence.trim() : undefined;
+    const context = typeof body.context === "string" ? body.context.trim() : undefined;
+    const photoUrl = typeof body.photo_url === "string" ? body.photo_url.trim() || null : undefined;
+    if (sentence !== undefined && !sentence) return reply.status(400).send({ error: "sentence required" });
+    if (sentence && sentence.length > SENTENCE_MAX)
+      return reply.status(400).send({ error: `sentence max ${SENTENCE_MAX} chars` });
+    if (context !== undefined && context.length > CONTEXT_MAX)
+      return reply.status(400).send({ error: `context max ${CONTEXT_MAX} chars` });
+
+    const updates: Record<string, unknown> = {};
+    if (sentence !== undefined) updates.sentence = sentence;
+    if (context !== undefined) updates.context = context || null;
+    if (photoUrl !== undefined) updates.photoUrl = photoUrl;
+
+    if (Object.keys(updates).length > 0) {
+      await db.update(thoughts).set(updates).where(eq(thoughts.id, id));
+      invalidateFeedCache();
+    }
+
+    const [updated] = await db.select().from(thoughts).where(eq(thoughts.id, id));
+    return reply.send({
+      id: updated.id,
+      sentence: updated.sentence,
+      context: updated.context ?? "",
+      photo_url: updated.photoUrl ?? null,
+      image_url: updated.imageUrl ?? null,
+      created_at: updated.createdAt?.toISOString(),
+    });
+  });
+
   app.get<{ Params: ThoughtParams }>("/api/thoughts/:id", async (request, reply) => {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();

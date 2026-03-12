@@ -7,12 +7,11 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  useWindowDimensions,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing, typography } from "../../theme";
 import { Header } from "../../components/Header";
-import { ThoughtCard } from "../../components/ThoughtCard";
+import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { ShiftCard } from "../../components/ShiftCard";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
@@ -21,6 +20,9 @@ import {
   fetchNotifications,
   acceptReply,
   ignoreReply,
+  getMyUserId,
+  deleteThought,
+  editThought,
   type FeedItem,
   type NotificationItem,
 } from "../../lib/api";
@@ -40,7 +42,55 @@ export default function WorldsScreen() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { width } = useWindowDimensions();
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMyUserId().then(setMyUserId);
+  }, []);
+
+  const handleFeedDelete = useCallback(async (thoughtId: string) => {
+    try {
+      await deleteThought(thoughtId);
+      setFeed((prev) => prev.filter((f) => !(f.type === "thought" && f.thought.id === thoughtId)));
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const handleFeedEdit = useCallback((thoughtId: string) => {
+    const item = feed.find((f) => f.type === "thought" && f.thought.id === thoughtId);
+    if (!item || item.type !== "thought") return;
+    // Alert.prompt is iOS-only but fits ohm's target
+    const { Alert } = require("react-native");
+    Alert.prompt(
+      "Edit thought",
+      "Update your sentence:",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Save",
+          onPress: async (newSentence?: string) => {
+            const s = newSentence?.trim();
+            if (!s) return;
+            try {
+              await editThought(thoughtId, { sentence: s });
+              setFeed((prev) =>
+                prev.map((f) =>
+                  f.type === "thought" && f.thought.id === thoughtId
+                    ? { ...f, thought: { ...f.thought, sentence: s } }
+                    : f
+                )
+              );
+            } catch {
+              Alert.alert("Error", "Could not edit thought");
+            }
+          },
+        },
+      ],
+      "plain-text",
+      item.thought.sentence
+    );
+  }, [feed]);
 
   // Walkthrough state
   const [walkthroughVisible, setWalkthroughVisible] = useState(false);
@@ -195,10 +245,15 @@ export default function WorldsScreen() {
             <View
               ref={index === 0 ? feedCardRef : undefined}
               collapsable={false}
-              style={[styles.cardWrap, { width: width - spacing.screenPadding * 2 }]}
+              style={styles.cardWrap}
             >
               {item.type === "thought" ? (
-                <ThoughtCard item={item} />
+                <SwipeableThoughtCard
+                  item={item}
+                  isOwn={myUserId === item.user.id}
+                  onDelete={handleFeedDelete}
+                  onEdit={handleFeedEdit}
+                />
               ) : (
                 <ShiftCard item={item} />
               )}
@@ -266,13 +321,15 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.thoughtSentence,
     color: colors.TYPE_MUTED,
-    fontSize: 14,
+    fontSize: 12,
+    textAlign: "center",
   },
   errorText: {
     ...typography.context,
-    color: colors.TYPE_DARK,
-    fontSize: 12,
+    color: colors.TYPE_MUTED,
+    fontSize: 10,
     textAlign: "center",
+    lineHeight: 16,
   },
   hint: {
     ...typography.metadata,

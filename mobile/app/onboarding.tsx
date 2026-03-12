@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,9 @@ import {
   ActivityIndicator,
   Alert,
   Image as NativeImage,
+  Animated,
 } from "react-native";
+import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,8 +34,10 @@ import {
   getStoredUserId,
 } from "../lib/auth-store";
 import { ScreenExitButton } from "../components/ScreenExitButton";
-import { BrandLockup } from "../components/BrandLockup";
 import { ThoughtImageFrame } from "../components/ThoughtImageFrame";
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const ohmLogo = require("../assets/images/ohm-logo.png");
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -70,6 +74,18 @@ export default function OnboardingScreen() {
   const previewWidth = width - spacing.screenPadding * 2;
   const previewHeight = previewWidth / IMAGE_ASPECT_RATIO;
   const selectedProfilePhoto = photoBase64 ?? photoUri;
+
+  // Smooth fade-in for logo and content
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+  useEffect(() => {
+    fadeAnim.setValue(0);
+    slideAnim.setValue(20);
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+    ]).start();
+  }, [step, fadeAnim, slideAnim]);
 
   useEffect(() => {
     let cancelled = false;
@@ -253,8 +269,10 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <BrandLockup size="sm" style={styles.stepBrand} />
-          <Text style={styles.stepTitle}>Identity</Text>
+          <Animated.View style={[styles.logoHero, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <Image source={ohmLogo} style={styles.logoHeroImage} contentFit="contain" />
+          </Animated.View>
+          <Animated.Text style={[styles.stepTitle, { opacity: fadeAnim }]}>Identity</Animated.Text>
 
           <TextInput
             style={styles.input}
@@ -351,8 +369,10 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <BrandLockup size="sm" style={styles.stepBrand} />
-          <Text style={styles.stepTitle}>Right now</Text>
+          <Animated.View style={[styles.logoHero, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <Image source={ohmLogo} style={styles.logoHeroImage} contentFit="contain" />
+          </Animated.View>
+          <Animated.Text style={[styles.stepTitle, { opacity: fadeAnim }]}>Right now</Animated.Text>
           <Text style={styles.stepSubtitle}>
             What is alive in your thinking right now. This stays internal.
           </Text>
@@ -413,7 +433,7 @@ export default function OnboardingScreen() {
     >
       <View style={styles.header}>
         <View style={styles.headerLead}>
-          <BrandLockup size="sm" />
+          <Image source={ohmLogo} style={styles.logoHeaderIcon} contentFit="contain" />
           <Text style={styles.firstThoughtTitle}>Your first thought</Text>
         </View>
         <ScreenExitButton onPress={handleExit} disabled={onboardingBusy} />
@@ -435,7 +455,6 @@ export default function OnboardingScreen() {
           ]}
         >
           <ThoughtImageFrame
-            thoughtText={sentence || "ohm"}
             imageUrl={thoughtPhotoUrl}
             aspectRatio={IMAGE_ASPECT_RATIO}
             borderRadius={spacing.cardRadius}
@@ -472,7 +491,7 @@ export default function OnboardingScreen() {
           </View>
           {!thoughtPhotoUrl ? (
             <Text style={styles.photoFallbackText}>
-              No photo selected. The fallback mesh pattern will be used.
+              No photo selected. The preview will stay plain until you add one.
             </Text>
           ) : null}
         </View>
@@ -578,8 +597,18 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 12,
   },
-  stepBrand: {
-    marginBottom: 12,
+  logoHero: {
+    alignSelf: "center",
+    marginBottom: 32,
+    marginTop: 12,
+  },
+  logoHeroImage: {
+    width: 64,
+    height: 64,
+  },
+  logoHeaderIcon: {
+    width: 22,
+    height: 22,
   },
   input: {
     fontFamily: typography.label.fontFamily,

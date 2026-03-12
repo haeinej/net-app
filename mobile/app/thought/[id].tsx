@@ -228,7 +228,6 @@ export default function ThoughtDetailScreen() {
             <View style={styles.panel1Inner}>
               <WarmthBar warmthLevel={warmthForBar} height={imageHeight + 56} />
               <ThoughtImageFrame
-                thoughtText={p1.sentence}
                 imageUrl={p1.photo_url ?? p1.image_url}
                 aspectRatio={IMAGE_ASPECT_RATIO}
                 borderRadius={0}
@@ -278,9 +277,9 @@ export default function ThoughtDetailScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.panelLabel}>Replies</Text>
+              <Text style={styles.panelLabel}>Accepted replies</Text>
               {p3.accepted_replies.length === 0 ? (
-                <Text style={styles.panelEmpty}>No replies yet.</Text>
+                <Text style={styles.panelEmpty}>No accepted replies yet.</Text>
               ) : null}
               {p3.accepted_replies.map((r) => (
                 <View key={r.id} style={styles.replyRow}>
@@ -416,7 +415,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 10,
-    backgroundColor: colors.PANEL_DARK,
+    backgroundColor: colors.CARD_GROUND,
   },
   avatar: {
     width: 34,
@@ -432,7 +431,7 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 1,
     textTransform: "uppercase",
-    color: colors.TYPE_WHITE,
+    color: colors.TYPE_DARK,
   },
   panel2: {
     backgroundColor: colors.PANEL_DARK,

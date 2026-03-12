@@ -38,7 +38,6 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
       <View style={styles.cardInner}>
         <WarmthBar warmthLevel={warmth_level} height={imageHeight + 56} />
         <ThoughtImageFrame
-          thoughtText={thought.sentence}
           imageUrl={thought.photo_url ?? thought.image_url}
           aspectRatio={IMAGE_ASPECT_RATIO}
           borderRadius={0}

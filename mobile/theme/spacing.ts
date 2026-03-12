@@ -11,11 +11,17 @@ export const spacing = {
   /** Thought card corner radius */
   cardRadius: 8,
   /** Left edge warmth bar width */
-  warmthBarWidth: 2,
+  warmthBarWidth: 4,
   /** Profile photo size on card */
   profilePhotoSize: 24,
   /** Notification dot diameter */
   notificationDotSize: 20,
+  /** Compact card total height (3 cards visible) */
+  compactCardHeight: 190,
+  /** Compact card footer height */
+  compactFooterHeight: 40,
+  /** Compact card avatar size */
+  compactAvatarSize: 28,
 } as const;
 
 /** Image aspect ratio for thought card (4:3) */

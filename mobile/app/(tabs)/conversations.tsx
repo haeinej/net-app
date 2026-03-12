@@ -183,7 +183,7 @@ export default function ConversationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.CARD_GROUND,
+    backgroundColor: colors.WARM_GROUND,
   },
   screenHeader: {
     paddingHorizontal: spacing.screenPadding,
@@ -203,8 +203,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.WARM_GROUND,
-    borderRadius: 6,
+    backgroundColor: colors.CARD_GROUND,
+    borderRadius: spacing.cardRadius,
     padding: 10,
     marginBottom: 8,
   },
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.CARD_GROUND,
     marginHorizontal: spacing.screenPadding,
     marginBottom: 8,
-    borderRadius: 8,
+    borderRadius: spacing.cardRadius,
     opacity: 0.6,
   },
   loader: {

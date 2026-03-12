@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,12 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Animated,
 } from "react-native";
+import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography } from "../theme";
+import { colors, spacing, typography, fontFamily } from "../theme";
 import { login } from "../lib/api";
 import {
   setAuth,
@@ -20,7 +22,9 @@ import {
   setOnboardingStep,
 } from "../lib/auth-store";
 import { setCachedUserId } from "../lib/api";
-import { BrandLockup } from "../components/BrandLockup";
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const ohmLogo = require("../assets/images/ohm-logo.png");
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -29,6 +33,20 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const contentFade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
+      ]),
+      Animated.timing(contentFade, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, [fadeAnim, scaleAnim, contentFade]);
 
   const handleLogin = async () => {
     const e = email.trim();
@@ -61,59 +79,72 @@ export default function LoginScreen() {
       keyboardVerticalOffset={0}
     >
       <View style={styles.content}>
-        <BrandLockup style={styles.brand} />
-        <Text style={styles.subtitle}>Where your thoughts find someone</Text>
+        <Animated.View style={[styles.logoWrap, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+          <Image source={ohmLogo} style={styles.logoImage} contentFit="contain" />
+          <Text style={styles.brandName}>ohm<Text style={styles.brandDot}>.</Text></Text>
+        </Animated.View>
+        <Animated.Text style={[styles.subtitle, { opacity: contentFade }]}>
+          Thoughts that find someone
+        </Animated.Text>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor={colors.TYPE_MUTED}
-          value={email}
-          onChangeText={(t) => { setEmail(t); setError(null); }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          editable={!loading}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={colors.TYPE_MUTED}
-          value={password}
-          onChangeText={(t) => { setPassword(t); setError(null); }}
-          secureTextEntry
-          editable={!loading}
-        />
+        <Animated.View style={[styles.form, { opacity: contentFade }]}>
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            placeholderTextColor={colors.TYPE_MUTED}
+            value={email}
+            onChangeText={(t) => {
+              setEmail(t);
+              setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            editable={!loading}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor={colors.TYPE_MUTED}
+            value={password}
+            onChangeText={(t) => {
+              setPassword(t);
+              setError(null);
+            }}
+            secureTextEntry
+            editable={!loading}
+          />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
-          ) : (
-            <Text style={styles.buttonText}>LOG IN</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+            ) : (
+              <Text style={styles.buttonText}>LOG IN</Text>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.link}
-          onPress={() => router.replace("/onboarding")}
-          disabled={loading}
-        >
-          <Text style={styles.linkText}>Create account</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.link}
+            onPress={() => router.replace("/onboarding")}
+            disabled={loading}
+          >
+            <Text style={styles.linkText}>Create account</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.secondaryLink}
-          onPress={() => router.push("/privacy" as Href)}
-          disabled={loading}
-        >
-          <Text style={styles.secondaryLinkText}>Privacy policy</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryLink}
+            onPress={() => router.push("/privacy" as Href)}
+            disabled={loading}
+          >
+            <Text style={styles.secondaryLinkText}>Privacy policy</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -131,16 +162,36 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: "100%",
   },
-  brand: {
-    marginBottom: 8,
+  logoWrap: {
+    alignSelf: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  brandName: {
+    fontFamily: fontFamily.comico,
+    fontSize: 24,
+    color: colors.TYPE_DARK,
+    marginTop: 10,
+    letterSpacing: -0.6,
+  },
+  brandDot: {
+    color: colors.VERMILLION,
+  },
+  logoImage: {
+    width: 96,
+    height: 96,
   },
   subtitle: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 12,
+    fontSize: 10,
     color: colors.TYPE_MUTED,
-    marginBottom: 24,
+    marginBottom: 32,
     textTransform: "uppercase",
-    letterSpacing: 1,
+    letterSpacing: 1.5,
+    textAlign: "center",
+  },
+  form: {
+    width: "100%",
   },
   input: {
     fontFamily: typography.label.fontFamily,

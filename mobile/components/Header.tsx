@@ -1,9 +1,11 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fontFamily } from "../theme";
-import { spacing } from "../theme/spacing";
-import { BrandLockup } from "./BrandLockup";
+import { colors, fontFamily, spacing } from "../theme";
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const ohmLogo = require("../assets/images/ohm-logo.png");
 
 interface HeaderProps {
   /** When true, show orange notification dot and allow opening notification panel */
@@ -19,17 +21,20 @@ export function Header({ hasNotifications = false, onNotificationPress, postButt
 
   return (
     <View style={[styles.row, { paddingTop: insets.top + 8 }]}>
-      <BrandLockup size="sm" />
-      <View style={styles.right}>
-        {hasNotifications ? (
-          <TouchableOpacity
-            style={styles.notificationDot}
-            onPress={onNotificationPress}
-            accessibilityLabel="Open notifications"
-          >
-            <View style={styles.notificationInner} />
-          </TouchableOpacity>
-        ) : null}
+      {/* Left: notification dot */}
+      <View style={styles.side}>
+        <TouchableOpacity
+          style={[styles.notificationDot, !hasNotifications && styles.notificationDotInactive]}
+          onPress={onNotificationPress}
+          accessibilityLabel="Open notifications"
+        >
+          {hasNotifications && <View style={styles.notificationInner} />}
+        </TouchableOpacity>
+      </View>
+      {/* Center: logo */}
+      <Image source={ohmLogo} style={styles.logo} contentFit="contain" />
+      {/* Right: post button */}
+      <View style={[styles.side, styles.sideRight]}>
         <View ref={postButtonRef} collapsable={false}>
           <TouchableOpacity
             style={styles.compose}
@@ -53,36 +58,44 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     minHeight: 44,
   },
-  right: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+  side: {
+    flex: 1,
+  },
+  sideRight: {
+    alignItems: "flex-end",
+  },
+  logo: {
+    width: 28,
+    height: 28,
   },
   notificationDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: spacing.notificationDotSize,
+    height: spacing.notificationDotSize,
+    borderRadius: spacing.notificationDotSize / 2,
     backgroundColor: colors.VERMILLION,
     alignItems: "center",
     justifyContent: "center",
   },
+  notificationDotInactive: {
+    backgroundColor: colors.CARD_GROUND,
+  },
   notificationInner: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: "#FFFFFF",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.TYPE_WHITE,
   },
   compose: {
-    backgroundColor: colors.PANEL_DEEP,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    backgroundColor: colors.VERMILLION,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     borderRadius: 20,
   },
   composeText: {
     fontFamily: fontFamily.comico,
-    fontSize: 6,
+    fontSize: 8,
     letterSpacing: 1.5,
     textTransform: "uppercase",
-    color: "#FFFFFF",
+    color: colors.TYPE_WHITE,
   },
 });

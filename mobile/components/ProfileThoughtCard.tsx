@@ -1,10 +1,14 @@
-import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
-import { WarmthBar, type WarmthLevel } from "./WarmthBar";
+import { colors, spacing, typography, fontFamily } from "../theme";
+import { WarmthBar } from "./WarmthBar";
 import type { ProfileThought } from "../lib/api";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
+
+const CARD_HEIGHT = spacing.compactCardHeight;
+const IMAGE_HEIGHT = CARD_HEIGHT - spacing.compactFooterHeight;
+const AVATAR = spacing.compactAvatarSize;
 
 function formatRelativeTime(iso: string): string {
   const d = new Date(iso);
@@ -37,9 +41,6 @@ export function ProfileThoughtCard({
   authorPhotoUrl,
 }: ProfileThoughtCardProps) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const cardWidth = width - spacing.screenPadding * 2;
-  const imageHeight = cardWidth / IMAGE_ASPECT_RATIO;
 
   return (
     <TouchableOpacity
@@ -49,29 +50,26 @@ export function ProfileThoughtCard({
       activeOpacity={1}
     >
       <View style={styles.cardInner}>
-        <WarmthBar warmthLevel={thought.warmth_level} height={imageHeight + 34} />
+        <WarmthBar warmthLevel={thought.warmth_level} height={CARD_HEIGHT} />
         <View style={{ flex: 1 }}>
           <ThoughtImageFrame
-            thoughtText={thought.sentence}
             imageUrl={thought.photo_url ?? thought.image_url}
-            aspectRatio={IMAGE_ASPECT_RATIO}
+            aspectRatio={4 / 3}
             borderRadius={0}
-            style={{ width: cardWidth - spacing.warmthBarWidth, height: imageHeight }}
+            style={{ height: IMAGE_HEIGHT }}
           >
-            <Text style={styles.sentence} numberOfLines={2}>
-              {thought.sentence}
-            </Text>
+            <Text style={styles.sentence}>{thought.sentence}</Text>
           </ThoughtImageFrame>
-          <View style={[styles.meta, dark && styles.metaDark]}>
+          <View style={[styles.footer, dark && styles.footerDark]}>
             {authorPhotoUrl ? (
-              <Image source={{ uri: authorPhotoUrl }} style={styles.metaAvatar} contentFit="cover" />
+              <Image source={{ uri: authorPhotoUrl }} style={styles.avatar} contentFit="cover" />
             ) : (
-              <View style={styles.metaAvatarPlc} />
+              <View style={[styles.avatar, styles.avatarPlc]} />
             )}
-            <Text style={[styles.metaName, dark && styles.metaNameDark]} numberOfLines={1}>
+            <Text style={[styles.name, dark && styles.nameDark]} numberOfLines={1}>
               {authorName ? authorName.toUpperCase() : "—"}
             </Text>
-            <Text style={[styles.metaDate, dark && styles.metaDateDark]}>
+            <Text style={[styles.date, dark && styles.dateDark]}>
               {thought.created_at ? formatRelativeTime(thought.created_at) : ""}
             </Text>
           </View>
@@ -84,68 +82,67 @@ export function ProfileThoughtCard({
 const styles = StyleSheet.create({
   card: {
     width: "100%",
+    height: CARD_HEIGHT,
     borderRadius: spacing.cardRadius,
     overflow: "hidden",
   },
   cardInner: {
     flexDirection: "row",
+    height: CARD_HEIGHT,
   },
   sentence: {
     ...typography.thoughtDisplay,
     position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 16,
-    fontSize: 25,
-    lineHeight: 27,
+    left: 10,
+    right: 10,
+    bottom: 8,
+    fontSize: 12,
+    lineHeight: 14,
     letterSpacing: -0.1,
     color: colors.TYPE_WHITE,
     textShadowColor: "rgba(8,6,4,0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
   },
-  meta: {
+  footer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.CARD_GROUND,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 10,
+    height: spacing.compactFooterHeight,
+    paddingHorizontal: 10,
+    gap: 8,
   },
-  metaDark: {
+  footerDark: {
     backgroundColor: "rgba(245,240,234,0.06)",
   },
-  metaAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  avatar: {
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: AVATAR / 2,
   },
-  metaAvatarPlc: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  avatarPlc: {
     backgroundColor: colors.PANEL_DEEP,
   },
-  metaName: {
+  name: {
     fontFamily: fontFamily.comico,
-    fontSize: 8.5,
-    lineHeight: 10,
-    letterSpacing: 1,
+    fontSize: 7,
+    lineHeight: 9,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
     flex: 1,
   },
-  metaNameDark: {
+  nameDark: {
     color: "rgba(245,240,234,0.5)",
   },
-  metaDate: {
+  date: {
     fontFamily: fontFamily.comico,
-    fontSize: 7.5,
-    lineHeight: 9,
-    letterSpacing: 0.6,
+    fontSize: 6.5,
+    lineHeight: 8,
+    letterSpacing: 0.5,
     color: colors.TYPE_MUTED,
   },
-  metaDateDark: {
+  dateDark: {
     color: "rgba(245,240,234,0.25)",
   },
 });

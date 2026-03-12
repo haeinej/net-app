@@ -8,14 +8,14 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  useWindowDimensions,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import Svg, { ClipPath, Path, Defs, Rect, Image as SvgImage } from "react-native-svg";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, fontFamily } from "../../theme";
-import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
+import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import {
   getMyUserId,
   fetchProfile,
@@ -23,16 +23,17 @@ import {
   setCachedUserId,
   updateProfile,
   deleteThought,
+  editThought,
   type ProfileResponse,
   type ProfileThought,
+  type FeedItemThought,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
 
 export default function MeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const heroSize = Math.min(width - spacing.screenPadding * 2, 380);
+  const photoSize = 150;
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -91,6 +92,18 @@ export default function MeScreen() {
     setEditing(false);
   }, []);
 
+  const pickPhoto = useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setEditPhotoUrl(result.assets[0].uri);
+    }
+  }, []);
+
   const saveEdit = useCallback(async () => {
     if (!profile || saving) return;
     setSaving(true);
@@ -117,32 +130,58 @@ export default function MeScreen() {
   }, [profile, editName, editPhotoUrl, saving]);
 
   const handleDeleteThought = useCallback(
-    (thought: ProfileThought) => {
-      Alert.alert(
-        "Delete thought",
-        "This will remove the thought from your profile. Conversations that started from it are not affected.",
+    async (thoughtId: string) => {
+      try {
+        await deleteThought(thoughtId);
+        setProfile((prev) =>
+          prev
+            ? { ...prev, thoughts: prev.thoughts.filter((t) => t.id !== thoughtId) }
+            : null
+        );
+      } catch {
+        Alert.alert("Error", "Could not delete thought");
+      }
+    },
+    []
+  );
+
+  const handleEditThought = useCallback(
+    (thoughtId: string) => {
+      const thought = profile?.thoughts.find((t) => t.id === thoughtId);
+      if (!thought) return;
+      Alert.prompt(
+        "Edit thought",
+        "Update your sentence:",
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
+            text: "Save",
+            onPress: async (newSentence?: string) => {
+              const s = newSentence?.trim();
+              if (!s) return;
               try {
-                await deleteThought(thought.id);
+                await editThought(thoughtId, { sentence: s });
                 setProfile((prev) =>
                   prev
-                    ? { ...prev, thoughts: prev.thoughts.filter((t) => t.id !== thought.id) }
+                    ? {
+                        ...prev,
+                        thoughts: prev.thoughts.map((t) =>
+                          t.id === thoughtId ? { ...t, sentence: s } : t
+                        ),
+                      }
                     : null
                 );
               } catch {
-                Alert.alert("Error", "Could not delete thought");
+                Alert.alert("Error", "Could not edit thought");
               }
             },
           },
-        ]
+        ],
+        "plain-text",
+        thought.sentence
       );
     },
-    []
+    [profile]
   );
 
   if (!myUserId) {
@@ -166,7 +205,7 @@ export default function MeScreen() {
   if (loading && !profile) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-        <View style={[styles.skeletonPhoto, { width: heroSize, height: heroSize }]} />
+        <View style={styles.skeletonPhoto} />
         <View style={styles.skeletonName} />
         <ActivityIndicator size="small" color={colors.TYPE_MUTED} style={styles.loader} />
       </View>
@@ -192,23 +231,37 @@ export default function MeScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* Hero photo with gradient */}
-      <View style={[styles.heroWrap, { width: heroSize, height: heroSize }]}>
-        {profile.photo_url ? (
-          <Image
-            source={{ uri: profile.photo_url }}
-            style={styles.heroPhoto}
-            contentFit="cover"
+      {/* Profile photo — organic blob with warm white frame */}
+      <View style={[styles.photoBlob, { width: photoSize + 12, height: photoSize + 12 }]}>
+        <Svg width={photoSize + 12} height={photoSize + 12} viewBox="-6 -6 162 162">
+          <Defs>
+            <ClipPath id="blobClip">
+              <Path d="M75 5C103 3 135 22 143 53C150 83 140 103 123 120C105 138 85 148 60 145C35 143 15 130 8 105C0 80 5 55 20 35C35 15 48 8 75 5Z" />
+            </ClipPath>
+          </Defs>
+          {/* Frame — a different, slightly looser blob so the border breathes unevenly */}
+          <Path
+            d="M78 -2C108 -4 142 16 149 48C156 80 145 106 128 122C110 140 88 152 58 149C30 146 8 130 1 106C-6 82 2 50 16 32C30 14 48 0 78 -2Z"
+            fill="rgba(245,240,234,0.75)"
           />
-        ) : (
-          <View style={[styles.heroPhoto, styles.heroPhotoEmpty]} />
-        )}
-        <LinearGradient
-          colors={["transparent", colors.PANEL_DEEP]}
-          style={styles.heroGradient}
-          start={{ x: 0.5, y: 0.1 }}
-          end={{ x: 0.5, y: 1 }}
-        />
+          {/* Photo */}
+          {profile.photo_url ? (
+            <SvgImage
+              href={{ uri: profile.photo_url }}
+              width="150"
+              height="150"
+              preserveAspectRatio="xMidYMid slice"
+              clipPath="url(#blobClip)"
+            />
+          ) : (
+            <Rect
+              width="150"
+              height="150"
+              fill="rgba(245,240,234,0.08)"
+              clipPath="url(#blobClip)"
+            />
+          )}
+        </Svg>
       </View>
 
       {/* Name */}
@@ -217,19 +270,22 @@ export default function MeScreen() {
       {/* Action buttons */}
       {editing ? (
         <View style={styles.editSection}>
+          <TouchableOpacity onPress={pickPhoto} style={styles.editPhotoWrap} activeOpacity={0.7}>
+            <View style={[styles.editPhotoCircle]}>
+              {editPhotoUrl ? (
+                <Image source={{ uri: editPhotoUrl }} style={styles.editPhotoImage} contentFit="cover" />
+              ) : (
+                <View style={[styles.editPhotoImage, styles.photoEmpty]} />
+              )}
+            </View>
+            <Text style={styles.changePhotoText}>Change Photo</Text>
+          </TouchableOpacity>
           <TextInput
             style={styles.nameInput}
             placeholder="Name"
             placeholderTextColor="rgba(245,240,234,0.3)"
             value={editName}
             onChangeText={setEditName}
-          />
-          <TextInput
-            style={styles.photoUrlInput}
-            placeholder="Photo URL (https://...)"
-            placeholderTextColor="rgba(245,240,234,0.3)"
-            value={editPhotoUrl}
-            onChangeText={setEditPhotoUrl}
           />
           <View style={styles.editActions}>
             <TouchableOpacity style={styles.glassBtn} onPress={cancelEdit}>
@@ -258,22 +314,39 @@ export default function MeScreen() {
         </View>
       )}
 
-      {/* Deck */}
-      <Text style={styles.deckTitle}>DECK</Text>
       {profile.thoughts.length === 0 ? (
         <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
       ) : (
-        profile.thoughts.map((t) => (
-          <View key={t.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
-            <ProfileThoughtCard
-              thought={t}
-              onLongPress={() => handleDeleteThought(t)}
-              dark
-              authorName={profile.name ?? undefined}
-              authorPhotoUrl={profile.photo_url}
-            />
-          </View>
-        ))
+        profile.thoughts.map((t) => {
+          const feedItem: FeedItemThought = {
+            type: "thought",
+            thought: {
+              id: t.id,
+              sentence: t.sentence,
+              photo_url: t.photo_url,
+              image_url: t.image_url,
+              created_at: t.created_at ?? new Date().toISOString(),
+              has_context: false,
+            },
+            user: {
+              id: myUserId ?? "",
+              name: profile.name,
+              photo_url: profile.photo_url,
+            },
+            warmth_level: t.warmth_level,
+          };
+          return (
+            <View key={t.id} style={styles.thoughtWrap}>
+              <SwipeableThoughtCard
+                item={feedItem}
+                visible
+                isOwn
+                onDelete={handleDeleteThought}
+                onEdit={handleEditThought}
+              />
+            </View>
+          );
+        })
       )}
     </ScrollView>
   );
@@ -282,108 +355,114 @@ export default function MeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.PANEL_DEEP,
+    backgroundColor: colors.OLIVE,
   },
   content: {
-    paddingBottom: 40,
+    paddingBottom: 48,
     alignItems: "center",
+    paddingTop: 16,
   },
-  heroWrap: {
+
+  /* ── Photo ── */
+  photoBlob: {
     alignSelf: "center",
-    borderRadius: 28,
-    overflow: "hidden",
-    marginBottom: 20,
-    backgroundColor: "rgba(245,240,234,0.04)",
+    marginBottom: 14,
   },
-  heroPhoto: {
-    width: "100%",
-    height: "100%",
-  },
-  heroPhotoEmpty: {
-    backgroundColor: "rgba(245,240,234,0.06)",
-  },
-  heroGradient: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: "38%",
-  },
+
+  /* ── Name ── */
   name: {
     fontFamily: fontFamily.comico,
-    fontSize: 16,
+    fontSize: 28,
     color: colors.WARM_GROUND,
     textAlign: "center",
-    marginBottom: 18,
+    marginBottom: 24,
+    letterSpacing: -0.3,
   },
+
+  /* ── Action pills ── */
   actionRow: {
     flexDirection: "row",
     justifyContent: "center",
     gap: 10,
     paddingHorizontal: spacing.screenPadding,
-    marginBottom: 28,
+    marginBottom: 32,
   },
   glassBtn: {
-    backgroundColor: "rgba(245,240,234,0.08)",
-    borderRadius: 10,
+    backgroundColor: "rgba(245,240,234,0.1)",
+    borderRadius: 999,
     paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
   },
   glassBtnText: {
     fontFamily: fontFamily.comico,
-    fontSize: 6,
-    letterSpacing: 0.5,
+    fontSize: 8,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
-    color: "rgba(245,240,234,0.6)",
+    color: "rgba(245,240,234,0.55)",
   },
+
+  /* ── Edit mode ── */
   editSection: {
     paddingHorizontal: spacing.screenPadding,
-    marginBottom: 28,
+    marginBottom: 32,
     alignItems: "center",
   },
   nameInput: {
     fontFamily: fontFamily.sentient,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.WARM_GROUND,
-    marginBottom: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: "rgba(245,240,234,0.15)",
-    borderRadius: 8,
+    borderRadius: 999,
     width: "100%",
     maxWidth: 260,
   },
-  photoUrlInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 10,
-    color: colors.WARM_GROUND,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: "rgba(245,240,234,0.15)",
-    borderRadius: 8,
+  editPhotoWrap: {
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  editPhotoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    overflow: "hidden",
+    backgroundColor: "rgba(245,240,234,0.06)",
+  },
+  editPhotoImage: {
     width: "100%",
-    maxWidth: 260,
-    marginBottom: 12,
+    height: "100%",
+    borderRadius: 40,
+  },
+  changePhotoText: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 11,
+    letterSpacing: 0.2,
+    color: "rgba(245,240,234,0.5)",
+    marginTop: 8,
   },
   editActions: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
   saveBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    backgroundColor: colors.OLIVE,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    backgroundColor: "rgba(245,240,234,0.15)",
   },
   saveBtnDisabled: { opacity: 0.5 },
   saveBtnText: {
     fontFamily: fontFamily.comico,
-    fontSize: 6,
+    fontSize: 8,
     letterSpacing: 0.5,
     textTransform: "uppercase",
-    color: colors.TYPE_WHITE,
+    color: colors.WARM_GROUND,
   },
+
+  /* ── Deck ── */
   deckTitle: {
     fontFamily: fontFamily.comico,
     fontSize: 7,
@@ -400,26 +479,32 @@ const styles = StyleSheet.create({
   },
   emptyDeck: {
     fontFamily: fontFamily.sentient,
-    fontSize: 11,
+    fontSize: 12,
     color: "rgba(245,240,234,0.35)",
     textAlign: "center",
-    marginTop: 8,
+    marginTop: 12,
   },
+
+  /* ── Loading skeleton ── */
   skeletonPhoto: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     alignSelf: "center",
-    borderRadius: 28,
     backgroundColor: "rgba(245,240,234,0.04)",
   },
   skeletonName: {
-    width: 120,
-    height: 18,
+    width: 100,
+    height: 20,
     backgroundColor: "rgba(245,240,234,0.06)",
-    borderRadius: 4,
+    borderRadius: 999,
     alignSelf: "center",
-    marginTop: 20,
+    marginTop: 18,
     marginBottom: 16,
   },
   loader: { marginTop: 16, alignSelf: "center" },
+
+  /* ── States ── */
   centered: {
     flex: 1,
     justifyContent: "center",
@@ -428,13 +513,13 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontFamily: fontFamily.sentient,
-    fontSize: 11,
+    fontSize: 12,
     color: "rgba(245,240,234,0.4)",
     textAlign: "center",
   },
   reauthButton: {
     marginTop: 14,
-    paddingHorizontal: 18,
+    paddingHorizontal: 22,
     paddingVertical: 10,
     borderRadius: 999,
     backgroundColor: colors.WARM_GROUND,
@@ -442,21 +527,22 @@ const styles = StyleSheet.create({
   reauthButtonText: {
     color: colors.PANEL_DEEP,
     fontFamily: fontFamily.comico,
-    fontSize: 7,
-    letterSpacing: 0.8,
+    fontSize: 8,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
   },
   errorText: {
     fontFamily: fontFamily.sentient,
-    fontSize: 11,
+    fontSize: 12,
     color: "rgba(245,240,234,0.6)",
     marginBottom: 12,
   },
   retryText: {
-    color: colors.OLIVE,
+    color: colors.WARM_GROUND,
     fontFamily: fontFamily.comico,
-    fontSize: 7,
+    fontSize: 8,
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
+  photoEmpty: {},
 });

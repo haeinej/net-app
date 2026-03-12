@@ -32,6 +32,8 @@ export function NotificationPanel({
   }
   return (
     <View style={styles.container}>
+      <Text style={styles.title}>Pending replies</Text>
+      <Text style={styles.caption}>Only accepted replies appear in the thought view.</Text>
       {items.map((n) => (
         <View key={n.reply_id} style={styles.row}>
           {n.replier?.photo_url ? (
@@ -84,6 +86,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     marginBottom: 16,
+  },
+  title: {
+    ...typography.label,
+    color: colors.TYPE_DARK,
+    marginBottom: 4,
+  },
+  caption: {
+    ...typography.metadata,
+    color: colors.TYPE_MUTED,
+    marginBottom: 12,
   },
   avatar: {
     width: spacing.profilePhotoSize,

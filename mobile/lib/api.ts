@@ -519,6 +519,22 @@ export async function deleteThought(thoughtId: string): Promise<void> {
   });
 }
 
+export async function editThought(
+  thoughtId: string,
+  updates: { sentence?: string; context?: string; photo_url?: string }
+): Promise<CreateThoughtResponse> {
+  return requestJson<CreateThoughtResponse>(
+    `/api/thoughts/${thoughtId}`,
+    "Edit failed",
+    {
+      method: "PUT",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify(updates),
+    }
+  );
+}
+
 export interface CreateThoughtResponse {
   id: string;
   sentence: string;

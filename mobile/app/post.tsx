@@ -13,6 +13,7 @@ import {
   Alert,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
@@ -90,6 +91,7 @@ export default function ComposeScreen() {
     setPosting(true);
     try {
       await createThought(s, context.trim() || undefined, thoughtPhotoUrl || undefined);
+      try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       router.back();
     } catch {
       setPosting(false);
@@ -121,7 +123,6 @@ export default function ComposeScreen() {
       >
         <View style={[styles.previewWrap, { width: previewWidth, height: previewHeight }]}>
           <ThoughtImageFrame
-            thoughtText={sentence || "ohm"}
             imageUrl={thoughtPhotoUrl}
             aspectRatio={IMAGE_ASPECT_RATIO}
             borderRadius={spacing.cardRadius}
@@ -161,7 +162,7 @@ export default function ComposeScreen() {
           </View>
           {!thoughtPhotoUrl && !loadingPhoto ? (
             <Text style={styles.photoFallbackText}>
-              No photo selected. The fallback mesh pattern will be used.
+              No photo selected. The preview will stay plain until you add one.
             </Text>
           ) : null}
         </View>
@@ -255,18 +256,16 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   previewSentence: {
-    ...typography.thoughtDisplay,
+    fontFamily: fontFamily.sentient,
+    fontWeight: "600",
     position: "absolute",
     left: 16,
     right: 16,
     bottom: 16,
-    fontSize: 25,
-    lineHeight: 27,
-    letterSpacing: -0.1,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.2,
     color: colors.TYPE_WHITE,
-    textShadowColor: "rgba(8,6,4,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
   },
   previewHint: {
     ...typography.metadata,
@@ -323,9 +322,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   sentenceInput: {
-    fontFamily: fontFamily.comico,
-    fontSize: 18,
-    lineHeight: 24,
+    fontFamily: fontFamily.sentient,
+    fontWeight: "600",
+    fontSize: 20,
+    lineHeight: 26,
     color: colors.TYPE_DARK,
     minHeight: 148,
     textAlignVertical: "top",

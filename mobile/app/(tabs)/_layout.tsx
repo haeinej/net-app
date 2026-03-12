@@ -1,16 +1,16 @@
 import { Tabs } from "expo-router";
-import { View, Text, StyleSheet } from "react-native";
+import { View, StyleSheet, useWindowDimensions } from "react-native";
 import { Image } from "expo-image";
-import { colors, fontFamily } from "../../theme";
+import Svg, { Path } from "react-native-svg";
+import { colors } from "../../theme";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../../assets/images/ohm-logo.png");
 
 function WorldsIcon({ focused }: { focused: boolean }) {
-  const c = focused ? colors.VERMILLION : colors.TYPE_DARK;
   return (
-    <View style={[iconStyles.circle, { borderColor: c }]}>
-      {focused && <View style={[iconStyles.dot, { backgroundColor: c }]} />}
+    <View style={[iconStyles.blob, { borderColor: focused ? colors.TYPE_DARK : colors.TYPE_MUTED }]}>
+      {focused && <View style={[iconStyles.dot, { backgroundColor: colors.TYPE_DARK }]} />}
     </View>
   );
 }
@@ -19,7 +19,7 @@ function ConvoIcon({ focused }: { focused: boolean }) {
   return (
     <Image
       source={ohmLogo}
-      style={[iconStyles.logo, !focused && { opacity: 0.3 }]}
+      style={[iconStyles.ohmIcon, { opacity: focused ? 1 : 0.4 }]}
       contentFit="contain"
     />
   );
@@ -29,25 +29,28 @@ function MeIcon({ focused }: { focused: boolean }) {
   return (
     <View
       style={[
-        iconStyles.filled,
-        { backgroundColor: focused ? colors.VERMILLION : colors.TYPE_DARK },
-        !focused && { opacity: 0.3 },
+        iconStyles.meBlob,
+        { backgroundColor: focused ? colors.TYPE_DARK : colors.TYPE_MUTED },
       ]}
     />
   );
 }
 
-function TabLabel({ label, focused }: { label: string; focused: boolean }) {
+const WAVE_HEIGHT = 18;
+
+function WavyTabBackground() {
+  const { width } = useWindowDimensions();
   return (
-    <Text
-      style={[
-        tabLabelStyles.text,
-        { color: focused ? colors.VERMILLION : colors.TYPE_DARK },
-        !focused && { opacity: 0.3 },
-      ]}
-    >
-      {label}
-    </Text>
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.WARM_GROUND }]}>
+      <View style={{ position: "absolute", top: -WAVE_HEIGHT, left: 0, right: 0 }}>
+        <Svg width={width} height={WAVE_HEIGHT} viewBox={`0 0 ${width} ${WAVE_HEIGHT}`}>
+          <Path
+            d={`M0 ${WAVE_HEIGHT} C${width * 0.15} ${WAVE_HEIGHT * 0.2}, ${width * 0.3} ${WAVE_HEIGHT * 0.7}, ${width * 0.5} ${WAVE_HEIGHT * 0.35} S${width * 0.8} ${WAVE_HEIGHT * 0.05}, ${width} ${WAVE_HEIGHT * 0.6} L${width} ${WAVE_HEIGHT} Z`}
+            fill={colors.WARM_GROUND}
+          />
+        </Svg>
+      </View>
+    </View>
   );
 }
 
@@ -57,9 +60,10 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: colors.VERMILLION,
+        tabBarActiveTintColor: colors.TYPE_DARK,
         tabBarInactiveTintColor: colors.TYPE_MUTED,
-        tabBarShowLabel: true,
+        tabBarShowLabel: false,
+        tabBarBackground: () => <WavyTabBackground />,
       }}
     >
       <Tabs.Screen
@@ -67,7 +71,6 @@ export default function TabLayout() {
         options={{
           title: "Worlds",
           tabBarIcon: ({ focused }) => <WorldsIcon focused={focused} />,
-          tabBarLabel: ({ focused }) => <TabLabel label="Worlds" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -75,7 +78,6 @@ export default function TabLayout() {
         options={{
           title: "Conversations",
           tabBarIcon: ({ focused }) => <ConvoIcon focused={focused} />,
-          tabBarLabel: ({ focused }) => <TabLabel label="Conversations" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -83,7 +85,6 @@ export default function TabLayout() {
         options={{
           title: "Me",
           tabBarIcon: ({ focused }) => <MeIcon focused={focused} />,
-          tabBarLabel: ({ focused }) => <TabLabel label="Me" focused={focused} />,
         }}
       />
     </Tabs>
@@ -91,47 +92,50 @@ export default function TabLayout() {
 }
 
 const iconStyles = StyleSheet.create({
-  circle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+  blob: {
+    width: 21,
+    height: 19,
+    borderTopLeftRadius: 11,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 9,
+    borderBottomRightRadius: 12,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
+    transform: [{ rotate: "-4deg" }],
   },
   dot: {
-    width: 6,
+    width: 5,
     height: 6,
-    borderRadius: 3,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 2,
+    borderBottomLeftRadius: 2.5,
+    borderBottomRightRadius: 3,
+    transform: [{ rotate: "6deg" }],
   },
-  logo: {
-    width: 18,
-    height: 18,
+  ohmIcon: {
+    width: 20,
+    height: 20,
   },
-  filled: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-  },
-});
-
-const tabLabelStyles = StyleSheet.create({
-  text: {
-    fontFamily: fontFamily.comico,
-    fontSize: 5.5,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginTop: 1,
+  meBlob: {
+    width: 19,
+    height: 17,
+    borderTopLeftRadius: 9,
+    borderTopRightRadius: 10,
+    borderBottomLeftRadius: 11,
+    borderBottomRightRadius: 7,
+    transform: [{ rotate: "3deg" }],
   },
 });
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: colors.WARM_GROUND,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(26,26,22,0.05)",
+    backgroundColor: "transparent",
+    borderTopWidth: 0,
     elevation: 0,
     shadowOpacity: 0,
-    paddingTop: 6,
+    paddingTop: 8,
+    height: 52,
+    overflow: "visible",
   },
 });

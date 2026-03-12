@@ -1,4 +1,4 @@
-const DEV_API_URL = "http://127.0.0.1:3000";
+const DEV_API_URL = "http://localhost:3000";
 const MISSING_RELEASE_API_URL = "https://missing-api-url.invalid";
 const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
