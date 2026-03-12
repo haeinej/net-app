@@ -21,7 +21,7 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { colors, spacing, typography } from "../theme";
+import { colors, spacing, typography, fontFamily } from "../theme";
 import {
   fetchCrossingDetail,
   postCrossingReply,
@@ -327,8 +327,9 @@ export function CrossingCard({ item, visible = false }: CrossingCardProps) {
                   style={styles.inputWrap}
                 >
                   {/* Reply-to selector */}
+                  <Text style={styles.replyInputLabel}>reply.</Text>
                   <View style={styles.targetRow}>
-                    <Text style={styles.replyToLabel}>reply to</Text>
+                    <Text style={styles.replyToLabel}>to</Text>
                     <TouchableOpacity
                       style={[styles.targetPill, replyTarget === participant_a.id && styles.targetPillActive]}
                       onPress={() => setReplyTarget(participant_a.id)}
@@ -437,15 +438,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(60, 45, 30, 0.25)",
   },
   sentence: {
-    fontFamily: "Sentient-Light",
+    fontFamily: fontFamily.sentient,
     fontWeight: "700",
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 16,
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.2,
+    bottom: 18,
+    fontSize: 24,
+    lineHeight: 27,
+    letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
   },
   dotsHint: {
@@ -475,7 +476,7 @@ const styles = StyleSheet.create({
   profileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     flex: 1,
   },
   avatar: {
@@ -488,9 +489,9 @@ const styles = StyleSheet.create({
   },
   names: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 7,
-    lineHeight: 9,
-    letterSpacing: 0.8,
+    fontSize: 8,
+    lineHeight: 10,
+    letterSpacing: 1,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
     flex: 1,
@@ -584,6 +585,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginBottom: 6,
+  },
+  replyInputLabel: {
+    ...typography.replyInput,
+    fontSize: 8,
+    color: colors.VERMILLION,
+    marginBottom: 4,
   },
   replyToLabel: {
     ...typography.metadata,
