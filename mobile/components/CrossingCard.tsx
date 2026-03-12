@@ -204,15 +204,18 @@ export function CrossingCard({ item, visible = false }: CrossingCardProps) {
       <Animated.View style={[styles.card, { width: cardWidth }, cardHeightStyle]}>
         {/* Panel 1 — Split photo + sentence */}
         <View style={StyleSheet.absoluteFill}>
-          <View style={styles.panel1Inner}>
+          {/* Image area with split photos */}
+          <View style={styles.imageArea}>
+            {/* Warmth bar spacer */}
             <View style={{ width: spacing.warmthBarWidth }} />
-            <View style={{ width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT }}>
+            {/* Photo container */}
+            <View style={styles.photoContainer}>
               {/* Top half — participant A photo */}
               <View style={styles.splitHalf}>
                 {participant_a.photo_url ? (
                   <Image source={{ uri: participant_a.photo_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
                 ) : (
-                  <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.PANEL_DEEP }]} />
+                  <View style={[StyleSheet.absoluteFill, styles.photoFallback]} />
                 )}
                 <View style={styles.warmTint} />
               </View>
@@ -221,14 +224,16 @@ export function CrossingCard({ item, visible = false }: CrossingCardProps) {
                 {participant_b.photo_url ? (
                   <Image source={{ uri: participant_b.photo_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
                 ) : (
-                  <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.PANEL_DEEP }]} />
+                  <View style={[StyleSheet.absoluteFill, styles.photoFallback]} />
                 )}
                 <View style={styles.warmTint} />
               </View>
-              {/* Sentence overlay */}
-              <Text style={styles.sentence} numberOfLines={4} ellipsizeMode="tail">
-                {crossing.sentence}
-              </Text>
+              {/* Sentence overlay — positioned over the photos */}
+              <View style={styles.sentenceOverlay} pointerEvents="none">
+                <Text style={styles.sentence} numberOfLines={4} ellipsizeMode="tail">
+                  {crossing.sentence}
+                </Text>
+              </View>
               {/* Dots hint */}
               <View style={styles.dotsHint}>
                 <View style={styles.dot} />
@@ -425,28 +430,39 @@ const styles = StyleSheet.create({
     width: spacing.warmthBarWidth,
     flex: 1,
   },
-  panel1Inner: {
+  imageArea: {
     flexDirection: "row",
+    height: IMAGE_HEIGHT,
+  },
+  photoContainer: {
+    flex: 1,
+    overflow: "hidden",
   },
   splitHalf: {
     height: IMAGE_HEIGHT / 2,
     overflow: "hidden",
     position: "relative",
   },
+  photoFallback: {
+    backgroundColor: colors.PANEL_DEEP,
+  },
   warmTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(60, 45, 30, 0.25)",
+    backgroundColor: "rgba(60, 45, 30, 0.35)",
+  },
+  sentenceOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+    paddingLeft: 16,
+    paddingRight: 16,
+    paddingBottom: 14,
   },
   sentence: {
     fontFamily: fontFamily.sentient,
     fontWeight: "700",
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 18,
-    fontSize: 24,
-    lineHeight: 27,
-    letterSpacing: -0.35,
+    fontSize: 22,
+    lineHeight: 26,
+    letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
   },
   dotsHint: {

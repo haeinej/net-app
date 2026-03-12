@@ -313,73 +313,71 @@ export function OnboardingWalkthrough({
   /* ---- Render ---- */
   return (
     <Animated.View style={[StyleSheet.absoluteFill, overlayAnimatedStyle]} pointerEvents="box-none">
-      {/* Dim overlay — captures all touches */}
-      <Pressable style={StyleSheet.absoluteFill} onPress={() => {}}>
-        <View style={StyleSheet.absoluteFill}>
-          {spotlightRect && !isFullScreen && !showCompletion ? (
-            <>
-              {/* Top */}
-              <View
-                style={[
-                  styles.overlayBlock,
-                  { top: 0, left: 0, right: 0, height: spotlightRect.y },
-                ]}
-              />
-              {/* Bottom */}
-              <View
-                style={[
-                  styles.overlayBlock,
-                  {
-                    top: spotlightRect.y + spotlightRect.height,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                  },
-                ]}
-              />
-              {/* Left */}
-              <View
-                style={[
-                  styles.overlayBlock,
-                  {
-                    top: spotlightRect.y,
-                    left: 0,
-                    width: spotlightRect.x,
-                    height: spotlightRect.height,
-                  },
-                ]}
-              />
-              {/* Right */}
-              <View
-                style={[
-                  styles.overlayBlock,
-                  {
-                    top: spotlightRect.y,
-                    left: spotlightRect.x + spotlightRect.width,
-                    right: 0,
-                    height: spotlightRect.height,
-                  },
-                ]}
-              />
-              {/* Spotlight border glow */}
-              <View
-                style={[
-                  styles.spotlightBorder,
-                  {
-                    top: spotlightRect.y,
-                    left: spotlightRect.x,
-                    width: spotlightRect.width,
-                    height: spotlightRect.height,
-                    borderRadius: SPOTLIGHT_RADIUS,
-                  },
-                ]}
-              />
-            </>
-          ) : (
-            <View style={[StyleSheet.absoluteFill, styles.overlayBlock]} />
-          )}
-        </View>
-      </Pressable>
+      {/* Dim overlay */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        {spotlightRect && !isFullScreen && !showCompletion ? (
+          <>
+            {/* Top */}
+            <View
+              style={[
+                styles.overlayBlock,
+                { top: 0, left: 0, right: 0, height: spotlightRect.y },
+              ]}
+            />
+            {/* Bottom */}
+            <View
+              style={[
+                styles.overlayBlock,
+                {
+                  top: spotlightRect.y + spotlightRect.height,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                },
+              ]}
+            />
+            {/* Left */}
+            <View
+              style={[
+                styles.overlayBlock,
+                {
+                  top: spotlightRect.y,
+                  left: 0,
+                  width: spotlightRect.x,
+                  height: spotlightRect.height,
+                },
+              ]}
+            />
+            {/* Right */}
+            <View
+              style={[
+                styles.overlayBlock,
+                {
+                  top: spotlightRect.y,
+                  left: spotlightRect.x + spotlightRect.width,
+                  right: 0,
+                  height: spotlightRect.height,
+                },
+              ]}
+            />
+            {/* Spotlight border glow */}
+            <View
+              style={[
+                styles.spotlightBorder,
+                {
+                  top: spotlightRect.y,
+                  left: spotlightRect.x,
+                  width: spotlightRect.width,
+                  height: spotlightRect.height,
+                  borderRadius: SPOTLIGHT_RADIUS,
+                },
+              ]}
+            />
+          </>
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.overlayBlock]} />
+        )}
+      </View>
 
       {/* Tooltip card */}
       {!showCompletion && step && (
