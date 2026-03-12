@@ -70,3 +70,6 @@ ios/.xcode.env.local
 
 # Docker
 docker-compose.override.yml
+
+# Local reference docs
+ohm. Manifesto.pdf
