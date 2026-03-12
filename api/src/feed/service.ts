@@ -12,6 +12,8 @@ import {
   replies,
   engagementEvents,
   shifts,
+  crossings,
+  crossingReplies,
 } from "../db";
 import { getEmbeddingService } from "../embedding";
 import { getWarmthLevel } from "../lib/warmth";
@@ -300,12 +302,49 @@ export async function getFeed(
     },
   }));
 
+  // Mix in crossings
+  const userCrossings = await db
+    .select()
+    .from(crossings)
+    .where(or(eq(crossings.participantA, userId), eq(crossings.participantB, userId)))
+    .orderBy(desc(crossings.createdAt))
+    .limit(CACHE_MAX_ITEMS);
+  const crossingUserIds = [...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB]))];
+  const crossingUsers = crossingUserIds.length > 0
+    ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, crossingUserIds))
+    : [];
+  const crossingUserMap = new Map(crossingUsers.map((u) => [u.id, { id: u.id, name: u.name, photo_url: u.photoUrl }]));
+
+  // Count accepted crossing replies for warmth
+  const crossingIds = userCrossings.map((c) => c.id);
+  const crossingReplyCountRows = crossingIds.length > 0
+    ? await db
+        .select({ crossingId: crossingReplies.crossingId, count: sql<number>`count(*)::int` })
+        .from(crossingReplies)
+        .where(and(inArray(crossingReplies.crossingId, crossingIds), eq(crossingReplies.status, "accepted")))
+        .groupBy(crossingReplies.crossingId)
+    : [];
+  const crossingReplyCountMap = new Map(crossingReplyCountRows.map((r) => [r.crossingId, r.count]));
+
+  const crossingItems: FeedItem[] = userCrossings.map((c) => ({
+    type: "crossing",
+    crossing: {
+      id: c.id,
+      sentence: c.sentence,
+      context: c.context,
+      created_at: c.createdAt?.toISOString() ?? new Date().toISOString(),
+    },
+    participant_a: crossingUserMap.get(c.participantA) ?? { id: c.participantA, name: null, photo_url: null },
+    participant_b: crossingUserMap.get(c.participantB) ?? { id: c.participantB, name: null, photo_url: null },
+    warmth_level: getWarmthLevel(crossingReplyCountMap.get(c.id) ?? 0),
+  }));
+
   const byDate = (a: FeedItem, b: FeedItem) => {
-    const dateA = a.type === "thought" ? a.thought.created_at : a.created_at;
-    const dateB = b.type === "thought" ? b.thought.created_at : b.created_at;
+    const dateA = a.type === "thought" ? a.thought.created_at : a.type === "crossing" ? a.crossing.created_at : a.created_at;
+    const dateB = b.type === "thought" ? b.thought.created_at : b.type === "crossing" ? b.crossing.created_at : b.created_at;
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   };
-  const items = [...thoughtItems, ...shiftItems].sort(byDate).slice(0, CACHE_MAX_ITEMS);
+  const items = [...thoughtItems, ...shiftItems, ...crossingItems].sort(byDate).slice(0, CACHE_MAX_ITEMS);
 
   cache.set(userId, {
     items,

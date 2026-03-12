@@ -1,7 +1,14 @@
-import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  useWindowDimensions,
+  type GestureResponderEvent,
+} from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { colors, spacing, typography, IMAGE_ASPECT_RATIO } from "../theme";
+import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily } from "../theme";
 import { WarmthBar, type WarmthLevel } from "./WarmthBar";
 import type { FeedItemThought } from "../lib/api";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
@@ -29,6 +36,13 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
   const imageHeight = cardWidth / IMAGE_ASPECT_RATIO;
 
   const { thought, user, warmth_level } = item;
+
+  const openUserProfile = (event: GestureResponderEvent) => {
+    event.stopPropagation();
+    if (!user.id) return;
+    router.push({ pathname: "/user/[id]", params: { id: user.id } });
+  };
+
   return (
     <TouchableOpacity
       style={styles.card}
@@ -43,7 +57,11 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
           borderRadius={0}
           style={{ width: cardWidth - spacing.warmthBarWidth, height: imageHeight }}
         >
-          <Text style={styles.sentence} numberOfLines={2}>
+          <Text
+            style={styles.sentence}
+            numberOfLines={4}
+            ellipsizeMode="tail"
+          >
             {thought.sentence}
           </Text>
           <View style={styles.dotsHint}>
@@ -54,7 +72,12 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
         </ThoughtImageFrame>
       </View>
       <View style={styles.footer}>
-        <View style={styles.profileRow}>
+        <TouchableOpacity
+          style={styles.profileRow}
+          onPress={openUserProfile}
+          disabled={!user.id}
+          activeOpacity={0.7}
+        >
           {user.photo_url ? (
             <Image source={{ uri: user.photo_url }} style={styles.avatar} />
           ) : (
@@ -63,7 +86,7 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
           <Text style={styles.name} numberOfLines={1}>
             {user.name ? user.name.toUpperCase() : "—"}
           </Text>
-        </View>
+        </TouchableOpacity>
         <Text style={styles.timestamp}>{formatRelativeTime(thought.created_at)}</Text>
       </View>
     </TouchableOpacity>
@@ -81,14 +104,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   sentence: {
-    ...typography.thoughtDisplay,
+    fontFamily: fontFamily.sentient,
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 16,
-    fontSize: 25,
-    lineHeight: 27,
-    letterSpacing: -0.1,
+    bottom: 18,
+    fontSize: 29,
+    lineHeight: 31,
+    fontWeight: "700",
+    letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
     textShadowColor: "rgba(8,6,4,0.5)",
     textShadowOffset: { width: 0, height: 1 },

@@ -108,6 +108,8 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
         participantB,
         messageCount: 1,
         lastMessageAt: new Date(),
+        participantASeenAt: new Date(),
+        participantBSeenAt: new Date(),
       })
       .returning({ id: conversations.id });
     if (!conv) return reply.status(500).send();

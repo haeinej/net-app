@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { colors, spacing, typography } from "../../theme";
 import { Header } from "../../components/Header";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { ShiftCard } from "../../components/ShiftCard";
+import { CrossingCard } from "../../components/CrossingCard";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
 import {
@@ -32,6 +33,7 @@ const WALKTHROUGH_SEEN_KEY = "ohm_walkthrough_seen";
 const PAGE_SIZE = 20;
 
 export default function WorldsScreen() {
+  const router = useRouter();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
@@ -166,18 +168,28 @@ export default function WorldsScreen() {
     loadNotifications();
   }, [loadNotifications]);
 
-  const handleAccept = useCallback(async (replyId: string) => {
+  const handleAccept = useCallback(async (item: NotificationItem) => {
     try {
-      await acceptReply(replyId);
+      const result = await acceptReply(item.reply_id);
+      setNotificationPanelOpen(false);
       setNotifications((prev) => {
-        const next = prev.filter((n) => n.reply_id !== replyId);
-        if (next.length === 0) setNotificationPanelOpen(false);
+        const next = prev.filter((n) => n.reply_id !== item.reply_id);
         return next;
+      });
+      router.push({
+        pathname: "/conversation/[id]",
+        params: {
+          id: result.conversation_id,
+          otherName: item.replier?.name ?? "",
+          otherPhoto: item.replier?.photo_url ?? "",
+          otherId: item.replier?.id ?? "",
+          thoughtSentence: item.thought?.sentence ?? "",
+        },
       });
     } catch {
       // keep in list; user can retry
     }
-  }, []);
+  }, [router]);
 
   const handleIgnore = useCallback(async (replyId: string) => {
     try {
@@ -240,7 +252,7 @@ export default function WorldsScreen() {
       ) : (
         <FlatList
           data={feed}
-          keyExtractor={(item) => (item.type === "thought" ? item.thought.id : `shift-${item.id}`)}
+          keyExtractor={(item) => (item.type === "thought" ? item.thought.id : item.type === "crossing" ? `crossing-${item.crossing.id}` : `shift-${item.id}`)}
           renderItem={({ item, index }) => (
             <View
               ref={index === 0 ? feedCardRef : undefined}
@@ -254,6 +266,8 @@ export default function WorldsScreen() {
                   onDelete={handleFeedDelete}
                   onEdit={handleFeedEdit}
                 />
+              ) : item.type === "crossing" ? (
+                <CrossingCard item={item} />
               ) : (
                 <ShiftCard item={item} />
               )}

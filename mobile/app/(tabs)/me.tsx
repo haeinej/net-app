@@ -11,11 +11,13 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import Svg, { ClipPath, Path, Defs, Rect, Image as SvgImage } from "react-native-svg";
+// SVG removed — using simple round photo with border
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, fontFamily } from "../../theme";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
+import { CrossingCard } from "../../components/CrossingCard";
+import { ShiftCard } from "../../components/ShiftCard";
 import {
   getMyUserId,
   fetchProfile,
@@ -25,15 +27,16 @@ import {
   deleteThought,
   editThought,
   type ProfileResponse,
-  type ProfileThought,
   type FeedItemThought,
+  type FeedItemCrossing,
+  type FeedItemShift,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
 
 export default function MeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const photoSize = 150;
+  const photoSize = 170;
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -225,43 +228,24 @@ export default function MeScreen() {
     );
   }
 
+  const hasDeckContent =
+    profile.thoughts.length > 0 ||
+    (profile.shifts?.length ?? 0) > 0 ||
+    (profile.crossings?.length ?? 0) > 0;
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* Profile photo — organic blob with warm white frame */}
-      <View style={[styles.photoBlob, { width: photoSize + 12, height: photoSize + 12 }]}>
-        <Svg width={photoSize + 12} height={photoSize + 12} viewBox="-6 -6 162 162">
-          <Defs>
-            <ClipPath id="blobClip">
-              <Path d="M75 5C103 3 135 22 143 53C150 83 140 103 123 120C105 138 85 148 60 145C35 143 15 130 8 105C0 80 5 55 20 35C35 15 48 8 75 5Z" />
-            </ClipPath>
-          </Defs>
-          {/* Frame — a different, slightly looser blob so the border breathes unevenly */}
-          <Path
-            d="M78 -2C108 -4 142 16 149 48C156 80 145 106 128 122C110 140 88 152 58 149C30 146 8 130 1 106C-6 82 2 50 16 32C30 14 48 0 78 -2Z"
-            fill="rgba(245,240,234,0.75)"
-          />
-          {/* Photo */}
-          {profile.photo_url ? (
-            <SvgImage
-              href={{ uri: profile.photo_url }}
-              width="150"
-              height="150"
-              preserveAspectRatio="xMidYMid slice"
-              clipPath="url(#blobClip)"
-            />
-          ) : (
-            <Rect
-              width="150"
-              height="150"
-              fill="rgba(245,240,234,0.08)"
-              clipPath="url(#blobClip)"
-            />
-          )}
-        </Svg>
+      {/* Profile photo — clean round with warm white border */}
+      <View style={[styles.photoCircle, { width: photoSize, height: photoSize, borderRadius: photoSize / 2 }]}>
+        {profile.photo_url ? (
+          <Image source={{ uri: profile.photo_url }} style={{ width: photoSize - 8, height: photoSize - 8, borderRadius: (photoSize - 8) / 2 }} contentFit="cover" />
+        ) : (
+          <View style={{ width: photoSize - 8, height: photoSize - 8, borderRadius: (photoSize - 8) / 2, backgroundColor: "rgba(245,240,234,0.08)" }} />
+        )}
       </View>
 
       {/* Name */}
@@ -314,7 +298,7 @@ export default function MeScreen() {
         </View>
       )}
 
-      {profile.thoughts.length === 0 ? (
+      {!hasDeckContent ? (
         <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
       ) : (
         profile.thoughts.map((t) => {
@@ -348,6 +332,46 @@ export default function MeScreen() {
           );
         })
       )}
+
+      {profile.shifts && profile.shifts.length > 0 && (
+        profile.shifts.map((s) => {
+          const shiftItem: FeedItemShift = {
+            type: "shift",
+            id: s.id,
+            created_at: s.created_at ?? new Date().toISOString(),
+            participant_a: s.participant_a,
+            participant_b: s.participant_b,
+          };
+          return (
+            <View key={s.id} style={styles.thoughtWrap}>
+              <ShiftCard item={shiftItem} />
+            </View>
+          );
+        })
+      )}
+
+      {/* Crossings */}
+      {profile.crossings && profile.crossings.length > 0 && (
+        profile.crossings.map((c) => {
+          const crossingItem: FeedItemCrossing = {
+            type: "crossing",
+            crossing: {
+              id: c.id,
+              sentence: c.sentence,
+              context: c.context,
+              created_at: c.created_at ?? new Date().toISOString(),
+            },
+            participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
+            participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
+            warmth_level: "none",
+          };
+          return (
+            <View key={c.id} style={styles.thoughtWrap}>
+              <CrossingCard item={crossingItem} visible />
+            </View>
+          );
+        })
+      )}
     </ScrollView>
   );
 }
@@ -364,19 +388,22 @@ const styles = StyleSheet.create({
   },
 
   /* ── Photo ── */
-  photoBlob: {
+  photoCircle: {
     alignSelf: "center",
-    marginBottom: 14,
+    marginBottom: 10,
+    backgroundColor: "rgba(245,240,234,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   /* ── Name ── */
   name: {
     fontFamily: fontFamily.comico,
-    fontSize: 28,
+    fontSize: 32,
     color: colors.WARM_GROUND,
     textAlign: "center",
-    marginBottom: 24,
-    letterSpacing: -0.3,
+    marginBottom: 20,
+    letterSpacing: -0.5,
   },
 
   /* ── Action pills ── */
@@ -385,20 +412,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     paddingHorizontal: spacing.screenPadding,
-    marginBottom: 32,
+    marginBottom: 36,
   },
   glassBtn: {
-    backgroundColor: "rgba(245,240,234,0.1)",
+    backgroundColor: "rgba(245,240,234,0.08)",
     borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 22,
+    paddingVertical: 11,
+    paddingHorizontal: 24,
   },
   glassBtnText: {
     fontFamily: fontFamily.comico,
     fontSize: 8,
     letterSpacing: 0.6,
     textTransform: "uppercase",
-    color: "rgba(245,240,234,0.55)",
+    color: "rgba(245,240,234,0.45)",
   },
 
   /* ── Edit mode ── */

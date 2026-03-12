@@ -1,14 +1,15 @@
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import Constants from "expo-constants";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandLockup } from "../components/BrandLockup";
 import { ScreenExitButton } from "../components/ScreenExitButton";
-import { clearAuth } from "../lib/auth-store";
-import { setCachedUserId } from "../lib/api";
+import {
+  SUPPORT_LAST_UPDATED,
+  SUPPORT_SECTIONS,
+} from "../lib/legal";
 import { colors, spacing, typography } from "../theme";
 
-function SettingsRow({
+function ActionCard({
   title,
   subtitle,
   onPress,
@@ -20,44 +21,32 @@ function SettingsRow({
   destructive?: boolean;
 }) {
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.8}>
-      <View style={styles.rowBody}>
-        <Text style={[styles.rowTitle, destructive && styles.rowTitleDestructive]}>
+    <TouchableOpacity
+      style={styles.actionCard}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <View style={styles.actionBody}>
+        <Text style={[styles.actionTitle, destructive && styles.destructiveText]}>
           {title}
         </Text>
-        <Text style={styles.rowSubtitle}>{subtitle}</Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
       </View>
-      <Text style={[styles.chevron, destructive && styles.rowTitleDestructive]}>›</Text>
+      <Text style={[styles.chevron, destructive && styles.destructiveText]}>›</Text>
     </TouchableOpacity>
   );
 }
 
-export default function SettingsScreen() {
+export default function SupportScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const appVersion = Constants.expoConfig?.version ?? "1.0.0";
-
-  const handleLogout = () => {
-    Alert.alert("Log out", "You will need to sign in again to use ohm..", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log out",
-        style: "destructive",
-        onPress: async () => {
-          await clearAuth();
-          setCachedUserId(null);
-          router.replace("/login");
-        },
-      },
-    ]);
-  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View style={styles.headerLead}>
           <BrandLockup size="sm" />
-          <Text style={styles.headerTitle}>Settings</Text>
+          <Text style={styles.headerTitle}>Support</Text>
         </View>
         <ScreenExitButton onPress={() => router.back()} />
       </View>
@@ -66,42 +55,39 @@ export default function SettingsScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + 28 },
+          { paddingBottom: insets.bottom + 32 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Account</Text>
-          <SettingsRow
-            title="Support"
-            subtitle="See help paths, privacy access, and account removal guidance."
-            onPress={() => router.push("/support" as Href)}
-          />
-          <SettingsRow
-            title="Privacy Policy"
-            subtitle="Read how ohm. stores and uses account and conversation data."
+        <Text style={styles.intro}>
+          Last updated {SUPPORT_LAST_UPDATED}. This screen summarizes the help,
+          privacy, and account-removal paths available in ohm..
+        </Text>
+
+        {SUPPORT_SECTIONS.map((section) => (
+          <View key={section.title} style={styles.section}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            {section.paragraphs.map((paragraph) => (
+              <Text key={paragraph} style={styles.paragraph}>
+                {paragraph}
+              </Text>
+            ))}
+          </View>
+        ))}
+
+        <View style={styles.actions}>
+          <ActionCard
+            title="Open Privacy Policy"
+            subtitle="Review how account, thought, and conversation data is used."
             onPress={() => router.push("/privacy" as Href)}
           />
-          <SettingsRow
+          <ActionCard
             title="Delete Account"
             subtitle="Permanently remove your account and the data tied to it."
             onPress={() => router.push("/delete-account" as Href)}
             destructive
           />
         </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Session</Text>
-          <TouchableOpacity
-            style={[styles.row, styles.logoutRow]}
-            onPress={handleLogout}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.logoutText}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.footerText}>Version {appVersion}</Text>
       </ScrollView>
     </View>
   );
@@ -141,17 +127,32 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     gap: 22,
   },
+  intro: {
+    fontFamily: typography.context.fontFamily,
+    fontSize: 11.5,
+    lineHeight: 18,
+    color: colors.TYPE_DARK,
+  },
   section: {
     gap: 10,
   },
-  sectionLabel: {
+  sectionTitle: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 9,
-    color: colors.TYPE_MUTED,
+    fontSize: 10,
+    color: colors.TYPE_DARK,
     letterSpacing: 1.1,
     textTransform: "uppercase",
   },
-  row: {
+  paragraph: {
+    fontFamily: typography.context.fontFamily,
+    fontSize: 11.5,
+    lineHeight: 18,
+    color: colors.TYPE_DARK,
+  },
+  actions: {
+    gap: 10,
+  },
+  actionCard: {
     backgroundColor: colors.CARD_GROUND,
     borderRadius: 16,
     paddingHorizontal: 16,
@@ -161,19 +162,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  rowBody: {
+  actionBody: {
     flex: 1,
     gap: 6,
   },
-  rowTitle: {
+  actionTitle: {
     fontFamily: typography.label.fontFamily,
     fontSize: 11.5,
     color: colors.TYPE_DARK,
   },
-  rowTitleDestructive: {
+  destructiveText: {
     color: colors.OLIVE,
   },
-  rowSubtitle: {
+  actionSubtitle: {
     fontFamily: typography.context.fontFamily,
     fontSize: 11,
     lineHeight: 15,
@@ -183,22 +184,5 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 22,
     color: colors.TYPE_MUTED,
-  },
-  logoutRow: {
-    justifyContent: "center",
-  },
-  logoutText: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 11.5,
-    color: colors.TYPE_DARK,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  footerText: {
-    fontFamily: typography.context.fontFamily,
-    fontSize: 10.5,
-    color: colors.TYPE_MUTED,
-    textAlign: "center",
-    marginTop: 8,
   },
 });

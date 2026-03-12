@@ -5,6 +5,12 @@
     "version": "1.0.0",
     "description": "Share one thought at a time and let it open private conversations.",
     "scheme": "ohm",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/images/ohm-app-icon.png",

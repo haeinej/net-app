@@ -32,7 +32,20 @@ export interface FeedItemShift {
   participant_b: FeedItemUser & { before: string; after: string };
 }
 
-export type FeedItem = FeedItemThought | FeedItemShift;
+export interface FeedItemCrossing {
+  type: "crossing";
+  crossing: {
+    id: string;
+    sentence: string;
+    context: string | null;
+    created_at: string;
+  };
+  participant_a: FeedItemUser;
+  participant_b: FeedItemUser;
+  warmth_level: WarmthLevel;
+}
+
+export type FeedItem = FeedItemThought | FeedItemShift | FeedItemCrossing;
 
 /** Thought with embeddings and author for scoring. */
 export interface ThoughtCandidate {

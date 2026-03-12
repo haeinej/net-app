@@ -43,11 +43,12 @@ function formatMessageTime(iso: string | null): string {
 }
 
 export default function ConversationThreadScreen() {
-  const { id, otherName, otherPhoto } = useLocalSearchParams<{
+  const { id, otherName, otherPhoto, thoughtSentence } = useLocalSearchParams<{
     id: string;
     otherName?: string;
     otherPhoto?: string;
     otherId?: string;
+    thoughtSentence?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -204,6 +205,8 @@ export default function ConversationThreadScreen() {
 
   const isSent = (msg: ConversationMessage) => msg.sender_id === myUserId;
   const messageCount = convDetail?.message_count ?? messages.length;
+  const conversationThoughtSentence =
+    convDetail?.thought?.sentence ?? thoughtSentence ?? "";
   const canShowCrossingShift = messageCount >= 10;
   const crossingComplete = convDetail?.crossing_complete ?? false;
   const shiftComplete = convDetail?.shift_complete ?? false;
@@ -253,11 +256,21 @@ export default function ConversationThreadScreen() {
             onScroll={onScroll}
             scrollEventThrottle={200}
             ListHeaderComponent={
-              loadingOlder ? (
-                <View style={styles.olderLoader}>
-                  <ActivityIndicator size="small" color={colors.TYPE_MUTED} />
-                </View>
-              ) : null
+              <View>
+                {conversationThoughtSentence ? (
+                  <View style={styles.thoughtCard}>
+                    <Text style={styles.thoughtLabel}>Original thought</Text>
+                    <Text style={styles.thoughtSentence}>
+                      {conversationThoughtSentence}
+                    </Text>
+                  </View>
+                ) : null}
+                {loadingOlder ? (
+                  <View style={styles.olderLoader}>
+                    <ActivityIndicator size="small" color={colors.TYPE_MUTED} />
+                  </View>
+                ) : null}
+              </View>
             }
             renderItem={({ item, index }) => (
               <View style={styles.messageWrap}>
@@ -620,6 +633,26 @@ const styles = StyleSheet.create({
   olderLoader: {
     paddingVertical: 12,
     alignItems: "center",
+  },
+  thoughtCard: {
+    backgroundColor: colors.CARD_GROUND,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  thoughtLabel: {
+    ...typography.metadata,
+    fontSize: 7,
+    color: colors.TYPE_MUTED,
+    marginBottom: 6,
+  },
+  thoughtSentence: {
+    ...typography.thoughtDisplay,
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: "700",
+    color: colors.TYPE_DARK,
   },
   messageWrap: {
     marginBottom: 12,

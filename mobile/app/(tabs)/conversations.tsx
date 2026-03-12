@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
   Text,
@@ -9,7 +10,6 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily } from "../../theme";
 import {
@@ -43,7 +43,11 @@ function ConversationRow({
 
   return (
     <TouchableOpacity
-      style={[styles.row, isDormant && styles.rowDormant]}
+      style={[
+        styles.row,
+        isUnread ? styles.rowUnread : styles.rowRead,
+        isDormant && styles.rowDormant,
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -53,19 +57,35 @@ function ConversationRow({
         ) : (
           <View style={[styles.avatar, styles.avatarPlc]} />
         )}
-        {isUnread && <View style={styles.unreadDot} />}
       </View>
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
-          <Text style={[styles.name, isDormant && styles.textMuted]} numberOfLines={1}>
+          <Text
+            style={[
+              styles.name,
+              isUnread ? styles.nameUnread : styles.nameRead,
+              isDormant && styles.textMuted,
+            ]}
+            numberOfLines={1}
+          >
             {item.other_user?.name ? item.other_user.name.toUpperCase() : "—"}
           </Text>
-          <Text style={[styles.time, isDormant && styles.textMuted]}>
+          <Text
+            style={[
+              styles.time,
+              isUnread ? styles.timeUnread : styles.timeRead,
+              isDormant && styles.textMuted,
+            ]}
+          >
             {formatTimeAgo(item.last_message_at)}
           </Text>
         </View>
         <Text
-          style={[styles.preview, isDormant && styles.textMuted]}
+          style={[
+            styles.preview,
+            isUnread ? styles.previewUnread : styles.previewRead,
+            isDormant && styles.textMuted,
+          ]}
           numberOfLines={1}
         >
           {item.last_message_preview || " "}
@@ -99,6 +119,12 @@ export default function ConversationsScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -203,13 +229,26 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.CARD_GROUND,
     borderRadius: spacing.cardRadius,
     padding: 10,
     marginBottom: 8,
   },
+  rowUnread: {
+    backgroundColor: "rgba(26,26,22,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(26,26,22,0.06)",
+    opacity: 0.82,
+  },
+  rowRead: {
+    backgroundColor: colors.VERMILLION,
+    shadowColor: colors.VERMILLION,
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
   rowDormant: {
-    opacity: 0.5,
+    opacity: 0.58,
   },
   avatarWrap: {
     position: "relative",
@@ -222,15 +261,6 @@ const styles = StyleSheet.create({
   },
   avatarPlc: {
     backgroundColor: colors.PANEL_DEEP,
-  },
-  unreadDot: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.OLIVE,
   },
   rowBody: {
     flex: 1,
@@ -246,24 +276,39 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 7,
     letterSpacing: 1,
-    color: colors.TYPE_DARK,
     flex: 1,
     marginRight: 8,
+  },
+  nameUnread: {
+    color: colors.TYPE_DARK,
+  },
+  nameRead: {
+    color: colors.TYPE_WHITE,
   },
   time: {
     fontFamily: fontFamily.comico,
     fontSize: 6,
     letterSpacing: 0.5,
+  },
+  timeUnread: {
     color: colors.TYPE_MUTED,
+  },
+  timeRead: {
+    color: "rgba(255,255,255,0.8)",
   },
   preview: {
     ...typography.context,
     fontSize: 8.5,
-    color: colors.TYPE_MUTED,
     lineHeight: 12,
   },
+  previewUnread: {
+    color: "rgba(26,26,22,0.55)",
+  },
+  previewRead: {
+    color: "rgba(255,255,255,0.88)",
+  },
   textMuted: {
-    color: colors.TYPE_MUTED,
+    color: "rgba(26,26,22,0.36)",
   },
   centered: {
     flex: 1,

@@ -157,7 +157,20 @@ export interface FeedItemShift {
   participant_b: FeedItemUser & { before: string; after: string };
 }
 
-export type FeedItem = FeedItemThought | FeedItemShift;
+export interface FeedItemCrossing {
+  type: "crossing";
+  crossing: {
+    id: string;
+    sentence: string;
+    context: string | null;
+    created_at: string;
+  };
+  participant_a: FeedItemUser;
+  participant_b: FeedItemUser;
+  warmth_level: WarmthLevel;
+}
+
+export type FeedItem = FeedItemThought | FeedItemShift | FeedItemCrossing;
 
 export interface NotificationItem {
   reply_id: string;
@@ -235,13 +248,19 @@ export interface ThoughtPanel3Reply {
   id: string;
   user: { id: string; name: string | null; photo_url: string | null } | null;
   text: string;
+  status: "pending" | "accepted" | "deleted";
+  can_delete: boolean;
   created_at: string | null;
 }
 
 export interface ThoughtDetailResponse {
   panel_1: ThoughtPanel1;
   panel_2: { sentence: string; context: string };
-  panel_3: { accepted_replies: ThoughtPanel3Reply[]; can_reply: boolean };
+  panel_3: {
+    viewer_is_author: boolean;
+    replies: ThoughtPanel3Reply[];
+    can_reply: boolean;
+  };
 }
 
 export async function fetchThought(id: string): Promise<ThoughtDetailResponse> {
@@ -259,6 +278,51 @@ export async function postReply(thoughtId: string, text: string): Promise<{ id: 
       auth: true,
       headers: JSON_HEADERS,
       body: JSON.stringify({ text }),
+    }
+  );
+}
+
+// Crossing Detail
+export interface CrossingDetailReply {
+  id: string;
+  user: { id: string; name: string | null; photo_url: string | null };
+  text: string;
+  target_participant_id: string;
+  created_at: string;
+}
+
+export interface CrossingDetailResponse {
+  panel_1: {
+    id: string;
+    sentence: string;
+    participant_a: FeedItemUser;
+    participant_b: FeedItemUser;
+    warmth_level: WarmthLevel;
+    created_at: string;
+  };
+  panel_2: { sentence: string; context: string | null };
+  panel_3: { accepted_replies: CrossingDetailReply[]; can_reply: boolean };
+}
+
+export async function fetchCrossingDetail(id: string): Promise<CrossingDetailResponse> {
+  return requestJson<CrossingDetailResponse>(`/api/crossings/${id}`, "Crossing not found", {
+    auth: true,
+  });
+}
+
+export async function postCrossingReply(
+  crossingId: string,
+  text: string,
+  targetParticipantId: string
+): Promise<{ id: string; status: string; created_at: string }> {
+  return requestJson<{ id: string; status: string; created_at: string }>(
+    `/api/crossings/${crossingId}/reply`,
+    "Reply failed",
+    {
+      method: "POST",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ text, target_participant_id: targetParticipantId }),
     }
   );
 }
@@ -341,6 +405,12 @@ export interface ConversationDetail {
   message_count: number;
   participant_a_id: string;
   participant_b_id: string;
+  thought: {
+    id: string;
+    sentence: string;
+    photo_url: string | null;
+    image_url: string | null;
+  } | null;
   crossing_draft: CrossingDraft | null;
   shift_draft: ShiftDraft | null;
   crossing_complete: boolean;
@@ -476,12 +546,20 @@ export interface ProfileCrossing {
   participant_b: FeedItemUser | null;
 }
 
+export interface ProfileShift {
+  id: string;
+  created_at: string | null;
+  participant_a: FeedItemUser & { before: string; after: string };
+  participant_b: FeedItemUser & { before: string; after: string };
+}
+
 export interface ProfileResponse {
   id: string;
   name: string | null;
   photo_url: string | null;
   interests?: string[];
   thoughts: ProfileThought[];
+  shifts?: ProfileShift[];
   crossings?: ProfileCrossing[];
 }
 

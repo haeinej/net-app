@@ -10,6 +10,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -23,11 +25,11 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, IMAGE_ASPECT_RATIO } from "../../theme";
+import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily } from "../../theme";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { WarmthBar, type WarmthLevel } from "../../components/WarmthBar";
 import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
-import { fetchThought, postReply, type ThoughtDetailResponse } from "../../lib/api";
+import { deleteReply, fetchThought, postReply, type ThoughtDetailResponse } from "../../lib/api";
 import { useEngagementTracking } from "../../hooks/useEngagementTracking";
 
 const REPLY_MIN_LENGTH = 50;
@@ -79,6 +81,12 @@ export default function ThoughtDetailScreen() {
     return () => {
       cancelled = true;
     };
+  }, [id]);
+
+  const refreshThought = useCallback(async () => {
+    if (!id) return;
+    const fresh = await fetchThought(id);
+    setData(fresh);
   }, [id]);
 
   const applyPanel = useCallback(
@@ -176,14 +184,32 @@ export default function ThoughtDetailScreen() {
       setIsTyping(false);
       translateX.value = withTiming(0, { duration: 220 });
       applyPanel(0);
-      const fresh = await fetchThought(id);
-      setData(fresh);
+      await refreshThought();
     } catch {
       setSending(false);
     } finally {
       setSending(false);
     }
-  }, [id, replyText, data?.panel_3.can_reply, sending, recordReplySent, translateX, applyPanel]);
+  }, [id, replyText, data?.panel_3.can_reply, sending, recordReplySent, translateX, applyPanel, refreshThought]);
+
+  const handleDeleteReply = useCallback(
+    (replyId: string) => {
+      Alert.alert("Delete reply", "Remove this reply from your thought?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteReply(replyId);
+              await refreshThought();
+            } catch {}
+          },
+        },
+      ]);
+    },
+    [refreshThought]
+  );
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
@@ -233,7 +259,7 @@ export default function ThoughtDetailScreen() {
                 borderRadius={0}
                 style={{ width: panelWidth - spacing.warmthBarWidth, height: imageHeight }}
               >
-                <Text style={styles.sentenceP1} numberOfLines={2}>
+                <Text style={styles.sentenceP1} numberOfLines={4}>
                   {p1.sentence}
                 </Text>
                 <View style={styles.dots}>
@@ -243,14 +269,23 @@ export default function ThoughtDetailScreen() {
                 </View>
               </ThoughtImageFrame>
             </View>
-            <View style={styles.footerP1}>
+            <TouchableOpacity
+              style={styles.footerP1}
+              onPress={() => {
+                if (p1.user?.id) {
+                  router.push({ pathname: "/user/[id]", params: { id: p1.user.id } });
+                }
+              }}
+              disabled={!p1.user?.id}
+              activeOpacity={0.7}
+            >
               {p1.user?.photo_url ? (
                 <Image source={{ uri: p1.user.photo_url }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarPlc]} />
               )}
               <Text style={styles.nameP1}>{p1.user?.name ? p1.user.name.toUpperCase() : "—"}</Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Panel 2 */}
@@ -277,24 +312,57 @@ export default function ThoughtDetailScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.panelLabel}>Accepted replies</Text>
-              {p3.accepted_replies.length === 0 ? (
-                <Text style={styles.panelEmpty}>No accepted replies yet.</Text>
+              <Text style={styles.panelLabel}>
+                {p3.viewer_is_author ? "Replies" : "In chat replies"}
+              </Text>
+              {p3.replies.length === 0 ? (
+                <Text style={styles.panelEmpty}>
+                  {p3.viewer_is_author ? "No replies yet." : "No in-chat replies yet."}
+                </Text>
               ) : null}
-              {p3.accepted_replies.map((r) => (
-                <View key={r.id} style={styles.replyRow}>
+              {p3.replies.map((r) => (
+                <TouchableOpacity
+                  key={r.id}
+                  style={styles.replyRow}
+                  onPress={() => {
+                    if (r.user?.id) {
+                      router.push({ pathname: "/user/[id]", params: { id: r.user.id } });
+                    }
+                  }}
+                  disabled={!r.user?.id}
+                  activeOpacity={0.7}
+                >
                   {r.user?.photo_url ? (
                     <Image source={{ uri: r.user.photo_url }} style={styles.replyAvatar} />
                   ) : (
                     <View style={[styles.replyAvatar, styles.avatarPlc]} />
                   )}
                   <View style={styles.replyBody}>
-                    <Text style={styles.replyName}>
-                      {r.user?.name ? r.user.name.toUpperCase() : "—"}
-                    </Text>
+                    <View style={styles.replyTopRow}>
+                      <Text style={styles.replyName}>
+                        {r.user?.name ? r.user.name.toUpperCase() : "—"}
+                      </Text>
+                      {p3.viewer_is_author ? (
+                        <Text style={styles.replyStatus}>
+                          {r.status === "accepted" ? "IN CHAT" : "PENDING"}
+                        </Text>
+                      ) : null}
+                    </View>
                     <Text style={styles.replyText}>{r.text}</Text>
                   </View>
-                </View>
+                  {r.can_delete ? (
+                    <TouchableOpacity
+                      style={styles.replyDeleteBtn}
+                      onPress={(event: GestureResponderEvent) => {
+                        event.stopPropagation();
+                        handleDeleteReply(r.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.replyDeleteText}>Delete</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
               ))}
             </ScrollView>
             {p3.can_reply && (
@@ -383,14 +451,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   sentenceP1: {
-    ...typography.thoughtDisplay,
+    fontFamily: fontFamily.sentient,
     position: "absolute",
     left: 18,
     right: 18,
     bottom: 18,
     fontSize: 28,
-    lineHeight: 30,
-    letterSpacing: -0.15,
+    lineHeight: 31,
+    fontWeight: "700",
+    letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
     textShadowColor: "rgba(8,6,4,0.5)",
     textShadowOffset: { width: 0, height: 1 },
@@ -487,16 +556,36 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   replyBody: { flex: 1 },
+  replyTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   replyName: {
     ...typography.metadata,
     fontSize: 7,
     color: colors.TYPE_MUTED,
     marginBottom: 4,
   },
+  replyStatus: {
+    ...typography.metadata,
+    fontSize: 6.5,
+    color: colors.OLIVE,
+    letterSpacing: 0.7,
+  },
   replyText: {
     ...typography.context,
     fontSize: 10,
     color: colors.TYPE_WHITE,
+  },
+  replyDeleteBtn: {
+    marginLeft: 10,
+    paddingVertical: 2,
+  },
+  replyDeleteText: {
+    ...typography.metadata,
+    color: colors.VERMILLION,
   },
   inputWrap: {
     position: "absolute",

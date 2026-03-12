@@ -10,11 +10,8 @@ import {
   ScrollView,
   Platform,
   KeyboardAvoidingView,
-  Alert,
-  type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
@@ -24,16 +21,13 @@ import Animated, {
   runOnJS,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { colors, spacing, typography, fontFamily } from "../theme";
-import { ThoughtImageFrame } from "./ThoughtImageFrame";
+import { colors, spacing, typography } from "../theme";
 import {
-  deleteReply,
-  fetchThought,
-  postReply,
-  type FeedItemThought,
-  type ThoughtDetailResponse,
+  fetchCrossingDetail,
+  postCrossingReply,
+  type FeedItemCrossing,
+  type CrossingDetailResponse,
 } from "../lib/api";
-import { useEngagementTracking } from "../hooks/useEngagementTracking";
 
 const REPLY_MIN_LENGTH = 50;
 const REPLY_MAX_LENGTH = 300;
@@ -54,29 +48,25 @@ function formatRelativeTime(iso: string): string {
   return `${days}d`;
 }
 
-interface SwipeableThoughtCardProps {
-  item: FeedItemThought;
+interface CrossingCardProps {
+  item: FeedItemCrossing;
   visible?: boolean;
-  isOwn?: boolean;
-  onDelete?: (thoughtId: string) => void;
-  onEdit?: (thoughtId: string) => void;
 }
 
-export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit }: SwipeableThoughtCardProps) {
-  const router = useRouter();
+export function CrossingCard({ item, visible = false }: CrossingCardProps) {
   const { width } = useWindowDimensions();
   const cardWidth = width - spacing.screenPadding * 2;
 
-  const { thought, user, warmth_level } = item;
+  const { crossing, participant_a, participant_b, warmth_level } = item;
 
-  // Panel state — shared value for worklet access, React state for indicator rendering
+  // Panel state
   const currentPanel = useSharedValue(0);
   const [displayPanel, setDisplayPanel] = useState(0);
   const panel2X = useSharedValue(cardWidth);
   const panel3X = useSharedValue(cardWidth);
 
   // Detail data (lazy loaded)
-  const [detailData, setDetailData] = useState<ThoughtDetailResponse | null>(null);
+  const [detailData, setDetailData] = useState<CrossingDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const fetchedRef = useRef(false);
 
@@ -84,76 +74,46 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<string>(participant_a.id);
   const pulseOpacity = useSharedValue(0);
 
-  // Warmth escalates as user swipes deeper into panels
+  // Warmth escalation
   const effectiveWarmth = (() => {
     if (isTyping) return "full" as const;
     const levels: Array<typeof warmth_level> = ["none", "low", "medium", "full"];
     if (displayPanel >= 2) return "full" as const;
     if (displayPanel === 1) return "medium" as const;
-    // Panel 0: show at least "low" so the bar is always visible
     const baseIdx = levels.indexOf(warmth_level);
     return levels[Math.max(baseIdx, 1)];
   })();
 
-  // Card height animation for reply expansion
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
 
-  // Engagement tracking
-  const {
-    recordSwipeP2,
-    recordSwipeP3,
-    recordTypeStart,
-    recordReplySent,
-  } = useEngagementTracking({
-    thoughtId: thought.id,
-    visible,
-  });
-
-  // Lazy fetch detail data
+  // Lazy fetch
   const loadDetail = useCallback(async () => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     setDetailLoading(true);
     try {
-      const data = await fetchThought(thought.id);
+      const data = await fetchCrossingDetail(crossing.id);
       setDetailData(data);
     } catch {
-      fetchedRef.current = false; // allow retry
+      fetchedRef.current = false;
     } finally {
       setDetailLoading(false);
     }
-  }, [thought.id]);
-
-  const refreshDetail = useCallback(async () => {
-    fetchedRef.current = false;
-    await loadDetail();
-  }, [loadDetail]);
+  }, [crossing.id]);
 
   const snapTo = useCallback(
     (target: number, from: number) => {
       const duration = 250;
-      if (target >= 1) {
-        panel2X.value = withTiming(0, { duration });
-      } else {
-        panel2X.value = withTiming(cardWidth, { duration });
-      }
-      if (target >= 2) {
-        panel3X.value = withTiming(0, { duration });
-      } else {
-        panel3X.value = withTiming(cardWidth, { duration });
-      }
+      panel2X.value = withTiming(target >= 1 ? 0 : cardWidth, { duration });
+      panel3X.value = withTiming(target >= 2 ? 0 : cardWidth, { duration });
       currentPanel.value = target;
       setDisplayPanel(target);
-      if (from === 0 && target === 1) {
-        recordSwipeP2();
-        loadDetail();
-      } else if (from === 1 && target === 2) {
-        recordSwipeP3();
-      }
+      if (from === 0 && target === 1) loadDetail();
     },
-    [cardWidth, panel2X, panel3X, currentPanel, recordSwipeP2, recordSwipeP3, loadDetail]
+    [cardWidth, panel2X, panel3X, currentPanel, loadDetail]
   );
 
   const panGesture = Gesture.Pan()
@@ -163,83 +123,42 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       "worklet";
       const ci = currentPanel.value;
       const tx = e.translationX;
-
       if (ci === 0) {
-        // Swiping left from panel 0 → bring panel 2 in
-        const next = Math.max(0, Math.min(cardWidth, cardWidth + tx));
-        panel2X.value = next;
+        panel2X.value = Math.max(0, Math.min(cardWidth, cardWidth + tx));
       } else if (ci === 1) {
         if (tx < 0) {
-          // Swiping left from panel 1 → bring panel 3 in
-          const next = Math.max(0, Math.min(cardWidth, cardWidth + tx));
-          panel3X.value = next;
+          panel3X.value = Math.max(0, Math.min(cardWidth, cardWidth + tx));
         } else {
-          // Swiping right from panel 1 → push panel 2 out
-          const next = Math.max(0, Math.min(cardWidth, tx));
-          panel2X.value = next;
+          panel2X.value = Math.max(0, Math.min(cardWidth, tx));
         }
       } else if (ci === 2) {
         if (tx > 0) {
-          // Swiping right from panel 2 → push panel 3 out
-          const next = Math.max(0, Math.min(cardWidth, tx));
-          panel3X.value = next;
+          panel3X.value = Math.max(0, Math.min(cardWidth, tx));
         }
       }
     })
     .onEnd((e) => {
       "worklet";
       const ci = currentPanel.value;
-      const vx = e.velocityX;
       const threshold = cardWidth * 0.3;
-
       if (ci === 0) {
-        if (panel2X.value < cardWidth - threshold || vx < -200) {
-          runOnJS(snapTo)(1, 0);
-        } else {
-          runOnJS(snapTo)(0, 0);
-        }
+        runOnJS(snapTo)(panel2X.value < cardWidth - threshold || e.velocityX < -200 ? 1 : 0, 0);
       } else if (ci === 1) {
         if (e.translationX < 0) {
-          if (panel3X.value < cardWidth - threshold || vx < -200) {
-            runOnJS(snapTo)(2, 1);
-          } else {
-            runOnJS(snapTo)(1, 1);
-          }
+          runOnJS(snapTo)(panel3X.value < cardWidth - threshold || e.velocityX < -200 ? 2 : 1, 1);
         } else {
-          if (panel2X.value > threshold || vx > 200) {
-            runOnJS(snapTo)(0, 1);
-          } else {
-            runOnJS(snapTo)(1, 1);
-          }
+          runOnJS(snapTo)(panel2X.value > threshold || e.velocityX > 200 ? 0 : 1, 1);
         }
       } else if (ci === 2) {
-        if (panel3X.value > threshold || vx > 200) {
-          runOnJS(snapTo)(1, 2);
-        } else {
-          runOnJS(snapTo)(2, 2);
-        }
+        runOnJS(snapTo)(panel3X.value > threshold || e.velocityX > 200 ? 1 : 2, 2);
       }
     });
 
-  const panel2AnimStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: panel2X.value }],
-  }));
-
-  const panel3AnimStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: panel3X.value }],
-  }));
-
-  const cardHeightStyle = useAnimatedStyle(() => ({
-    height: cardHeightAnim.value,
-  }));
-
-  const warmthBarHeightStyle = useAnimatedStyle(() => ({
-    height: cardHeightAnim.value,
-  }));
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    opacity: pulseOpacity.value,
-  }));
+  const panel2AnimStyle = useAnimatedStyle(() => ({ transform: [{ translateX: panel2X.value }] }));
+  const panel3AnimStyle = useAnimatedStyle(() => ({ transform: [{ translateX: panel3X.value }] }));
+  const cardHeightStyle = useAnimatedStyle(() => ({ height: cardHeightAnim.value }));
+  const warmthBarHeightStyle = useAnimatedStyle(() => ({ height: cardHeightAnim.value }));
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulseOpacity.value }));
 
   // Reply handlers
   const handleSendReply = useCallback(async () => {
@@ -248,8 +167,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     if (!detailData?.panel_3.can_reply) return;
     setSending(true);
     try {
-      await postReply(thought.id, text);
-      recordReplySent({ reply_length_chars: text.length });
+      await postCrossingReply(crossing.id, text, replyTarget);
       try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       pulseOpacity.value = withSequence(
         withTiming(0.25, { duration: 100 }),
@@ -258,143 +176,91 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       setReplyText("");
       setIsTyping(false);
       cardHeightAnim.value = withTiming(CARD_HEIGHT, { duration: 250 });
-      // Snap back to panel 0
       snapTo(0, 2);
-      await refreshDetail();
+      fetchedRef.current = false;
+      loadDetail();
     } catch {
       // keep state for retry
     } finally {
       setSending(false);
     }
-  }, [thought.id, replyText, sending, detailData, recordReplySent, pulseOpacity, cardHeightAnim, snapTo, refreshDetail]);
+  }, [crossing.id, replyText, replyTarget, sending, detailData, pulseOpacity, cardHeightAnim, snapTo, loadDetail]);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
-    recordTypeStart();
     cardHeightAnim.value = withTiming(EXPANDED_HEIGHT, { duration: 250 });
-  }, [recordTypeStart, cardHeightAnim]);
+  }, [cardHeightAnim]);
 
   const onReplyBlur = useCallback(() => {
     setIsTyping(false);
     cardHeightAnim.value = withTiming(CARD_HEIGHT, { duration: 250 });
   }, [cardHeightAnim]);
 
-  const handleLongPress = useCallback(() => {
-    if (!isOwn) return;
-    const options: Array<{ text: string; style?: "cancel" | "destructive"; onPress?: () => void }> = [];
-    if (onEdit) {
-      options.push({ text: "Edit", onPress: () => onEdit(thought.id) });
-    }
-    if (onDelete) {
-      options.push({
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          Alert.alert("Delete thought", "Are you sure?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Delete", style: "destructive", onPress: () => onDelete(thought.id) },
-          ]);
-        },
-      });
-    }
-    if (options.length === 0) return;
-    options.push({ text: "Cancel", style: "cancel" });
-    Alert.alert("Thought", undefined, options);
-  }, [isOwn, onEdit, onDelete, thought.id]);
-
-  const handleDeleteReply = useCallback(
-    (replyId: string) => {
-      Alert.alert("Delete reply", "Remove this reply from your thought?", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteReply(replyId);
-              await refreshDetail();
-            } catch {}
-          },
-        },
-      ]);
-    },
-    [refreshDetail]
-  );
-
   const p2 = detailData?.panel_2;
   const p3 = detailData?.panel_3;
-
-  const openUserProfile = useCallback(
-    (userId?: string | null) => {
-      if (!userId) return;
-      router.push({ pathname: "/user/[id]", params: { id: userId } });
-    },
-    [router]
-  );
-
-  const handleProfilePress = useCallback(
-    (event: GestureResponderEvent) => {
-      event.stopPropagation();
-      openUserProfile(user.id);
-    },
-    [openUserProfile, user.id]
-  );
 
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View style={[styles.card, { width: cardWidth }, cardHeightStyle]}>
-        {/* Panel 1 — Thought image + footer */}
+        {/* Panel 1 — Split photo + sentence */}
         <View style={StyleSheet.absoluteFill}>
           <View style={styles.panel1Inner}>
             <View style={{ width: spacing.warmthBarWidth }} />
-            <ThoughtImageFrame
-              imageUrl={thought.photo_url ?? thought.image_url}
-              aspectRatio={4 / 3}
-              borderRadius={0}
-              style={{ width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT }}
-            >
-              <Text
-                style={styles.sentence}
-                numberOfLines={4}
-                ellipsizeMode="tail"
-              >
-                {thought.sentence}
+            <View style={{ width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT }}>
+              {/* Top half — participant A photo */}
+              <View style={styles.splitHalf}>
+                {participant_a.photo_url ? (
+                  <Image source={{ uri: participant_a.photo_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                ) : (
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.PANEL_DEEP }]} />
+                )}
+                <View style={styles.warmTint} />
+              </View>
+              {/* Bottom half — participant B photo */}
+              <View style={styles.splitHalf}>
+                {participant_b.photo_url ? (
+                  <Image source={{ uri: participant_b.photo_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                ) : (
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.PANEL_DEEP }]} />
+                )}
+                <View style={styles.warmTint} />
+              </View>
+              {/* Sentence overlay */}
+              <Text style={styles.sentence} numberOfLines={4} ellipsizeMode="tail">
+                {crossing.sentence}
               </Text>
+              {/* Dots hint */}
               <View style={styles.dotsHint}>
                 <View style={styles.dot} />
                 <View style={styles.dot} />
                 <View style={styles.dot} />
               </View>
-            </ThoughtImageFrame>
+            </View>
           </View>
-          <TouchableOpacity
-            style={styles.footer}
-            onLongPress={handleLongPress}
-            activeOpacity={isOwn ? 0.7 : 1}
-            delayLongPress={400}
-          >
-            <TouchableOpacity
-              style={styles.profileRow}
-              onPress={handleProfilePress}
-              disabled={!user.id}
-              activeOpacity={0.7}
-            >
-              {user.photo_url ? (
-                <Image source={{ uri: user.photo_url }} style={styles.avatar} />
+          {/* Footer — two avatars + names + timestamp */}
+          <View style={styles.footer}>
+            <View style={styles.profileRow}>
+              {participant_a.photo_url ? (
+                <Image source={{ uri: participant_a.photo_url }} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarPlaceholder]} />
               )}
-              <Text style={styles.name} numberOfLines={1}>
-                {user.name ? user.name.toUpperCase() : "—"}
+              {participant_b.photo_url ? (
+                <Image source={{ uri: participant_b.photo_url }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarPlaceholder]} />
+              )}
+              <Text style={styles.names} numberOfLines={1}>
+                {(participant_a.name ?? "—").toUpperCase()} × {(participant_b.name ?? "—").toUpperCase()}
               </Text>
-            </TouchableOpacity>
+            </View>
             <Text style={styles.timestamp}>
-              {formatRelativeTime(thought.created_at)}
+              {formatRelativeTime(crossing.created_at)}
             </Text>
-          </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Panel 2 — Context (slides from right) */}
+        {/* Panel 2 — Context with split photo background */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.panel2, panel2AnimStyle]}>
           <Text style={styles.panelLabel}>Context</Text>
           {detailLoading ? (
@@ -402,13 +268,8 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
               <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
             </View>
           ) : p2 ? (
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.panel2Content}
-            >
-              <Text style={styles.sentenceP2} numberOfLines={2}>
-                {p2.sentence}
-              </Text>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.panel2Content}>
+              <Text style={styles.sentenceP2} numberOfLines={2}>{p2.sentence}</Text>
               {p2.context ? (
                 <Text style={styles.contextP2}>{p2.context}</Text>
               ) : (
@@ -422,11 +283,9 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           )}
         </Animated.View>
 
-        {/* Panel 3 — Replies (slides from right) */}
+        {/* Panel 3 — Replies with person selector */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.panel3, panel3AnimStyle]}>
-          <Text style={styles.panelLabel}>
-            {p3?.viewer_is_author ? "Replies" : "In chat replies"}
-          </Text>
+          <Text style={styles.panelLabel}>Replies</Text>
           {detailLoading ? (
             <View style={styles.panelCentered}>
               <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
@@ -439,52 +298,27 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.repliesContentContainer}
               >
-                {p3.replies.length === 0 ? (
-                  <Text style={styles.panelEmpty}>
-                    {p3.viewer_is_author ? "No replies yet." : "No in-chat replies yet."}
-                  </Text>
+                {p3.accepted_replies.length === 0 ? (
+                  <Text style={styles.panelEmpty}>No accepted replies yet.</Text>
                 ) : null}
-                {p3.replies.map((r) => (
-                  <TouchableOpacity
-                    key={r.id}
-                    style={styles.replyRow}
-                    onPress={() => openUserProfile(r.user?.id)}
-                    disabled={!r.user?.id}
-                    activeOpacity={0.7}
-                  >
+                {p3.accepted_replies.map((r) => (
+                  <View key={r.id} style={styles.replyRow}>
                     {r.user?.photo_url ? (
                       <Image source={{ uri: r.user.photo_url }} style={styles.replyAvatar} />
                     ) : (
                       <View style={[styles.replyAvatar, styles.avatarPlaceholder]} />
                     )}
                     <View style={styles.replyBody}>
-                      <View style={styles.replyTopRow}>
-                        <Text style={styles.replyName}>
-                          {r.user?.name ? r.user.name.toUpperCase() : "—"}
-                        </Text>
-                        {p3.viewer_is_author ? (
-                          <Text style={styles.replyStatus}>
-                            {r.status === "accepted" ? "IN CHAT" : "PENDING"}
-                          </Text>
-                        ) : null}
-                      </View>
-                      <Text style={styles.replyText} numberOfLines={2}>
-                        {r.text}
+                      <Text style={styles.replyName}>
+                        {r.user?.name ? r.user.name.toUpperCase() : "—"}
+                        {" → "}
+                        {r.target_participant_id === participant_a.id
+                          ? (participant_a.name ?? "—").toUpperCase()
+                          : (participant_b.name ?? "—").toUpperCase()}
                       </Text>
+                      <Text style={styles.replyText} numberOfLines={2}>{r.text}</Text>
                     </View>
-                    {r.can_delete ? (
-                      <TouchableOpacity
-                        style={styles.replyDeleteBtn}
-                        onPress={(event: GestureResponderEvent) => {
-                          event.stopPropagation();
-                          handleDeleteReply(r.id);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.replyDeleteText}>Delete</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </TouchableOpacity>
+                  </View>
                 ))}
               </ScrollView>
               {p3.can_reply && (
@@ -492,7 +326,26 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                   behavior={Platform.OS === "ios" ? "padding" : undefined}
                   style={styles.inputWrap}
                 >
-                  <Text style={styles.replyInputLabel}>reply.</Text>
+                  {/* Reply-to selector */}
+                  <View style={styles.targetRow}>
+                    <Text style={styles.replyToLabel}>reply to</Text>
+                    <TouchableOpacity
+                      style={[styles.targetPill, replyTarget === participant_a.id && styles.targetPillActive]}
+                      onPress={() => setReplyTarget(participant_a.id)}
+                    >
+                      <Text style={[styles.targetPillText, replyTarget === participant_a.id && styles.targetPillTextActive]}>
+                        {(participant_a.name ?? "A").toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.targetPill, replyTarget === participant_b.id && styles.targetPillActive]}
+                      onPress={() => setReplyTarget(participant_b.id)}
+                    >
+                      <Text style={[styles.targetPillText, replyTarget === participant_b.id && styles.targetPillTextActive]}>
+                        {(participant_b.name ?? "B").toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                   <TextInput
                     style={styles.replyInput}
                     placeholder="what this surfaces in you..."
@@ -527,15 +380,17 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           )}
         </Animated.View>
 
-        {/* Pulse overlay on reply sent */}
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.pulseOverlay, pulseStyle]}
-        />
+        {/* Pulse overlay */}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pulseOverlay, pulseStyle]} />
 
-        {/* Warmth bar — always visible across all panels, follows card height */}
+        {/* Warmth bar */}
         <Animated.View style={[styles.warmthBarOverlay, warmthBarHeightStyle]} pointerEvents="none">
-          <View style={[styles.warmthBarFill, { backgroundColor: effectiveWarmth === "none" ? "transparent" : effectiveWarmth === "low" ? colors.CHARTREUSE : effectiveWarmth === "medium" ? colors.OLIVE : colors.VERMILLION }]} />
+          <View style={[styles.warmthBarFill, {
+            backgroundColor: effectiveWarmth === "none" ? "transparent"
+              : effectiveWarmth === "low" ? colors.CHARTREUSE
+              : effectiveWarmth === "medium" ? colors.OLIVE
+              : colors.VERMILLION
+          }]} />
         </Animated.View>
 
         {/* Panel indicator dots */}
@@ -572,20 +427,26 @@ const styles = StyleSheet.create({
   panel1Inner: {
     flexDirection: "row",
   },
+  splitHalf: {
+    height: IMAGE_HEIGHT / 2,
+    overflow: "hidden",
+    position: "relative",
+  },
+  warmTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(60, 45, 30, 0.25)",
+  },
   sentence: {
-    fontFamily: fontFamily.sentient,
+    fontFamily: "Sentient-Light",
     fontWeight: "700",
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 18,
-    fontSize: 24,
-    lineHeight: 27,
-    letterSpacing: -0.35,
+    bottom: 16,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.2,
     color: colors.TYPE_WHITE,
-    textShadowColor: "rgba(8,6,4,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
   },
   dotsHint: {
     position: "absolute",
@@ -614,7 +475,7 @@ const styles = StyleSheet.create({
   profileRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     flex: 1,
   },
   avatar: {
@@ -625,11 +486,11 @@ const styles = StyleSheet.create({
   avatarPlaceholder: {
     backgroundColor: colors.TYPE_MUTED,
   },
-  name: {
+  names: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 8,
-    lineHeight: 10,
-    letterSpacing: 1,
+    fontSize: 7,
+    lineHeight: 9,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
     flex: 1,
@@ -649,9 +510,7 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
   },
-  panel2Content: {
-    paddingBottom: 8,
-  },
+  panel2Content: { paddingBottom: 8 },
   panelLabel: {
     ...typography.label,
     fontSize: 7,
@@ -689,12 +548,8 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
   },
-  repliesScroll: {
-    flex: 1,
-  },
-  repliesContentContainer: {
-    paddingBottom: 48,
-  },
+  repliesScroll: { flex: 1 },
+  repliesContentContainer: { paddingBottom: 48 },
   replyRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -707,23 +562,11 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   replyBody: { flex: 1 },
-  replyTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
   replyName: {
     ...typography.metadata,
     fontSize: 6,
     color: colors.TYPE_MUTED,
     marginBottom: 2,
-  },
-  replyStatus: {
-    ...typography.metadata,
-    fontSize: 5.5,
-    color: colors.OLIVE,
-    letterSpacing: 0.6,
   },
   replyText: {
     ...typography.context,
@@ -731,25 +574,39 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     color: colors.TYPE_WHITE,
   },
-  replyDeleteBtn: {
-    marginLeft: 8,
-    paddingVertical: 1,
-  },
-  replyDeleteText: {
-    ...typography.metadata,
-    fontSize: 6,
-    color: colors.VERMILLION,
-  },
   inputWrap: {
     paddingTop: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.1)",
   },
-  replyInputLabel: {
-    ...typography.replyInput,
-    fontSize: 8,
-    color: colors.VERMILLION,
-    marginBottom: 4,
+  targetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  replyToLabel: {
+    ...typography.metadata,
+    fontSize: 6,
+    color: "rgba(255,255,255,0.4)",
+    marginRight: 2,
+  },
+  targetPill: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  targetPillActive: {
+    backgroundColor: colors.OLIVE,
+  },
+  targetPillText: {
+    ...typography.label,
+    fontSize: 6,
+    color: "rgba(255,255,255,0.5)",
+  },
+  targetPillTextActive: {
+    color: colors.TYPE_WHITE,
   },
   replyInput: {
     ...typography.replyInput,

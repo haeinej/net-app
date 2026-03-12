@@ -58,7 +58,13 @@ export function ProfileThoughtCard({
             borderRadius={0}
             style={{ height: IMAGE_HEIGHT }}
           >
-            <Text style={styles.sentence}>{thought.sentence}</Text>
+            <Text
+              style={styles.sentence}
+              numberOfLines={4}
+              ellipsizeMode="tail"
+            >
+              {thought.sentence}
+            </Text>
           </ThoughtImageFrame>
           <View style={[styles.footer, dark && styles.footerDark]}>
             {authorPhotoUrl ? (
@@ -91,14 +97,15 @@ const styles = StyleSheet.create({
     height: CARD_HEIGHT,
   },
   sentence: {
-    ...typography.thoughtDisplay,
+    fontFamily: fontFamily.sentient,
     position: "absolute",
     left: 10,
     right: 10,
-    bottom: 8,
-    fontSize: 12,
-    lineHeight: 14,
-    letterSpacing: -0.1,
+    bottom: 10,
+    fontSize: 14.5,
+    lineHeight: 16.5,
+    fontWeight: "700",
+    letterSpacing: -0.25,
     color: colors.TYPE_WHITE,
     textShadowColor: "rgba(8,6,4,0.5)",
     textShadowOffset: { width: 0, height: 1 },

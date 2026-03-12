@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { eq, and, isNull, inArray, asc } from "drizzle-orm";
+import { eq, and, isNull, inArray, asc, ne } from "drizzle-orm";
 import { db, thoughts, users, replies } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { processNewThought } from "../thought-processing";
@@ -128,30 +128,36 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     const [t] = await db.select().from(thoughts).where(and(eq(thoughts.id, id), isNull(thoughts.deletedAt)));
     if (!t) return reply.status(404).send();
     const [author] = await db.select().from(users).where(eq(users.id, t.userId));
-    const accepted = await db
+    const viewerIsAuthor = t.userId === userId;
+    const visibleReplies = await db
       .select({
         id: replies.id,
         replierId: replies.replierId,
         text: replies.text,
+        status: replies.status,
         createdAt: replies.createdAt,
       })
       .from(replies)
-      .where(and(eq(replies.thoughtId, id), eq(replies.status, "accepted")))
+      .where(
+        viewerIsAuthor
+          ? and(eq(replies.thoughtId, id), ne(replies.status, "deleted"))
+          : and(eq(replies.thoughtId, id), eq(replies.status, "accepted"))
+      )
       .orderBy(asc(replies.createdAt));
-    const replierIds = [...new Set(accepted.map((r) => r.replierId))];
+    const replierIds = [...new Set(visibleReplies.map((r) => r.replierId))];
     const repliers = replierIds.length
       ? await db.select().from(users).where(inArray(users.id, replierIds))
       : [];
     const replierMap = new Map(repliers.map((u) => [u.id, u]));
     const warmth =
-      accepted.length === 0 ? "none" : accepted.length <= 2 ? "low" : "medium";
+      visibleReplies.length === 0 ? "none" : visibleReplies.length <= 2 ? "low" : "medium";
     const pending = await db
       .select()
       .from(replies)
       .where(and(eq(replies.thoughtId, id), eq(replies.status, "pending"), eq(replies.replierId, userId)))
       .limit(1);
     const canReply =
-      t.userId !== userId && pending.length === 0;
+      !viewerIsAuthor && pending.length === 0;
 
     return reply.send({
       panel_1: {
@@ -166,12 +172,15 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       },
       panel_2: { sentence: t.sentence, context: t.context ?? "" },
       panel_3: {
-        accepted_replies: accepted.map((r) => {
+        viewer_is_author: viewerIsAuthor,
+        replies: visibleReplies.map((r) => {
           const u = replierMap.get(r.replierId);
           return {
             id: r.id,
             user: u ? { id: u.id, name: u.name, photo_url: u.photoUrl } : null,
             text: r.text,
+            status: r.status,
+            can_delete: viewerIsAuthor && r.status === "pending",
             created_at: r.createdAt?.toISOString(),
           };
         }),

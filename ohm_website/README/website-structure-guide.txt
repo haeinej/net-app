@@ -30,7 +30,7 @@ BEAT 1 — THE HOOK
 The first thing anyone sees. Tagline + the four-step mechanic. This is your entire product explained in the time it takes to read a sentence.
 
 
-Tagline: Where your thoughts find someone.
+Tagline: Thoughts that find someone.
 Mechanic (displayed as a visual sequence):
 Post a thought.
 Someone replies.
@@ -165,7 +165,7 @@ FULL ARC AT A GLANCE
 The Visitor’s Journey
 
 
-“Where your thoughts find someone.”
+“Thoughts that find someone.”
 ↓
 Oh — you post a thought, someone replies, you accept, and a real conversation happens. Simple.
 ↓

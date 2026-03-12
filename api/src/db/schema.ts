@@ -129,6 +129,8 @@ export const conversations = pgTable(
       .references(() => users.id),
     messageCount: integer("message_count").default(0),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    participantASeenAt: timestamp("participant_a_seen_at", { withTimezone: true }),
+    participantBSeenAt: timestamp("participant_b_seen_at", { withTimezone: true }),
     isDormant: boolean("is_dormant").default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
@@ -337,6 +339,29 @@ export const crossings = pgTable("crossings", {
   imageUrl: text("image_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
+
+// 17b. crossing_replies (replies to crossings, tagged to a participant)
+export const crossingReplies = pgTable(
+  "crossing_replies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    crossingId: uuid("crossing_id")
+      .notNull()
+      .references(() => crossings.id),
+    replierId: uuid("replier_id")
+      .notNull()
+      .references(() => users.id),
+    targetParticipantId: uuid("target_participant_id")
+      .notNull()
+      .references(() => users.id),
+    text: text("text").notNull(),
+    status: replyStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("crossing_replies_crossing_status_idx").on(table.crossingId, table.status),
+  ]
+);
 
 // 18. shift_drafts (Screen 7 — before/after per person)
 export const shiftDrafts = pgTable("shift_drafts", {

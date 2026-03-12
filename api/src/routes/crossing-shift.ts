@@ -2,9 +2,11 @@
  * Crossing and Shift (Screen 7). Draft and complete flows; no notifications.
  */
 import type { FastifyInstance } from "fastify";
-import { eq, and } from "drizzle-orm";
-import { db, conversations, users, crossingDrafts, crossings, shiftDrafts, shifts } from "../db";
+import { eq, and, inArray } from "drizzle-orm";
+import { db, conversations, users, crossingDrafts, crossings, crossingReplies, shiftDrafts, shifts } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
+import { invalidateFeedCache } from "../feed";
+import { getWarmthLevel } from "../lib/warmth";
 
 const CROSSING_CONTEXT_MAX = 600;
 
@@ -164,6 +166,8 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
       .update(crossingDrafts)
       .set({ status: "complete", updatedAt: new Date() })
       .where(eq(crossingDrafts.id, draft.id));
+    invalidateFeedCache(ctx.participantA);
+    invalidateFeedCache(ctx.participantB);
     return reply.send({
       id: crossing.id,
       sentence: crossing.sentence,
@@ -190,6 +194,115 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ ok: true });
     }
   );
+
+  // ——— Crossing Detail + Reply ———
+
+  app.get<{ Params: { id: string } }>(
+    "/api/crossings/:id",
+    async (request, reply) => {
+      const userId = getUserId(request);
+      if (!userId) return reply.status(401).send();
+      const crossingId = request.params.id;
+      const [crossing] = await db.select().from(crossings).where(eq(crossings.id, crossingId)).limit(1);
+      if (!crossing) return reply.status(404).send();
+
+      // Hydrate participants
+      const participantIds = [crossing.participantA, crossing.participantB];
+      const participantRows = await db.select().from(users).where(inArray(users.id, participantIds));
+      const pMap = new Map(participantRows.map((u) => [u.id, u]));
+      const pA = pMap.get(crossing.participantA);
+      const pB = pMap.get(crossing.participantB);
+
+      // Accepted replies
+      const acceptedReplies = await db
+        .select()
+        .from(crossingReplies)
+        .where(and(eq(crossingReplies.crossingId, crossingId), eq(crossingReplies.status, "accepted")));
+      const replierIds = [...new Set(acceptedReplies.map((r) => r.replierId))];
+      const replierRows = replierIds.length > 0
+        ? await db.select().from(users).where(inArray(users.id, replierIds))
+        : [];
+      const replierMap = new Map(replierRows.map((u) => [u.id, u]));
+
+      // Can reply: not a participant AND no pending reply
+      const isParticipant = userId === crossing.participantA || userId === crossing.participantB;
+      const [pendingReply] = isParticipant
+        ? [undefined]
+        : await db.select().from(crossingReplies)
+            .where(and(
+              eq(crossingReplies.crossingId, crossingId),
+              eq(crossingReplies.replierId, userId),
+              eq(crossingReplies.status, "pending")
+            )).limit(1);
+      const canReply = !isParticipant && !pendingReply;
+
+      return reply.send({
+        panel_1: {
+          id: crossing.id,
+          sentence: crossing.sentence,
+          participant_a: { id: crossing.participantA, name: pA?.name ?? null, photo_url: pA?.photoUrl ?? null },
+          participant_b: { id: crossing.participantB, name: pB?.name ?? null, photo_url: pB?.photoUrl ?? null },
+          warmth_level: getWarmthLevel(acceptedReplies.length),
+          created_at: crossing.createdAt?.toISOString() ?? new Date().toISOString(),
+        },
+        panel_2: {
+          sentence: crossing.sentence,
+          context: crossing.context,
+        },
+        panel_3: {
+          accepted_replies: acceptedReplies.map((r) => {
+            const u = replierMap.get(r.replierId);
+            return {
+              id: r.id,
+              user: { id: r.replierId, name: u?.name ?? null, photo_url: u?.photoUrl ?? null },
+              text: r.text,
+              target_participant_id: r.targetParticipantId,
+              created_at: r.createdAt?.toISOString() ?? new Date().toISOString(),
+            };
+          }),
+          can_reply: canReply,
+        },
+      });
+    }
+  );
+
+  app.post<{
+    Params: { id: string };
+    Body: { text: string; target_participant_id: string };
+  }>("/api/crossings/:id/reply", async (request, reply) => {
+    const userId = getUserId(request);
+    if (!userId) return reply.status(401).send();
+    const crossingId = request.params.id;
+    const text = typeof request.body?.text === "string" ? request.body.text.trim() : "";
+    const targetId = request.body?.target_participant_id;
+    if (text.length < 50 || text.length > 300) return reply.status(400).send({ error: "text must be 50-300 chars" });
+    if (!targetId) return reply.status(400).send({ error: "target_participant_id required" });
+
+    const [crossing] = await db.select().from(crossings).where(eq(crossings.id, crossingId)).limit(1);
+    if (!crossing) return reply.status(404).send();
+
+    // Validate target is a participant
+    if (targetId !== crossing.participantA && targetId !== crossing.participantB) {
+      return reply.status(400).send({ error: "target must be a participant" });
+    }
+    // Replier cannot be a participant
+    if (userId === crossing.participantA || userId === crossing.participantB) {
+      return reply.status(403).send({ error: "participants cannot reply to their own crossing" });
+    }
+
+    const [created] = await db
+      .insert(crossingReplies)
+      .values({
+        crossingId,
+        replierId: userId,
+        targetParticipantId: targetId,
+        text,
+        status: "pending",
+      })
+      .returning();
+    if (!created) return reply.status(500).send();
+    return reply.send({ id: created.id, status: created.status, created_at: created.createdAt?.toISOString() });
+  });
 
   // ——— Shift ———
   app.post<{ Params: { id: string } }>(
@@ -325,6 +438,8 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
         .update(shiftDrafts)
         .set({ status: "complete", updatedAt: new Date() })
         .where(eq(shiftDrafts.id, draft.id));
+      invalidateFeedCache(ctx.participantA);
+      invalidateFeedCache(ctx.participantB);
       return reply.send({ id: shift.id });
     }
   );

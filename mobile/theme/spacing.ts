@@ -9,7 +9,7 @@ export const spacing = {
   /** Padding below header on Screen 1 */
   belowHeader: 12,
   /** Thought card corner radius */
-  cardRadius: 8,
+  cardRadius: 14,
   /** Left edge warmth bar width */
   warmthBarWidth: 4,
   /** Profile photo size on card */

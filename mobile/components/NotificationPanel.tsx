@@ -6,7 +6,7 @@ import type { NotificationItem } from "../lib/api";
 interface NotificationPanelProps {
   items: NotificationItem[];
   loading?: boolean;
-  onAccept: (replyId: string) => void;
+  onAccept: (item: NotificationItem) => void;
   onIgnore: (replyId: string) => void;
 }
 
@@ -33,7 +33,7 @@ export function NotificationPanel({
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Pending replies</Text>
-      <Text style={styles.caption}>Only accepted replies appear in the thought view.</Text>
+      <Text style={styles.caption}>Your own thought view shows the full reply inbox.</Text>
       {items.map((n) => (
         <View key={n.reply_id} style={styles.row}>
           {n.replier?.photo_url ? (
@@ -56,9 +56,9 @@ export function NotificationPanel({
             <View style={styles.actions}>
               <TouchableOpacity
                 style={styles.acceptBtn}
-                onPress={() => onAccept(n.reply_id)}
+                onPress={() => onAccept(n)}
               >
-                <Text style={styles.acceptText}>Accept</Text>
+                <Text style={styles.acceptText}>Reply in chat</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.ignoreBtn}

@@ -129,7 +129,7 @@ export default function ComposeScreen() {
             style={styles.previewFrame}
           >
             {sentence.trim().length > 0 ? (
-              <Text style={styles.previewSentence} numberOfLines={3}>
+              <Text style={styles.previewSentence} numberOfLines={4}>
                 {sentence}
               </Text>
             ) : (
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   },
   previewSentence: {
     fontFamily: fontFamily.sentient,
-    fontWeight: "600",
+    fontWeight: "700",
     position: "absolute",
     left: 16,
     right: 16,

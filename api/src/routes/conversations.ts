@@ -16,6 +16,29 @@ interface MessagesQuery {
   before_id?: string;
 }
 
+async function markConversationRead(
+  conversationId: string,
+  userId: string,
+  participantA: string,
+  participantB: string
+): Promise<void> {
+  const now = new Date();
+  if (participantA === userId) {
+    await db
+      .update(conversations)
+      .set({ participantASeenAt: now })
+      .where(eq(conversations.id, conversationId));
+    return;
+  }
+
+  if (participantB === userId) {
+    await db
+      .update(conversations)
+      .set({ participantBSeenAt: now })
+      .where(eq(conversations.id, conversationId));
+  }
+}
+
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
@@ -34,14 +57,22 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         conversationId: messages.conversationId,
         text: messages.text,
         createdAt: messages.createdAt,
+        senderId: messages.senderId,
       })
       .from(messages)
       .where(inArray(messages.conversationId, convIds))
       .orderBy(desc(messages.createdAt));
-    const lastByConv = new Map<string | null, { text: string; createdAt: Date | null }>();
+    const lastByConv = new Map<
+      string | null,
+      { text: string; createdAt: Date | null; senderId: string | null }
+    >();
     for (const m of lastMessages) {
       if (m.conversationId && !lastByConv.has(m.conversationId))
-        lastByConv.set(m.conversationId, { text: m.text, createdAt: m.createdAt });
+        lastByConv.set(m.conversationId, {
+          text: m.text,
+          createdAt: m.createdAt,
+          senderId: m.senderId,
+        });
     }
     const otherIds = list.map((c) =>
       c.participantA === userId ? c.participantB : c.participantA
@@ -53,6 +84,15 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const otherId = c.participantA === userId ? c.participantB : c.participantA;
       const other = userMap.get(otherId);
       const last = lastByConv.get(c.id);
+      const seenAt =
+        c.participantA === userId ? c.participantASeenAt : c.participantBSeenAt;
+      const unread = Boolean(
+        last &&
+          last.senderId &&
+          last.senderId !== userId &&
+          last.createdAt &&
+          (!seenAt || last.createdAt > seenAt)
+      );
       return {
         id: c.id,
         other_user: other
@@ -61,7 +101,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         last_message_preview: last ? last.text.slice(0, MESSAGE_PREVIEW_LEN) : "",
         last_message_at: c.lastMessageAt?.toISOString() ?? null,
         is_dormant: (c.lastMessageAt ? c.lastMessageAt < cutoff : true),
-        unread: false,
+        unread,
       };
     });
     return reply.send(body);
@@ -78,6 +118,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!conv) return reply.status(404).send();
     if (conv.participantA !== userId && conv.participantB !== userId)
       return reply.status(403).send();
+    await markConversationRead(convId, userId, conv.participantA, conv.participantB);
     const messageCount = conv.messageCount ?? 0;
     const [crossDraft] = await db
       .select()
@@ -99,6 +140,16 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .from(shifts)
       .where(eq(shifts.conversationId, convId))
       .limit(1);
+    const [thought] = await db
+      .select({
+        id: thoughts.id,
+        sentence: thoughts.sentence,
+        photoUrl: thoughts.photoUrl,
+        imageUrl: thoughts.imageUrl,
+      })
+      .from(thoughts)
+      .where(eq(thoughts.id, conv.thoughtId))
+      .limit(1);
     let initiatorName: string | null = null;
     let shiftInitiatorName: string | null = null;
     if (crossDraft) {
@@ -114,6 +165,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       message_count: messageCount,
       participant_a_id: conv.participantA,
       participant_b_id: conv.participantB,
+      thought: thought
+        ? {
+            id: thought.id,
+            sentence: thought.sentence,
+            photo_url: thought.photoUrl,
+            image_url: thought.imageUrl,
+          }
+        : null,
       crossing_draft: crossDraft
         ? {
             id: crossDraft.id,
@@ -153,6 +212,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
+      await markConversationRead(convId, userId, conv.participantA, conv.participantB);
       const limit = Math.min(50, Math.max(1, parseInt(request.query.limit ?? "50", 10) || 50));
       const beforeId = request.query.before_id;
       if (beforeId) {
@@ -221,6 +281,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         .set({
           lastMessageAt: now,
           messageCount: newCount,
+          ...(conv.participantA === userId
+            ? { participantASeenAt: now }
+            : { participantBSeenAt: now }),
           ...(wasDormant ? { isDormant: false } : {}),
         })
         .where(eq(conversations.id, convId));
