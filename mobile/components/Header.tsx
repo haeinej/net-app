@@ -75,16 +75,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.VERMILLION,
     alignItems: "center",
     justifyContent: "center",
-    // Glass depth — raised with light catch
+    // Organic liquid lift
     ...shadows.raised,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.25)",
   },
   notificationDotInactive: {
     backgroundColor: colors.CARD_GROUND,
-    borderTopColor: "rgba(255,255,255,0.12)",
-    // Softer shadow when inactive
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.04,
   },
   notificationInner: {
     width: 6,
@@ -102,12 +98,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    // Glass depth — stereoscopic button
+    // Organic liquid lift
     ...shadows.raised,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.25)",
-    borderBottomWidth: 0.5,
-    borderBottomColor: "rgba(0,0,0,0.1)",
   },
   composeText: {
     fontFamily: fontFamily.comico,

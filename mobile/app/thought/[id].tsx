@@ -386,14 +386,6 @@ export default function ThoughtDetailScreen() {
 
           {/* Panel 2 */}
           <View style={[styles.panel, styles.panel2, { width: panelWidth, minHeight: fullPanelHeight }]}>
-            {/* Inner glow — warm light from top-left */}
-            <LinearGradient
-              colors={[glass.darkGlow[0], glass.darkGlow[1]]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0.5, y: 0.5 }}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
             <ScrollView
               contentContainerStyle={styles.panel2Content}
               showsVerticalScrollIndicator={false}
@@ -409,13 +401,6 @@ export default function ThoughtDetailScreen() {
 
           {/* Panel 3 */}
           <View style={[styles.panel, styles.panel3, { width: panelWidth, minHeight: fullPanelHeight }]}>
-            <LinearGradient
-              colors={[glass.darkGlow[0], glass.darkGlow[1]]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0.5, y: 0.5 }}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
             <ScrollView
               style={styles.repliesScroll}
               contentContainerStyle={styles.repliesContent}
@@ -563,14 +548,13 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   sentenceP1: {
-    fontFamily: fontFamily.sentient,
+    fontFamily: fontFamily.sentientBold,
     position: "absolute",
     left: 18,
     right: 18,
     bottom: 22,
     fontSize: 24,
     lineHeight: 27,
-    fontWeight: "700",
     letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
   },
@@ -601,8 +585,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 10,
     backgroundColor: colors.CARD_GROUND,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.12)",
   },
   profileRowP1: {
     flexDirection: "row",
@@ -614,9 +596,6 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    borderWidth: 0.5,
-    borderColor: "rgba(255,255,255,0.15)",
-    ...shadows.raised,
   },
   avatarPlc: {
     backgroundColor: colors.TYPE_MUTED,
@@ -648,9 +627,9 @@ const styles = StyleSheet.create({
   panel2: {
     backgroundColor: colors.PANEL_DARK,
     paddingHorizontal: 24,
-    // Glass transition — light catch on left edge
+    // Soft organic transition
     borderLeftWidth: 0.5,
-    borderLeftColor: "rgba(255,255,255,0.06)",
+    borderLeftColor: "rgba(255,255,255,0.08)",
   },
   panel2Content: {
     flexGrow: 1,
@@ -665,18 +644,20 @@ const styles = StyleSheet.create({
   },
   contextP2: {
     ...typography.context,
-    fontSize: 9.5,
+    fontSize: 12,
+    lineHeight: 17,
     color: "rgba(255,255,255,0.7)",
   },
   panelEmpty: {
     ...typography.context,
+    fontSize: 12,
     color: "rgba(255,255,255,0.4)",
   },
   panel3: {
     backgroundColor: colors.PANEL_DEEP,
     paddingHorizontal: 16,
     borderLeftWidth: 0.5,
-    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderLeftColor: "rgba(255,255,255,0.06)",
   },
   repliesScroll: {
     flex: 1,
@@ -695,8 +676,6 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     marginRight: 10,
-    borderWidth: 0.5,
-    borderColor: "rgba(255,255,255,0.12)",
   },
   replyBody: { flex: 1 },
   replyTopRow: {
@@ -707,7 +686,7 @@ const styles = StyleSheet.create({
   },
   replyName: {
     ...typography.metadata,
-    fontSize: 7,
+    fontSize: 8,
     color: colors.TYPE_MUTED,
     marginBottom: 4,
   },
@@ -719,7 +698,8 @@ const styles = StyleSheet.create({
   },
   replyText: {
     ...typography.context,
-    fontSize: 10,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.TYPE_WHITE,
   },
   replyDeleteBtn: {
@@ -763,8 +743,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: colors.OLIVE,
     ...shadows.raised,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.2)",
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: {
@@ -780,20 +758,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   indicatorDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: "rgba(255,255,255,0.25)",
-    // Glass dot — subtle inner highlight
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.15)",
   },
   indicatorDotActive: {
-    backgroundColor: "rgba(255,255,255,0.55)",
-    // Active glow
+    backgroundColor: "rgba(255,255,255,0.60)",
+    // Soft organic glow
     shadowColor: "#FFFFFF",
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.20,
     shadowRadius: 3,
   },
   pulseOverlay: {

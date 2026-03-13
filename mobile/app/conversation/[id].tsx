@@ -17,6 +17,7 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
+import { fontFamily } from "../../theme/typography";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { SwipeConfirm } from "../../components/SwipeConfirm";
 import {
@@ -637,9 +638,9 @@ const styles = StyleSheet.create({
   },
   thoughtSentence: {
     ...typography.thoughtDisplay,
+    fontFamily: fontFamily.sentientBold,
     fontSize: 15,
     lineHeight: 18,
-    fontWeight: "700",
     color: colors.TYPE_DARK,
   },
   historyNotice: {

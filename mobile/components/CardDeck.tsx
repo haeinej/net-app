@@ -61,26 +61,9 @@ export function CardDeck({ children, layers = 2 }: CardDeckProps) {
           <View style={[StyleSheet.absoluteFill, styles.innerRim]} />
         </View>
       )}
-      {/* Main card — full depth shadow + glass rim */}
-      <View style={[styles.mainCardWrap, shadows.card]}>
+      {/* Main card — flat, no shadow */}
+      <View style={styles.mainCardWrap}>
         {children}
-        {/* Glass highlight rim — top-left light catch */}
-        <View
-          style={[StyleSheet.absoluteFill, styles.glassRim]}
-          pointerEvents="none"
-        />
-        {/* Warm light gradient — subtle top-left glow */}
-        <View
-          style={[StyleSheet.absoluteFill, styles.glassGradientWrap]}
-          pointerEvents="none"
-        >
-          <LinearGradient
-            colors={[glass.warmLight[0], glass.warmLight[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.6, y: 0.6 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
       </View>
     </View>
   );
@@ -97,8 +80,6 @@ const styles = StyleSheet.create({
   },
   innerRim: {
     borderRadius: spacing.cardRadius,
-    borderWidth: 0.5,
-    borderColor: "rgba(255,255,255,0.15)",
   },
   mainCardWrap: {
     borderRadius: spacing.cardRadius,
@@ -106,14 +87,6 @@ const styles = StyleSheet.create({
   },
   glassRim: {
     borderRadius: spacing.cardRadius,
-    borderTopWidth: 0.5,
-    borderLeftWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.18)",
-    borderLeftColor: "rgba(255,255,255,0.10)",
-    borderRightWidth: 0.5,
-    borderBottomWidth: 0.5,
-    borderRightColor: "rgba(26,26,22,0.04)",
-    borderBottomColor: "rgba(26,26,22,0.06)",
   },
   glassGradientWrap: {
     borderRadius: spacing.cardRadius,

@@ -106,14 +106,5 @@ const styles = StyleSheet.create({
   glassInnerRim: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 4,
-    // Inner highlight — light catch on top-left edge
-    borderTopWidth: 0.5,
-    borderLeftWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.10)",
-    borderLeftColor: "rgba(255,255,255,0.06)",
-    borderRightWidth: 0.5,
-    borderBottomWidth: 0.5,
-    borderRightColor: "rgba(0,0,0,0.04)",
-    borderBottomColor: "rgba(0,0,0,0.06)",
   },
 });

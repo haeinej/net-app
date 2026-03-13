@@ -14,7 +14,8 @@ import * as ImagePicker from "expo-image-picker";
 // SVG removed — using simple round photo with border
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, fontFamily } from "../../theme";
+import { LinearGradient } from "expo-linear-gradient";
+import { colors, spacing, fontFamily, shadows } from "../../theme";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
@@ -248,13 +249,22 @@ export default function MeScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* Profile photo — clean round with warm white border */}
-      <View style={[styles.photoCircle, { width: photoSize, height: photoSize, borderRadius: photoSize / 2 }]}>
-        {profile.photo_url ? (
-          <Image source={{ uri: profile.photo_url }} style={{ width: photoSize - 8, height: photoSize - 8, borderRadius: (photoSize - 8) / 2 }} contentFit="cover" />
-        ) : (
-          <View style={{ width: photoSize - 8, height: photoSize - 8, borderRadius: (photoSize - 8) / 2, backgroundColor: "rgba(245,240,234,0.08)" }} />
-        )}
+      {/* Subtle depth gradient — warm glow behind profile, fading into depth */}
+      <LinearGradient
+        colors={["rgba(255,252,245,0.035)", "rgba(255,252,245,0.015)", "transparent", "rgba(0,0,0,0.08)"]}
+        locations={[0, 0.15, 0.4, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {/* Profile photo — organic asymmetric round shape */}
+      <View style={styles.photoOuter}>
+        <View style={styles.photoInner}>
+          {profile.photo_url ? (
+            <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
+          ) : (
+            <View style={styles.photoEmpty} />
+          )}
+        </View>
       </View>
 
       {/* Name */}
@@ -373,7 +383,7 @@ export default function MeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.OLIVE,
+    backgroundColor: "#1A1A16",
   },
   content: {
     paddingBottom: 48,
@@ -381,13 +391,42 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
-  /* ── Photo ── */
-  photoCircle: {
+  /* ── Photo — organic asymmetric shape, no border ── */
+  photoOuter: {
     alignSelf: "center",
     marginBottom: 10,
-    backgroundColor: "rgba(245,240,234,0.55)",
+    width: 164,
+    height: 164,
     alignItems: "center",
     justifyContent: "center",
+    // Asymmetric radii — organic blob feel
+    borderTopLeftRadius: 74,
+    borderTopRightRadius: 90,
+    borderBottomRightRadius: 78,
+    borderBottomLeftRadius: 86,
+    // Slight rotation for alive feel
+    transform: [{ rotate: "-2deg" }],
+    // Natural depth shadow — floats above background
+    shadowColor: "#0A0A08",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 8,
+    backgroundColor: "#1A1A16",
+  },
+  photoInner: {
+    width: 164,
+    height: 164,
+    overflow: "hidden",
+    // Matching asymmetry
+    borderTopLeftRadius: 74,
+    borderTopRightRadius: 90,
+    borderBottomRightRadius: 78,
+    borderBottomLeftRadius: 86,
+  },
+  photoImage: {
+    width: "100%",
+    height: "100%",
   },
 
   /* ── Name ── */
@@ -413,6 +452,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 11,
     paddingHorizontal: 24,
+    // Soft organic float
+    ...shadows.raised,
   },
   glassBtnText: {
     fontFamily: fontFamily.comico,
@@ -495,7 +536,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   thoughtWrap: {
-    marginBottom: spacing.cardGap,
+    marginBottom: spacing.cardGap + 4,
     paddingHorizontal: spacing.screenPadding,
   },
   emptyDeck: {
@@ -565,5 +606,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  photoEmpty: {},
+  photoEmpty: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(245,240,234,0.06)",
+  },
 });

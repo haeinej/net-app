@@ -532,14 +532,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
 
         {/* Panel 2 — Context (slides from right, glass-rimmed) */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.panel2, panel2AnimStyle]}>
-          {/* Inner glow — warm light from top-left corner */}
-          <LinearGradient
-            colors={[glass.darkGlow[0], glass.darkGlow[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.7, y: 0.7 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: spacing.cardRadius }]}
-            pointerEvents="none"
-          />
           <Text style={styles.panelLabel}>Context</Text>
           {detailLoading ? (
             <View style={styles.panelCentered}>
@@ -565,14 +557,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
 
         {/* Panel 3 — Replies (slides from right, glass-rimmed) */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.panel3, panel3AnimStyle]}>
-          {/* Inner glow — warm light from top-left corner */}
-          <LinearGradient
-            colors={[glass.darkGlow[0], glass.darkGlow[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.7, y: 0.7 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: spacing.cardRadius }]}
-            pointerEvents="none"
-          />
           <Text style={styles.panelLabel}>Replies</Text>
           {/* Existing replies */}
           <ScrollView
@@ -760,9 +744,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     height: FOOTER_HEIGHT,
     backgroundColor: colors.CARD_GROUND,
-    // Subtle inset effect — light top border where image meets footer
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.12)",
   },
   profileRow: {
     flexDirection: "row",
@@ -774,10 +755,6 @@ const styles = StyleSheet.create({
     width: spacing.compactAvatarSize,
     height: spacing.compactAvatarSize,
     borderRadius: spacing.compactAvatarSize / 2,
-    // Glass rim on avatar — subtle stereoscopic ring
-    borderWidth: 0.5,
-    borderColor: "rgba(255,255,255,0.15)",
-    ...shadows.raised,
   },
   avatarPlaceholder: {
     backgroundColor: colors.TYPE_MUTED,
@@ -825,11 +802,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
-    // Glass rim — light catch on top-left
-    borderTopWidth: 0.5,
-    borderLeftWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    borderLeftColor: "rgba(255,255,255,0.05)",
   },
   panel2Content: {
     paddingBottom: 8,
@@ -842,13 +814,13 @@ const styles = StyleSheet.create({
   },
   contextP2: {
     ...typography.context,
-    fontSize: 9,
-    lineHeight: 13,
+    fontSize: 11,
+    lineHeight: 16,
     color: "rgba(255,255,255,0.7)",
   },
   panelEmpty: {
     ...typography.context,
-    fontSize: 9,
+    fontSize: 11,
     color: "rgba(255,255,255,0.4)",
   },
   panelCentered: {
@@ -863,10 +835,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
-    borderTopWidth: 0.5,
-    borderLeftWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.06)",
-    borderLeftColor: "rgba(255,255,255,0.04)",
   },
   repliesScroll: {
     flex: 1,
@@ -906,8 +874,8 @@ const styles = StyleSheet.create({
   },
   replyText: {
     ...typography.context,
-    fontSize: 9,
-    lineHeight: 12,
+    fontSize: 11,
+    lineHeight: 15,
     color: colors.TYPE_WHITE,
   },
   replyDeleteBtn: {
@@ -955,10 +923,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 8,
     backgroundColor: colors.VERMILLION,
-    // Glass depth on button
+    // Soft organic lift
     ...shadows.raised,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.2)",
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: {
@@ -982,8 +948,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   indicatorDot: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.7)",
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "rgba(255,255,255,0.6)",
   },
 });

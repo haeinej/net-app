@@ -258,8 +258,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   previewSentence: {
-    fontFamily: fontFamily.sentient,
-    fontWeight: "700",
+    fontFamily: fontFamily.sentientBold,
     position: "absolute",
     left: 16,
     right: 16,
@@ -324,8 +323,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   sentenceInput: {
-    fontFamily: fontFamily.sentient,
-    fontWeight: "600",
+    fontFamily: fontFamily.sentientBold,
     fontSize: 20,
     lineHeight: 26,
     color: colors.TYPE_DARK,

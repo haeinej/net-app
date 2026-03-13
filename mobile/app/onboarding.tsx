@@ -705,8 +705,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   previewSentence: {
-    fontFamily: fontFamily.sentient,
-    fontWeight: "700",
+    fontFamily: fontFamily.sentientBold,
     position: "absolute",
     left: 16,
     right: 16,

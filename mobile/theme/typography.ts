@@ -17,7 +17,6 @@ export const typography = {
   thoughtDisplay: {
     fontFamily: fontFamily.comico,
     fontSize: 12.5,
-    fontWeight: "400" as const,
     letterSpacing: 0.2,
     lineHeight: 15,
   },
@@ -25,38 +24,37 @@ export const typography = {
   thoughtSentence: {
     fontFamily: fontFamily.sentient,
     fontSize: 12.5,
-    fontWeight: "300" as const,
+  },
+  /** Thought sentence bold — Sentient Bold */
+  thoughtSentenceBold: {
+    fontFamily: fontFamily.sentientBold,
+    fontSize: 12.5,
   },
   /** Context on Panel 2 — Sentient Light 9–10px, muted */
   context: {
     fontFamily: fontFamily.sentient,
     fontSize: 9.5,
-    fontWeight: "300" as const,
   },
   /** Reply input on Panel 3 — Sentient Light 11–12px */
   replyInput: {
     fontFamily: fontFamily.sentient,
     fontSize: 11.5,
-    fontWeight: "300" as const,
   },
   /** Names, labels — Comico */
   label: {
     fontFamily: fontFamily.comico,
     fontSize: 7.5,
-    fontWeight: "500" as const,
     letterSpacing: 1.2,
   },
   /** Card metadata — Comico */
   metadata: {
     fontFamily: fontFamily.comico,
     fontSize: 7,
-    fontWeight: "400" as const,
     letterSpacing: 0.8,
   },
   /** Logo — Comico */
   logo: {
     fontFamily: fontFamily.comico,
     fontSize: 18,
-    fontWeight: "400" as const,
   },
 } as const;

@@ -348,13 +348,6 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
 
         {/* ── Panel 2 — Context (split halves, glass-rimmed) ── */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.panelOverlay, panel2AnimStyle]}>
-          <LinearGradient
-            colors={[glass.darkGlow[0], glass.darkGlow[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.7, y: 0.7 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: spacing.cardRadius }]}
-            pointerEvents="none"
-          />
           <View style={styles.panelLabelRow}>
             <Text style={styles.panelLabel}>Context</Text>
           </View>
@@ -399,13 +392,6 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
 
         {/* ── Panel 3 — Replies (dark, glass-rimmed) ── */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.panel3Overlay, panel3AnimStyle]}>
-          <LinearGradient
-            colors={[glass.darkGlow[0], glass.darkGlow[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.7, y: 0.7 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: spacing.cardRadius }]}
-            pointerEvents="none"
-          />
           <View style={styles.panelLabelRow}>
             <Text style={styles.panelLabel}>Replies</Text>
           </View>
@@ -528,11 +514,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   divider: {
-    height: StyleSheet.hairlineWidth,
+    height: 1,
     backgroundColor: "rgba(0,0,0,0.06)",
-    // Glass highlight on divider — subtle inner refraction line
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.08)",
   },
   halfContent: {
     flex: 1,
@@ -547,10 +530,6 @@ const styles = StyleSheet.create({
     borderRadius: PROFILE_SIZE / 2,
     marginRight: 12,
     flexShrink: 0,
-    // Glass rim on avatar
-    borderWidth: 0.5,
-    borderColor: "rgba(255,255,255,0.15)",
-    ...shadows.raised,
   },
   avatarPlaceholder: {
     backgroundColor: colors.TYPE_MUTED,
@@ -568,8 +547,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sentence: {
-    fontFamily: fontFamily.sentient,
-    fontWeight: "900",
+    fontFamily: fontFamily.sentientBold,
     fontSize: 14,
     lineHeight: 18,
     letterSpacing: -0.2,
@@ -597,10 +575,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
-    borderTopWidth: 0.5,
-    borderLeftWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    borderLeftColor: "rgba(255,255,255,0.05)",
   },
   panelLabelRow: {
     marginBottom: 6,
@@ -642,13 +616,13 @@ const styles = StyleSheet.create({
   },
   panelText: {
     ...typography.context,
-    fontSize: 9,
-    lineHeight: 13,
+    fontSize: 11,
+    lineHeight: 16,
     color: "rgba(255,255,255,0.7)",
   },
   panelEmpty: {
     ...typography.context,
-    fontSize: 9,
+    fontSize: 11,
     color: "rgba(255,255,255,0.4)",
   },
   panelCentered: {
@@ -663,10 +637,6 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
-    borderTopWidth: 0.5,
-    borderLeftWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.06)",
-    borderLeftColor: "rgba(255,255,255,0.04)",
   },
   repliesScroll: {
     flex: 1,
@@ -685,8 +655,8 @@ const styles = StyleSheet.create({
   },
   replyText: {
     ...typography.context,
-    fontSize: 9,
-    lineHeight: 12,
+    fontSize: 11,
+    lineHeight: 15,
     color: colors.TYPE_WHITE,
   },
 
@@ -728,8 +698,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.VERMILLION,
     ...shadows.raised,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.2)",
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: {

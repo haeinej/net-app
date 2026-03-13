@@ -81,10 +81,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
     borderBottomWidth: 0.5,
     borderBottomColor: "rgba(26,26,22,0.06)",
-    // Glass depth — panel floats above feed
+    // Soft organic lift
     ...shadows.card,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.12)",
   },
   row: {
     flexDirection: "row",
@@ -133,10 +131,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: colors.OLIVE,
     borderRadius: 10,
-    // Glass depth on button
+    // Soft organic lift
     ...shadows.raised,
-    borderTopWidth: 0.5,
-    borderTopColor: "rgba(255,255,255,0.2)",
   },
   acceptText: {
     ...typography.label,
