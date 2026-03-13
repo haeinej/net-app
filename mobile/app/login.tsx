@@ -14,7 +14,7 @@ import {
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, fontFamily } from "../theme";
+import { colors, spacing, typography } from "../theme";
 import { login } from "../lib/api";
 import {
   setAuth,
@@ -81,11 +81,7 @@ export default function LoginScreen() {
       <View style={styles.content}>
         <Animated.View style={[styles.logoWrap, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
           <Image source={ohmLogo} style={styles.logoImage} contentFit="contain" />
-          <Text style={styles.brandName}>ohm<Text style={styles.brandDot}>.</Text></Text>
         </Animated.View>
-        <Animated.Text style={[styles.subtitle, { opacity: contentFade }]}>
-          Thoughts that find someone
-        </Animated.Text>
 
         <Animated.View style={[styles.form, { opacity: contentFade }]}>
           <TextInput
@@ -165,30 +161,11 @@ const styles = StyleSheet.create({
   logoWrap: {
     alignSelf: "center",
     alignItems: "center",
-    marginBottom: 16,
-  },
-  brandName: {
-    fontFamily: fontFamily.comico,
-    fontSize: 24,
-    color: colors.TYPE_DARK,
-    marginTop: 10,
-    letterSpacing: -0.6,
-  },
-  brandDot: {
-    color: colors.VERMILLION,
+    marginBottom: 28,
   },
   logoImage: {
     width: 96,
     height: 96,
-  },
-  subtitle: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 10,
-    color: colors.TYPE_MUTED,
-    marginBottom: 32,
-    textTransform: "uppercase",
-    letterSpacing: 1.5,
-    textAlign: "center",
   },
   form: {
     width: "100%",

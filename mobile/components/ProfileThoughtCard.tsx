@@ -41,6 +41,7 @@ export function ProfileThoughtCard({
   authorPhotoUrl,
 }: ProfileThoughtCardProps) {
   const router = useRouter();
+  const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
 
   return (
     <TouchableOpacity
@@ -52,20 +53,24 @@ export function ProfileThoughtCard({
       <View style={styles.cardInner}>
         <WarmthBar warmthLevel={thought.warmth_level} height={CARD_HEIGHT} />
         <View style={{ flex: 1 }}>
-          <ThoughtImageFrame
-            imageUrl={thought.photo_url ?? thought.image_url}
-            aspectRatio={4 / 3}
-            borderRadius={0}
-            style={{ height: IMAGE_HEIGHT }}
-          >
-            <Text
-              style={styles.sentence}
-              numberOfLines={4}
-              ellipsizeMode="tail"
-            >
-              {thought.sentence}
-            </Text>
-          </ThoughtImageFrame>
+          <View style={[styles.imageWrap, { height: IMAGE_HEIGHT }]}>
+            <ThoughtImageFrame
+              imageUrl={thought.photo_url ?? thought.image_url}
+              aspectRatio={4 / 3}
+              borderRadius={0}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View style={styles.imageOverlay} pointerEvents="none">
+              <Text
+                style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
+                numberOfLines={4}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+              >
+                {thought.sentence}
+              </Text>
+            </View>
+          </View>
           <View style={[styles.footer, dark && styles.footerDark]}>
             {authorPhotoUrl ? (
               <Image source={{ uri: authorPhotoUrl }} style={styles.avatar} contentFit="cover" />
@@ -96,20 +101,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     height: CARD_HEIGHT,
   },
+  imageWrap: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
   sentence: {
     fontFamily: fontFamily.sentient,
     position: "absolute",
     left: 10,
     right: 10,
-    bottom: 10,
-    fontSize: 14.5,
-    lineHeight: 16.5,
+    bottom: 16,
+    fontSize: 13,
+    lineHeight: 15,
     fontWeight: "700",
     letterSpacing: -0.25,
     color: colors.TYPE_WHITE,
-    textShadowColor: "rgba(8,6,4,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  },
+  sentenceNoPhoto: {
+    color: colors.TYPE_DARK,
   },
   footer: {
     flexDirection: "row",

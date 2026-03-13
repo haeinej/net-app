@@ -100,6 +100,15 @@ const STEPS: WalkthroughStep[] = [
     targetTestID: "walkthrough-conversations-tab",
     tooltipPosition: "above",
   },
+  {
+    id: "collaborative-card",
+    section: "05",
+    title: "collaborative cards",
+    body: "when a conversation deepens, you can make a shared card together.\nit becomes a visible trace of what changed between two people.",
+    cta: "begin",
+    targetTestID: null,
+    tooltipPosition: "center",
+  },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -112,6 +121,7 @@ const SPOTLIGHT_RADIUS = 16;
 const CARD_RADIUS = 14;
 const TOOLTIP_H_MARGIN = 20;
 const TOOLTIP_GAP = 16;
+const ESTIMATED_TOOLTIP_HEIGHT = 220;
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -122,20 +132,19 @@ export function OnboardingWalkthrough({
   onComplete,
   targetRefs,
 }: OnboardingWalkthroughProps) {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
   const [currentStep, setCurrentStep] = useState(0);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
-  const [showCompletion, setShowCompletion] = useState(false);
 
   // Animation values
   const overlayOpacity = useSharedValue(0);
   const cardOpacity = useSharedValue(0);
   const cardTranslateY = useSharedValue(20);
-  const completionScale = useSharedValue(0.92);
 
   const step = STEPS[currentStep];
+  const isLastStep = currentStep === STEPS.length - 1;
 
   /* ---- Measure spotlight target ---- */
   const measureTarget = useCallback(
@@ -169,63 +178,37 @@ export function OnboardingWalkthrough({
   useEffect(() => {
     if (!visible) return;
 
-    // Fade out card then back in
-    cardOpacity.value = withTiming(0, { duration: 150 }, () => {
-      cardTranslateY.value = 20;
-      cardOpacity.value = withDelay(
-        100,
-        withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) })
-      );
-      cardTranslateY.value = withDelay(
-        100,
-        withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) })
-      );
-    });
+    cardOpacity.value = 0;
+    cardTranslateY.value = 20;
 
     // Measure after layout settles
     const timer = setTimeout(() => {
       measureTarget(STEPS[currentStep]?.targetTestID ?? null);
-    }, 200);
+      cardOpacity.value = withTiming(1, {
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+      });
+      cardTranslateY.value = withTiming(0, {
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+      });
+    }, 120);
 
     return () => clearTimeout(timer);
-  }, [currentStep, visible]);
+  }, [cardOpacity, cardTranslateY, currentStep, measureTarget, visible]);
 
   /* ---- Initial appearance ---- */
   useEffect(() => {
     if (visible) {
       setCurrentStep(0);
-      setShowCompletion(false);
       // Fade in whole overlay
       overlayOpacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) });
-      // Then card
       cardOpacity.value = 0;
       cardTranslateY.value = 20;
-      setTimeout(() => {
-        cardOpacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) });
-        cardTranslateY.value = withTiming(0, {
-          duration: 400,
-          easing: Easing.out(Easing.cubic),
-        });
-      }, 300);
     }
-  }, [visible]);
+  }, [cardOpacity, cardTranslateY, overlayOpacity, visible]);
 
   /* ---- Handlers ---- */
-  const handleNext = useCallback(() => {
-    if (currentStep < STEPS.length - 1) {
-      setCurrentStep((s) => s + 1);
-    } else {
-      setShowCompletion(true);
-      completionScale.value = 0.92;
-      completionScale.value = withTiming(1, {
-        duration: 400,
-        easing: Easing.out(Easing.cubic),
-      });
-      cardOpacity.value = withTiming(1, { duration: 400 });
-      cardTranslateY.value = withTiming(0, { duration: 400 });
-    }
-  }, [currentStep]);
-
   const handleDismiss = useCallback(() => {
     cardOpacity.value = withTiming(0, { duration: 200 });
     overlayOpacity.value = withTiming(0, { duration: 350 }, () => {
@@ -233,20 +216,18 @@ export function OnboardingWalkthrough({
     });
   }, [onComplete]);
 
+  const handleNext = useCallback(() => {
+    if (!isLastStep) {
+      setCurrentStep((s) => s + 1);
+      return;
+    }
+
+    handleDismiss();
+  }, [handleDismiss, isLastStep]);
+
   const handleSkip = useCallback(() => {
     handleDismiss();
   }, [handleDismiss]);
-
-  const handleReplay = useCallback(() => {
-    setShowCompletion(false);
-    setCurrentStep(0);
-    cardOpacity.value = 0;
-    cardTranslateY.value = 20;
-    setTimeout(() => {
-      cardOpacity.value = withTiming(1, { duration: 400 });
-      cardTranslateY.value = withTiming(0, { duration: 400 });
-    }, 200);
-  }, []);
 
   /* ---- Animated styles ---- */
   const overlayAnimatedStyle = useAnimatedStyle(() => ({
@@ -258,46 +239,47 @@ export function OnboardingWalkthrough({
     transform: [{ translateY: cardTranslateY.value }],
   }));
 
-  const completionAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: cardOpacity.value,
-    transform: [{ scale: completionScale.value }],
-  }));
-
   if (!visible) return null;
 
   const isFullScreen = !step?.targetTestID || !spotlightRect;
-  const showDots = currentStep > 0 && !showCompletion;
+  const showDots = currentStep > 0;
 
   /* ---- Tooltip position calculation ---- */
   const getTooltipStyle = () => {
-    if (showCompletion || isFullScreen) {
+    const minTop = Math.max(insets.top + 72, 96);
+    const maxTop = Math.max(
+      minTop,
+      screenHeight - ESTIMATED_TOOLTIP_HEIGHT - Math.max(insets.bottom + 28, 110)
+    );
+
+    if (isFullScreen) {
       return {
         position: "absolute" as const,
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
-        top: screenHeight * 0.38,
+        top: Math.min(Math.max(screenHeight * 0.38, minTop), maxTop),
       };
     }
 
     const tooltipPos = step?.tooltipPosition ?? "below";
 
     if (tooltipPos === "below") {
-      const top = (spotlightRect?.y ?? 0) + (spotlightRect?.height ?? 0) + TOOLTIP_GAP;
+      const desiredTop = (spotlightRect?.y ?? 0) + (spotlightRect?.height ?? 0) + TOOLTIP_GAP;
       return {
         position: "absolute" as const,
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
-        top: Math.min(top, screenHeight - 280),
+        top: Math.min(Math.max(desiredTop, minTop), maxTop),
       };
     }
 
     if (tooltipPos === "above") {
-      const bottom = screenHeight - (spotlightRect?.y ?? screenHeight) + TOOLTIP_GAP;
+      const desiredTop = (spotlightRect?.y ?? screenHeight) - ESTIMATED_TOOLTIP_HEIGHT - TOOLTIP_GAP;
       return {
         position: "absolute" as const,
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
-        bottom: Math.max(bottom, insets.bottom + 20),
+        top: Math.min(Math.max(desiredTop, minTop), maxTop),
       };
     }
 
@@ -306,16 +288,18 @@ export function OnboardingWalkthrough({
       position: "absolute" as const,
       left: TOOLTIP_H_MARGIN,
       right: TOOLTIP_H_MARGIN,
-      top: screenHeight * 0.38,
+      top: Math.min(Math.max(screenHeight * 0.38, minTop), maxTop),
     };
   };
 
   /* ---- Render ---- */
   return (
     <Animated.View style={[StyleSheet.absoluteFill, overlayAnimatedStyle]} pointerEvents="box-none">
+      <Pressable style={StyleSheet.absoluteFill} onPress={handleSkip} />
+
       {/* Dim overlay */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {spotlightRect && !isFullScreen && !showCompletion ? (
+        {spotlightRect && !isFullScreen ? (
           <>
             {/* Top */}
             <View
@@ -379,13 +363,32 @@ export function OnboardingWalkthrough({
         )}
       </View>
 
+      {step && (
+        <TouchableOpacity
+          onPress={handleSkip}
+          style={[
+            styles.floatingCloseButton,
+            {
+              top: Math.max(insets.top + 10, 18),
+            },
+          ]}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={isLastStep ? "Close walkthrough" : "Skip walkthrough"}
+        >
+          <Text style={styles.floatingCloseText}>
+            {currentStep === 0 ? "skip" : isLastStep ? "close" : "skip"}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Tooltip card */}
-      {!showCompletion && step && (
+      {step && (
         <Animated.View style={[styles.tooltipCard, getTooltipStyle(), cardAnimatedStyle]}>
           {/* Skip link — shown from step 2 onward */}
           {currentStep > 0 && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-              <Text style={styles.skipText}>skip</Text>
+              <Text style={styles.skipText}>{isLastStep ? "close" : "skip"}</Text>
             </TouchableOpacity>
           )}
 
@@ -419,44 +422,10 @@ export function OnboardingWalkthrough({
             style={styles.ctaButton}
             onPress={handleNext}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={step.cta}
           >
             <Text style={styles.ctaText}>{step.cta}</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
-
-      {/* Completion screen */}
-      {showCompletion && (
-        <Animated.View
-          style={[
-            styles.tooltipCard,
-            styles.completionCard,
-            {
-              position: "absolute",
-              left: TOOLTIP_H_MARGIN,
-              right: TOOLTIP_H_MARGIN,
-              top: screenHeight * 0.32,
-            },
-            completionAnimatedStyle,
-          ]}
-        >
-          <BrandLockup size="md" style={styles.completionLogo} />
-
-          <Text style={styles.completionTitle}>you're ready.</Text>
-          <Text style={styles.completionBody}>
-            share a thought. see what resonates.{"\n"}the rest will follow.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.ctaButton}
-            onPress={handleDismiss}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.ctaText}>begin</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={handleReplay} style={styles.replayButton}>
-            <Text style={styles.replayText}>replay walkthrough</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -490,6 +459,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 24,
     elevation: 12,
+    zIndex: 20,
+  },
+
+  floatingCloseButton: {
+    position: "absolute",
+    right: 18,
+    zIndex: 30,
+    backgroundColor: "rgba(245, 240, 232, 0.96)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    shadowColor: colors.PANEL_DEEP,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  floatingCloseText: {
+    fontFamily: fontFamily.comico,
+    fontSize: 13,
+    lineHeight: 16,
+    color: colors.TYPE_DARK,
+    letterSpacing: 0.1,
   },
 
   welcomeLogo: {
@@ -511,7 +503,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   skipText: {
-    fontFamily: fontFamily.sentient,
+    fontFamily: fontFamily.comico,
     fontSize: 13,
     color: colors.TYPE_MUTED,
     letterSpacing: 0.2,
@@ -565,44 +557,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.TYPE_WHITE,
     letterSpacing: 0.3,
-  },
-
-  completionCard: {
-    alignItems: "center",
-  },
-  completionLogo: {
-    marginBottom: 24,
-  },
-  completionTitle: {
-    fontFamily: fontFamily.comico,
-    fontSize: 28,
-    lineHeight: 34,
-    color: colors.TYPE_DARK,
-    marginBottom: 12,
-    textAlign: "center",
-    letterSpacing: -0.3,
-  },
-  completionBody: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 15,
-    lineHeight: 23,
-    color: colors.TYPE_DARK,
-    opacity: 0.68,
-    marginBottom: 28,
-    textAlign: "center",
-    letterSpacing: 0.1,
-  },
-
-  replayButton: {
-    marginTop: 16,
-    padding: 8,
-  },
-  replayText: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 13,
-    color: colors.TYPE_MUTED,
-    letterSpacing: 0.2,
-    textDecorationLine: "underline",
-    textDecorationColor: colors.TYPE_MUTED,
   },
 });

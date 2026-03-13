@@ -117,13 +117,17 @@ async function getRandomCandidates(
   const maxAgeDays = thoughtActiveDays + thoughtSleepTransitionDays;
   const excludeArr = [...excludeIds];
 
-  const baseWhere = and(
+  const conditions = [
     ne(thoughts.userId, viewerId),
     isNull(thoughts.deletedAt),
     sql`${thoughts.qualityScore} >= ${wildcardMinQuality}`,
     sql`${thoughts.createdAt} > now() - interval '${sql.raw(String(maxAgeDays))} days'`,
-    excludeArr.length > 0 ? sql`${thoughts.id} NOT IN (${sql.raw(excludeArr.map(id => `'${id}'`).join(","))})` : sql`true`
-  );
+  ];
+
+  if (excludeArr.length > 0) {
+    const limited = excludeArr.slice(0, 200);
+    conditions.push(sql`${thoughts.id} NOT IN (${sql.join(limited, sql`,`)})`);
+  }
 
   const rows = await db
     .select({
@@ -133,7 +137,7 @@ async function getRandomCandidates(
     })
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
-    .where(baseWhere)
+    .where(and(...conditions))
     .orderBy(sql`random()`)
     .limit(limit);
   return rows.map(toCandidate);
@@ -185,6 +189,7 @@ async function getActiveConversationUserIds(viewerId: string): Promise<Set<strin
 
 /**
  * Layer 1 (legacy): flat candidate retrieval. Kept for backward compat.
+ * Uses a single averaged resonance embedding for the viewer to avoid per-thought kNN queries.
  */
 export async function getCandidates(
   viewerId: string,
@@ -200,30 +205,27 @@ export async function getCandidates(
     .from(thoughts)
     .where(eq(thoughts.userId, viewerId));
 
-  const hasViewerThoughts =
-    viewerThoughts.length > 0 &&
-    viewerThoughts.some(
-      (t) => t.resonanceEmbedding != null && Array.isArray(t.resonanceEmbedding)
-    );
+  const resonanceVecs = viewerThoughts
+    .map((t) =>
+      Array.isArray(t.resonanceEmbedding)
+        ? (t.resonanceEmbedding as number[])
+        : null
+    )
+    .filter((v): v is number[] => v != null);
+
+  const hasViewerThoughts = resonanceVecs.length > 0;
 
   const bySimilarity: ThoughtCandidate[] = [];
 
   if (hasViewerThoughts) {
-    const perQuery = Math.ceil(limit / Math.max(viewerThoughts.length, 1));
-    const seen = new Set<string>();
-    for (const row of viewerThoughts) {
-      const q = Array.isArray(row.resonanceEmbedding)
-        ? (row.resonanceEmbedding as number[])
-        : null;
-      if (!q) continue;
-      const batch = await getNearestByResonance(viewerId, q, perQuery);
-      for (const c of batch) {
-        if (!seen.has(c.id)) {
-          seen.add(c.id);
-          bySimilarity.push(c);
-        }
-      }
+    const dim = resonanceVecs[0]!.length;
+    const sum = new Array(dim).fill(0);
+    for (const v of resonanceVecs) {
+      for (let i = 0; i < dim; i++) sum[i] += v[i]!;
     }
+    const avg = sum.map((x) => x / resonanceVecs.length);
+    const batch = await getNearestByResonance(viewerId, avg, limit);
+    bySimilarity.push(...batch);
   } else {
     const embeddingService = getEmbeddingService();
     const [viewer] = await db
@@ -271,6 +273,7 @@ export async function getBucketedCandidates(
 
   // Retrieve flat candidate pool (reuse existing logic)
   const recent = await getRecentCandidates(viewerId);
+  const bySimilarity: ThoughtCandidate[] = [];
   const viewerThoughts = await db
     .select({
       resonanceEmbedding: thoughts.questionEmbedding,
@@ -279,30 +282,23 @@ export async function getBucketedCandidates(
     .from(thoughts)
     .where(eq(thoughts.userId, viewerId));
 
-  const hasViewerThoughts =
-    viewerThoughts.length > 0 &&
-    viewerThoughts.some(
-      (t) => t.resonanceEmbedding != null && Array.isArray(t.resonanceEmbedding)
-    );
+  const resonanceVecs = viewerThoughts
+    .map((t) =>
+      Array.isArray(t.resonanceEmbedding)
+        ? (t.resonanceEmbedding as number[])
+        : null
+    )
+    .filter((v): v is number[] => v != null);
 
-  const bySimilarity: ThoughtCandidate[] = [];
-
-  if (hasViewerThoughts) {
-    const perQuery = Math.ceil(limit / Math.max(viewerThoughts.length, 1));
-    const seen = new Set<string>();
-    for (const row of viewerThoughts) {
-      const q = Array.isArray(row.resonanceEmbedding)
-        ? (row.resonanceEmbedding as number[])
-        : null;
-      if (!q) continue;
-      const batch = await getNearestByResonance(viewerId, q, perQuery);
-      for (const c of batch) {
-        if (!seen.has(c.id)) {
-          seen.add(c.id);
-          bySimilarity.push(c);
-        }
-      }
+  if (resonanceVecs.length > 0) {
+    const dim = resonanceVecs[0]!.length;
+    const sum = new Array(dim).fill(0);
+    for (const v of resonanceVecs) {
+      for (let i = 0; i < dim; i++) sum[i] += v[i]!;
     }
+    const avg = sum.map((x) => x / resonanceVecs.length);
+    const batch = await getNearestByResonance(viewerId, avg, limit);
+    bySimilarity.push(...batch);
   } else {
     const embeddingService = getEmbeddingService();
     const [viewer] = await db

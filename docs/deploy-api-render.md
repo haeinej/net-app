@@ -36,7 +36,7 @@ Create a new `Web Service` with:
 - `Root Directory`: `api`
 - `Environment`: `Node`
 - `Build Command`: `npm ci && npm run build`
-- `Start Command`: `npm run start`
+- `Start Command`: `npm run db:migrate && npm run start`
 
 Then add environment variables:
 
@@ -57,7 +57,18 @@ Optional only if you actually use them:
 2. Verify `/health` returns `{"status":"ok"}`.
 3. Copy the base URL, for example:
    - `https://ohm-api.onrender.com`
-4. Set that in Expo/EAS:
+4. Verify an auth route does not fail with a schema error. A quick smoke test is:
+
+```bash
+curl -X POST https://ohm-api.onrender.com/api/auth/login \
+  -H 'content-type: application/json' \
+  --data '{"email":"nobody@example.com","password":"not-real"}'
+```
+
+If you see `relation "users" does not exist`, the service is connected to a database
+that has not been migrated yet. Trigger a fresh Render deploy so the new
+`npm run db:migrate && npm run start` command can apply the schema before boot.
+5. Set that in Expo/EAS:
 
 ```bash
 cd /Users/jeonghaein/Desktop/ohm-app/mobile
@@ -65,7 +76,7 @@ eas env:create --name EXPO_PUBLIC_API_URL --value https://ohm-api.onrender.com -
 eas env:create --name EXPO_PUBLIC_API_URL --value https://ohm-api.onrender.com --environment production --visibility plaintext
 ```
 
-5. Then build for TestFlight:
+6. Then build for TestFlight:
 
 ```bash
 cd /Users/jeonghaein/Desktop/ohm-app

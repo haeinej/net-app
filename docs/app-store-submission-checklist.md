@@ -30,7 +30,7 @@ Use this checklist before building the release candidate you plan to upload to A
 
 ## App Store Connect metadata
 
-- Create or update the app record for bundle identifier `com.ohm.app`.
+- Create or update the app record for bundle identifier `com.ohmmmm.app`.
 - Add screenshots from the actual current UI.
 - Add the app description, keywords, support URL, and privacy policy URL.
 - Complete the App Privacy questionnaire using the data flows described in the live app and privacy policy.

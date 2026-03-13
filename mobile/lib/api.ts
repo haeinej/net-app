@@ -149,14 +149,6 @@ export interface FeedItemThought {
   warmth_level: WarmthLevel;
 }
 
-export interface FeedItemShift {
-  type: "shift";
-  id: string;
-  created_at: string;
-  participant_a: FeedItemUser & { before: string; after: string };
-  participant_b: FeedItemUser & { before: string; after: string };
-}
-
 export interface FeedItemCrossing {
   type: "crossing";
   crossing: {
@@ -170,7 +162,11 @@ export interface FeedItemCrossing {
   warmth_level: WarmthLevel;
 }
 
-export type FeedItem = FeedItemThought | FeedItemShift | FeedItemCrossing;
+type HiddenFeedItemShift = {
+  type: "shift";
+};
+
+export type FeedItem = FeedItemThought | FeedItemCrossing;
 
 export interface NotificationItem {
   reply_id: string;
@@ -204,11 +200,13 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 export async function fetchFeed(limit: number, offset: number): Promise<FeedItem[]> {
-  return requestJson<FeedItem[]>(
+  const items = await requestJson<Array<FeedItem | HiddenFeedItemShift>>(
     `/api/feed?limit=${limit}&offset=${offset}`,
     "Feed failed",
     { auth: true }
   );
+
+  return items.filter((item): item is FeedItem => item.type !== "shift");
 }
 
 export async function fetchNotifications(): Promise<NotificationItem[]> {
@@ -418,6 +416,9 @@ export interface ConversationDetail {
   shift_draft: ShiftDraft | null;
   crossing_complete: boolean;
   shift_complete: boolean;
+  shift_count: number;
+  shift_available: boolean;
+  next_shift_message_count: number;
   history_cleared: boolean;
   history_expires_at: string | null;
 }
@@ -562,20 +563,12 @@ export interface ProfileCrossing {
   participant_b: FeedItemUser | null;
 }
 
-export interface ProfileShift {
-  id: string;
-  created_at: string | null;
-  participant_a: FeedItemUser & { before: string; after: string };
-  participant_b: FeedItemUser & { before: string; after: string };
-}
-
 export interface ProfileResponse {
   id: string;
   name: string | null;
   photo_url: string | null;
   interests?: string[];
   thoughts: ProfileThought[];
-  shifts?: ProfileShift[];
   crossings?: ProfileCrossing[];
 }
 

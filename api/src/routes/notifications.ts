@@ -25,15 +25,20 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const replierIds = [...new Set(pendingReplies.map((r) => r.replierId))];
     const thoughtRows =
       thoughtIds.length > 0
-        ? await db.select().from(thoughts).where(
-            inArray(thoughts.id, thoughtIds)
-          )
+        ? await db
+            .select({
+              id: thoughts.id,
+              sentence: thoughts.sentence,
+            })
+            .from(thoughts)
+            .where(inArray(thoughts.id, thoughtIds))
         : [];
     const replierRows =
       replierIds.length > 0
-        ? await db.select().from(users).where(
-            inArray(users.id, replierIds)
-          )
+        ? await db
+            .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+            .from(users)
+            .where(inArray(users.id, replierIds))
         : [];
     const thoughtMap = new Map(thoughtRows.map((t) => [t.id, t]));
     const replierMap = new Map(replierRows.map((u) => [u.id, u]));

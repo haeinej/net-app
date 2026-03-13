@@ -28,7 +28,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       email?: string;
       password?: string;
     };
-  }>("/api/auth/register", async (request, reply) => {
+  }>(
+    "/api/auth/register",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => `ip:${req.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
     const body = request.body ?? {};
     const name = readTrimmedString(body.name);
     const photoUrl = readOptionalTrimmedString(body.photo_url);
@@ -38,7 +49,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         : null;
     const currentCity = readOptionalTrimmedString(body.current_city);
     const concentration = readOptionalTrimmedString(body.concentration);
-    const email = readOptionalTrimmedString(body.email);
+    const emailRaw = readOptionalTrimmedString(body.email);
+    const email = emailRaw ? emailRaw.toLowerCase() : null;
     const password = typeof body.password === "string" ? body.password : "";
 
     if (!name) return reply.status(400).send({ error: "name required" });
@@ -76,9 +88,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{
     Body: { email?: string; password?: string };
-  }>("/api/auth/login", async (request, reply) => {
+  }>(
+    "/api/auth/login",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => `ip:${req.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
     const body = request.body ?? {};
-    const email = readTrimmedString(body.email);
+    const email = readTrimmedString(body.email).toLowerCase();
     const password = typeof body.password === "string" ? body.password : "";
 
     if (!email || !password)

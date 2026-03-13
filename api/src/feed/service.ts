@@ -10,7 +10,7 @@ import {
   users,
   userRecommendationWeights,
   replies,
-  engagementEvents,
+  systemConfig,
   shifts,
   crossings,
   crossingReplies,
@@ -27,6 +27,7 @@ import {
   loadCrossDomainAffinityMap,
   loadTemporalResonanceMap,
   loadClusterAffinityMap,
+  buildReplyQualityMap,
 } from "./rank";
 import type { LearningMaps } from "./rank";
 import { getSimilarities } from "./score";
@@ -53,6 +54,7 @@ const {
 /** Cache per user (up to 100 items), 5 min TTL. */
 const cache = new Map<string, { items: FeedItem[]; expiresAt: number }>();
 const CACHE_MAX_ITEMS = 100;
+const CACHE_MAX_USERS = 1000;
 
 async function getAcceptedReplyCounts(thoughtIds: string[]): Promise<Map<string, number>> {
   if (thoughtIds.length === 0) return new Map();
@@ -169,6 +171,9 @@ export async function getFeed(
 ): Promise<FeedItem[]> {
   const hit = cache.get(userId);
   if (hit && hit.expiresAt > Date.now() && offset + limit <= hit.items.length) {
+    // simple LRU: move this entry to the end of the Map
+    cache.delete(userId);
+    cache.set(userId, hit);
     return hit.items.slice(offset, offset + limit);
   }
 
@@ -202,14 +207,25 @@ export async function getFeed(
     if (s > layer2Max) layer2Max = s;
   }
 
-  // Phase detection
-  const engagementCount = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(engagementEvents);
-  const totalEngagements = engagementCount[0]?.count ?? 0;
+  // Phase detection: use aggregated total engagement events from system_config when present
+  const [engRow] = await db
+    .select({ value: systemConfig.value })
+    .from(systemConfig)
+    .where(eq(systemConfig.key, "total_engagement_events"));
+  const totalEngagements =
+    typeof engRow?.value === "number" ? (engRow.value as number) : 0;
   const isPhase1 =
     embeddings.resonanceEmbeddings.length < phase1ViewerThoughtThreshold ||
     totalEngagements < phase1SystemEngagementThreshold;
+
+  // Precompute reply quality scores for all candidate thoughts
+  const thoughtAuthorConcMap = new Map<string, string | null>();
+  const candidateThoughtIds: string[] = [];
+  for (const { thought } of candidates) {
+    candidateThoughtIds.push(thought.id);
+    thoughtAuthorConcMap.set(thought.id, thought.authorConcentration ?? null);
+  }
+  const replyQualityMap = await buildReplyQualityMap(candidateThoughtIds, thoughtAuthorConcMap);
 
   // Rank all candidates
   const bucketMap = new Map<string, BucketLabel>();
@@ -219,7 +235,16 @@ export async function getFeed(
     const layer2 = layer2Scores.get(thought.id) ?? 0;
     const rankScore = isPhase1
       ? rankScorePhase1(thought, profile, layer2)
-      : await rankScorePhase2(thought, profile, layer2, weights, layer2Max, maps, viewerClusterIds);
+      : rankScorePhase2(
+          thought,
+          profile,
+          layer2,
+          weights,
+          layer2Max,
+          maps,
+          viewerClusterIds,
+          replyQualityMap.get(thought.id)
+        );
     withRank.push({ thought, rankScore, bucket });
   }
 
@@ -249,7 +274,13 @@ export async function getFeed(
   const thoughtIds = slice.map((x) => x.thought.id);
   const replyCounts = await getAcceptedReplyCounts(thoughtIds);
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
-  const authorRows = await db.select().from(users).where(inArray(users.id, authorIds));
+  const authorRows =
+    authorIds.length > 0
+      ? await db
+          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+          .from(users)
+          .where(inArray(users.id, authorIds))
+      : [];
   const authorMap = new Map(authorRows.map((u) => [u.id, u]));
 
   const thoughtItems: FeedItem[] = slice.map(({ thought }) => {
@@ -350,6 +381,11 @@ export async function getFeed(
     items,
     expiresAt: Date.now() + cacheTtlSeconds * 1000,
   });
+  // bounded LRU: evict oldest user entries when over capacity
+  if (cache.size > CACHE_MAX_USERS) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (oldestKey) cache.delete(oldestKey);
+  }
   return items.slice(offset, offset + limit);
 }
 
@@ -394,14 +430,25 @@ export async function getFeedWithDebug(
     layer2Scores.set(thought.id, s);
     if (s > layer2Max) layer2Max = s;
   }
-  const engagementCount = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(engagementEvents);
-  const totalEngagements = engagementCount[0]?.count ?? 0;
+  const [engRow] = await db
+    .select({ value: systemConfig.value })
+    .from(systemConfig)
+    .where(eq(systemConfig.key, "total_engagement_events"));
+  const totalEngagements =
+    typeof engRow?.value === "number" ? (engRow.value as number) : 0;
   const isPhase1 =
     embeddings.resonanceEmbeddings.length < phase1ViewerThoughtThreshold ||
     totalEngagements < phase1SystemEngagementThreshold;
   const phase_used = isPhase1 ? "pre-data" : "learning";
+
+  // Precompute reply quality for debug as well
+  const thoughtAuthorConcMap = new Map<string, string | null>();
+  const candidateThoughtIds: string[] = [];
+  for (const { thought } of candidates) {
+    candidateThoughtIds.push(thought.id);
+    thoughtAuthorConcMap.set(thought.id, thought.authorConcentration ?? null);
+  }
+  const replyQualityMap = await buildReplyQualityMap(candidateThoughtIds, thoughtAuthorConcMap);
 
   const withRank: Array<{ thought: ThoughtCandidate; bucket: BucketLabel; rankScore: number; Q: number; D: number; F: number; R: number }> = [];
   for (const { thought, bucket } of candidates) {
@@ -410,7 +457,16 @@ export async function getFeedWithDebug(
       const rankScore = rankScorePhase1(thought, profile, layer2);
       withRank.push({ thought, bucket, rankScore, Q: layer2Max > 0 ? layer2 / layer2Max : 0.5, D: 0, F: 0, R: 0 });
     } else {
-      const debugRank = await rankScorePhase2WithDebug(thought, profile, layer2, weights, layer2Max, maps, viewerClusterIds);
+      const debugRank = rankScorePhase2WithDebug(
+        thought,
+        profile,
+        layer2,
+        weights,
+        layer2Max,
+        maps,
+        viewerClusterIds,
+        replyQualityMap.get(thought.id)
+      );
       withRank.push({
         thought,
         bucket,
@@ -447,7 +503,12 @@ export async function getFeedWithDebug(
   const thoughtIds = slice.map((x) => x.thought.id);
   const replyCounts = await getAcceptedReplyCounts(thoughtIds);
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
-  const authorRows = await db.select().from(users).where(inArray(users.id, authorIds));
+  const authorRows = authorIds.length
+    ? await db
+        .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+        .from(users)
+        .where(inArray(users.id, authorIds))
+    : [];
   const authorMap = new Map(authorRows.map((u) => [u.id, u]));
 
   const itemsWithDebug: Array<FeedItemThought & { _debug: FeedDebugInfo }> = slice.map((item) => {

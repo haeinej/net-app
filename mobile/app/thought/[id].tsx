@@ -25,12 +25,21 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily } from "../../theme";
+import { LinearGradient } from "expo-linear-gradient";
+import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily, shadows, glass } from "../../theme";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { WarmthBar, type WarmthLevel } from "../../components/WarmthBar";
 import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
-import { deleteReply, fetchThought, postReply, type ThoughtDetailResponse } from "../../lib/api";
+import {
+  deleteReply,
+  deleteThought,
+  editThought,
+  fetchThought,
+  postReply,
+  type ThoughtDetailResponse,
+} from "../../lib/api";
 import { useEngagementTracking } from "../../hooks/useEngagementTracking";
+import { pickPrompt, REPLY_PROMPTS, REPLY_SAFETY_TEXT } from "../../constants/prompts";
 
 const REPLY_MIN_LENGTH = 50;
 const REPLY_MAX_LENGTH = 300;
@@ -46,6 +55,7 @@ export default function ThoughtDetailScreen() {
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [replyPlaceholder] = useState(() => pickPrompt(REPLY_PROMPTS));
   const pulseOpacity = useSharedValue(0);
 
   const translateX = useSharedValue(0);
@@ -211,6 +221,67 @@ export default function ThoughtDetailScreen() {
     [refreshThought]
   );
 
+  const handleOwnerCardMenu = useCallback(() => {
+    if (!id || !data?.panel_3.viewer_is_author) return;
+
+    Alert.alert("Thought", undefined, [
+      {
+        text: "Edit",
+        onPress: () => {
+          Alert.prompt(
+            "Edit thought",
+            "Update your sentence:",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Save",
+                onPress: async (newSentence?: string) => {
+                  const nextSentence = newSentence?.trim();
+                  if (!nextSentence) return;
+
+                  try {
+                    await editThought(id, { sentence: nextSentence });
+                    setData((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            panel_1: { ...prev.panel_1, sentence: nextSentence },
+                            panel_2: { ...prev.panel_2, sentence: nextSentence },
+                          }
+                        : prev
+                    );
+                  } catch {}
+                },
+              },
+            ],
+            "plain-text",
+            data.panel_1.sentence
+          );
+        },
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          Alert.alert("Delete thought", "Are you sure?", [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await deleteThought(id);
+                  router.back();
+                } catch {}
+              },
+            },
+          ]);
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [data, id, router]);
+
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
     recordTypeStart();
@@ -244,6 +315,7 @@ export default function ThoughtDetailScreen() {
   const p2 = data.panel_2;
   const p3 = data.panel_3;
   const warmthForBar: WarmthLevel = isTyping ? "full" : p1.warmth_level;
+  const p1HasPhoto = Boolean(p1.photo_url ?? p1.image_url);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -253,49 +325,80 @@ export default function ThoughtDetailScreen() {
           <View style={[styles.panel, { width: panelWidth, minHeight: fullPanelHeight }]}>
             <View style={styles.panel1Inner}>
               <WarmthBar warmthLevel={warmthForBar} height={imageHeight + 56} />
-              <ThoughtImageFrame
-                imageUrl={p1.photo_url ?? p1.image_url}
-                aspectRatio={IMAGE_ASPECT_RATIO}
-                borderRadius={0}
-                style={{ width: panelWidth - spacing.warmthBarWidth, height: imageHeight }}
+              <View
+                style={[
+                  styles.panel1ImageWrap,
+                  { width: panelWidth - spacing.warmthBarWidth, height: imageHeight },
+                ]}
               >
-                <Text style={styles.sentenceP1} numberOfLines={4}>
-                  {p1.sentence}
-                </Text>
-                <View style={styles.dots}>
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
+                <ThoughtImageFrame
+                  imageUrl={p1.photo_url ?? p1.image_url}
+                  aspectRatio={IMAGE_ASPECT_RATIO}
+                  borderRadius={0}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <View style={styles.panel1ImageOverlay} pointerEvents="none">
+                  <Text
+                    style={[styles.sentenceP1, !p1HasPhoto && styles.sentenceP1NoPhoto]}
+                    numberOfLines={4}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                  >
+                    {p1.sentence}
+                  </Text>
+                  <View style={[styles.dots, !p1HasPhoto && styles.dotsNoPhoto]}>
+                    <View style={styles.dot} />
+                    <View style={styles.dot} />
+                    <View style={styles.dot} />
+                  </View>
                 </View>
-              </ThoughtImageFrame>
+              </View>
             </View>
-            <TouchableOpacity
-              style={styles.footerP1}
-              onPress={() => {
-                if (p1.user?.id) {
-                  router.push({ pathname: "/user/[id]", params: { id: p1.user.id } });
-                }
-              }}
-              disabled={!p1.user?.id}
-              activeOpacity={0.7}
-            >
-              {p1.user?.photo_url ? (
-                <Image source={{ uri: p1.user.photo_url }} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarPlc]} />
-              )}
-              <Text style={styles.nameP1}>{p1.user?.name ? p1.user.name.toUpperCase() : "—"}</Text>
-            </TouchableOpacity>
+            <View style={styles.footerP1}>
+              <TouchableOpacity
+                style={styles.profileRowP1}
+                onPress={() => {
+                  if (p1.user?.id) {
+                    router.push({ pathname: "/user/[id]", params: { id: p1.user.id } });
+                  }
+                }}
+                disabled={!p1.user?.id}
+                activeOpacity={0.7}
+              >
+                {p1.user?.photo_url ? (
+                  <Image source={{ uri: p1.user.photo_url }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatar, styles.avatarPlc]} />
+                )}
+                <Text style={styles.nameP1}>{p1.user?.name ? p1.user.name.toUpperCase() : "—"}</Text>
+              </TouchableOpacity>
+              {p3.viewer_is_author ? (
+                <TouchableOpacity
+                  style={styles.ownerActionBtn}
+                  onPress={handleOwnerCardMenu}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.ownerActionText}>•••</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
 
           {/* Panel 2 */}
           <View style={[styles.panel, styles.panel2, { width: panelWidth, minHeight: fullPanelHeight }]}>
+            {/* Inner glow — warm light from top-left */}
+            <LinearGradient
+              colors={[glass.darkGlow[0], glass.darkGlow[1]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0.5, y: 0.5 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             <ScrollView
               contentContainerStyle={styles.panel2Content}
               showsVerticalScrollIndicator={false}
             >
               <Text style={styles.panelLabel}>Context</Text>
-              <Text style={styles.sentenceP2}>{p2.sentence}</Text>
               {p2.context ? (
                 <Text style={styles.contextP2}>{p2.context}</Text>
               ) : (
@@ -306,19 +409,22 @@ export default function ThoughtDetailScreen() {
 
           {/* Panel 3 */}
           <View style={[styles.panel, styles.panel3, { width: panelWidth, minHeight: fullPanelHeight }]}>
+            <LinearGradient
+              colors={[glass.darkGlow[0], glass.darkGlow[1]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0.5, y: 0.5 }}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
             <ScrollView
               style={styles.repliesScroll}
               contentContainerStyle={styles.repliesContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.panelLabel}>
-                {p3.viewer_is_author ? "Replies" : "In chat replies"}
-              </Text>
+              <Text style={styles.panelLabel}>Replies</Text>
               {p3.replies.length === 0 ? (
-                <Text style={styles.panelEmpty}>
-                  {p3.viewer_is_author ? "No replies yet." : "No in-chat replies yet."}
-                </Text>
+                <Text style={styles.panelEmpty}>No replies yet.</Text>
               ) : null}
               {p3.replies.map((r) => (
                 <TouchableOpacity
@@ -373,7 +479,7 @@ export default function ThoughtDetailScreen() {
                 <Text style={styles.replyLabel}>reply.</Text>
                 <TextInput
                   style={styles.replyInput}
-                  placeholder="what this thought surfaces in you..."
+                  placeholder={replyPlaceholder}
                   placeholderTextColor={colors.TYPE_MUTED}
                   value={replyText}
                   onChangeText={(t) => setReplyText(t.slice(0, REPLY_MAX_LENGTH))}
@@ -383,9 +489,7 @@ export default function ThoughtDetailScreen() {
                   multiline={false}
                   maxLength={REPLY_MAX_LENGTH}
                 />
-                <Text style={styles.replyHint}>
-                  Minimum {REPLY_MIN_LENGTH} characters. Space for up to {REPLY_MAX_LENGTH}.
-                </Text>
+                <Text style={styles.replySafety}>{REPLY_SAFETY_TEXT}</Text>
                 <TouchableOpacity
                   style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
                   onPress={handleSendReply}
@@ -450,20 +554,31 @@ const styles = StyleSheet.create({
   panel1Inner: {
     flexDirection: "row",
   },
+  panel1ImageWrap: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  panel1ImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
   sentenceP1: {
     fontFamily: fontFamily.sentient,
     position: "absolute",
     left: 18,
     right: 18,
-    bottom: 18,
-    fontSize: 28,
-    lineHeight: 31,
+    bottom: 22,
+    fontSize: 24,
+    lineHeight: 27,
     fontWeight: "700",
     letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
-    textShadowColor: "rgba(8,6,4,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  },
+  sentenceP1NoPhoto: {
+    color: colors.TYPE_DARK,
+  },
+  dotsNoPhoto: {
+    opacity: 0.35,
   },
   dots: {
     position: "absolute",
@@ -481,18 +596,31 @@ const styles = StyleSheet.create({
   footerP1: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 10,
     backgroundColor: colors.CARD_GROUND,
+    borderTopWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.12)",
+  },
+  profileRowP1: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
   },
   avatar: {
     width: 34,
     height: 34,
     borderRadius: 17,
+    borderWidth: 0.5,
+    borderColor: "rgba(255,255,255,0.15)",
+    ...shadows.raised,
   },
   avatarPlc: {
     backgroundColor: colors.TYPE_MUTED,
+    borderColor: "rgba(0,0,0,0.06)",
   },
   nameP1: {
     fontFamily: typography.label.fontFamily,
@@ -501,10 +629,28 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
+    flex: 1,
+  },
+  ownerActionBtn: {
+    minWidth: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 4,
+    marginLeft: 8,
+  },
+  ownerActionText: {
+    fontFamily: typography.metadata.fontFamily,
+    fontSize: 11,
+    lineHeight: 11,
+    letterSpacing: 0.6,
+    color: colors.TYPE_MUTED,
   },
   panel2: {
     backgroundColor: colors.PANEL_DARK,
     paddingHorizontal: 24,
+    // Glass transition — light catch on left edge
+    borderLeftWidth: 0.5,
+    borderLeftColor: "rgba(255,255,255,0.06)",
   },
   panel2Content: {
     flexGrow: 1,
@@ -516,13 +662,6 @@ const styles = StyleSheet.create({
     fontSize: 8.5,
     color: "rgba(255,255,255,0.48)",
     marginBottom: 16,
-  },
-  sentenceP2: {
-    ...typography.thoughtDisplay,
-    fontSize: 15,
-    lineHeight: 19,
-    color: colors.TYPE_WHITE,
-    marginBottom: 20,
   },
   contextP2: {
     ...typography.context,
@@ -536,6 +675,8 @@ const styles = StyleSheet.create({
   panel3: {
     backgroundColor: colors.PANEL_DEEP,
     paddingHorizontal: 16,
+    borderLeftWidth: 0.5,
+    borderLeftColor: "rgba(255,255,255,0.04)",
   },
   repliesScroll: {
     flex: 1,
@@ -554,6 +695,8 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     marginRight: 10,
+    borderWidth: 0.5,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   replyBody: { flex: 1 },
   replyTopRow: {
@@ -607,17 +750,21 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(255,255,255,0.2)",
     paddingVertical: 8,
   },
-  replyHint: {
+  replySafety: {
     ...typography.metadata,
-    color: colors.TYPE_MUTED,
+    color: "rgba(255,255,255,0.35)",
     marginTop: 8,
+    fontStyle: "italic",
   },
   sendBtn: {
     marginTop: 12,
     paddingVertical: 10,
     alignItems: "center",
-    borderRadius: 6,
+    borderRadius: 10,
     backgroundColor: colors.OLIVE,
+    ...shadows.raised,
+    borderTopWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.2)",
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendBtnText: {
@@ -633,13 +780,21 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   indicatorDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    // Glass dot — subtle inner highlight
+    borderTopWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.15)",
   },
   indicatorDotActive: {
     backgroundColor: "rgba(255,255,255,0.55)",
+    // Active glow
+    shadowColor: "#FFFFFF",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
   },
   pulseOverlay: {
     backgroundColor: colors.TYPE_WHITE,

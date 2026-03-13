@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 /**
  * Layout constants for ohm. feed and cards.
  */
@@ -26,3 +28,79 @@ export const spacing = {
 
 /** Image aspect ratio for thought card (4:3) */
 export const IMAGE_ASPECT_RATIO = 4 / 3;
+
+// ─────────────────────────────────────────────
+// Glass / Depth system — stereoscopic, organic feel
+// Inspired by the ohm logo: clay-glass with refracted light
+// ─────────────────────────────────────────────
+
+/** Layered shadow system: ambient + key light + contact shadow */
+export const shadows = {
+  /** Card at rest in feed — soft ambient lift */
+  card: Platform.select({
+    ios: {
+      shadowColor: "#1A1A16",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+    },
+    android: { elevation: 6 },
+  }),
+  /** Card at rest — secondary diffuse shadow for depth */
+  cardAmbient: Platform.select({
+    ios: {
+      shadowColor: "#1A1A16",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 3,
+    },
+    android: { elevation: 2 },
+  }),
+  /** Raised element (buttons, notification dot) */
+  raised: Platform.select({
+    ios: {
+      shadowColor: "#1A1A16",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.18,
+      shadowRadius: 6,
+    },
+    android: { elevation: 4 },
+  }),
+  /** Subtle inner edge highlight — used as border */
+  innerGlow: {
+    borderWidth: 0.5,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  /** Glass rim — top-left light catch */
+  glassRimTop: {
+    borderTopWidth: 0.5,
+    borderLeftWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.18)",
+    borderLeftColor: "rgba(255,255,255,0.10)",
+    borderRightColor: "transparent",
+    borderBottomColor: "transparent",
+  },
+  /** Glass rim for dark panels — lighter catch */
+  glassRimDark: {
+    borderTopWidth: 0.5,
+    borderLeftWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    borderLeftColor: "rgba(255,255,255,0.05)",
+    borderRightColor: "transparent",
+    borderBottomColor: "transparent",
+  },
+} as const;
+
+/** Glass overlay colors for inner depth effects */
+export const glass = {
+  /** Soft white highlight for top edge of cards */
+  highlightTop: "rgba(255,255,255,0.08)",
+  /** Subtle dark shadow for bottom edge */
+  shadowBottom: "rgba(26,26,22,0.06)",
+  /** Inner card gradient — warm light from top-left */
+  warmLight: ["rgba(255,252,245,0.06)", "rgba(255,252,245,0.0)"] as const,
+  /** Dark panel inner glow */
+  darkGlow: ["rgba(255,255,255,0.04)", "rgba(255,255,255,0.0)"] as const,
+  /** Button pressed state overlay */
+  pressedOverlay: "rgba(0,0,0,0.08)",
+} as const;

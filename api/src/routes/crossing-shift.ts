@@ -42,6 +42,18 @@ async function getConvAndParticipant(
   };
 }
 
+async function getCompletedShiftCount(conversationId: string): Promise<number> {
+  const rows = await db
+    .select({ id: shifts.id })
+    .from(shifts)
+    .where(eq(shifts.conversationId, conversationId));
+  return rows.length;
+}
+
+function getUnlockedShiftSlots(messageCount: number): number {
+  return Math.floor(messageCount / 10);
+}
+
 function getShiftReadySet(
   userId: string,
   participantA: string
@@ -364,6 +376,16 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
         const [initiator] = await db.select({ name: users.name }).from(users).where(eq(users.id, existing.initiatorId)).limit(1);
         return reply.send(serializeShiftDraft(existing, initiator?.name ?? null));
       }
+      const [conv] = await db
+        .select({ messageCount: conversations.messageCount })
+        .from(conversations)
+        .where(eq(conversations.id, ctx.convId))
+        .limit(1);
+      const messageCount = conv?.messageCount ?? 0;
+      const completedShiftCount = await getCompletedShiftCount(ctx.convId);
+      if (completedShiftCount >= getUnlockedShiftSlots(messageCount)) {
+        return reply.status(403).send({ error: "keep talking to unlock the next collaborative card" });
+      }
       const [draft] = await db
         .insert(shiftDrafts)
         .values({
@@ -398,9 +420,9 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
     Params: { id: string };
     Body: { a_before?: string; a_after?: string; b_before?: string; b_after?: string };
   }>("/api/conversations/:id/shift", async (request, reply) => {
-    const ctx = await getConvAndParticipant(request, reply);
-    if (!ctx) return;
-    const body = request.body ?? {};
+      const ctx = await getConvAndParticipant(request, reply);
+      if (!ctx) return;
+      const body = request.body ?? {};
     const [draft] = await db
       .select()
       .from(shiftDrafts)
@@ -442,6 +464,16 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
       const bAfter = (draft.bAfter ?? "").trim();
       if (!draft.participantAReadyAt || !draft.participantBReadyAt) {
         return reply.status(400).send({ error: "both people need to opt in first" });
+      }
+      const [conv] = await db
+        .select({ messageCount: conversations.messageCount })
+        .from(conversations)
+        .where(eq(conversations.id, ctx.convId))
+        .limit(1);
+      const completedShiftCount = await getCompletedShiftCount(ctx.convId);
+      const unlockedShiftSlots = getUnlockedShiftSlots(conv?.messageCount ?? 0);
+      if (completedShiftCount >= unlockedShiftSlots) {
+        return reply.status(409).send({ error: "the next collaborative card is not unlocked yet" });
       }
       if (!aBefore || !aAfter || !bBefore || !bAfter) {
         return reply.status(400).send({ error: "both people must fill before and after" });
@@ -493,6 +525,10 @@ export async function crossingShiftRoutes(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const ctx = await getConvAndParticipant(request, reply);
       if (!ctx) return;
+      const completedShiftCount = await getCompletedShiftCount(ctx.convId);
+      if (completedShiftCount > 0) {
+        return reply.status(409).send({ error: "this conversation already has a collaborative card" });
+      }
       const [draft] = await db
         .select()
         .from(shiftDrafts)

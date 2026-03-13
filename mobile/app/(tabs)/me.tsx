@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, fontFamily } from "../../theme";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
-import { ShiftCard } from "../../components/ShiftCard";
+import { CardDeck } from "../../components/CardDeck";
 import {
   getMyUserId,
   fetchProfile,
@@ -29,7 +29,6 @@ import {
   type ProfileResponse,
   type FeedItemThought,
   type FeedItemCrossing,
-  type FeedItemShift,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
 
@@ -228,10 +227,20 @@ export default function MeScreen() {
     );
   }
 
-  const hasDeckContent =
-    profile.thoughts.length > 0 ||
-    (profile.shifts?.length ?? 0) > 0 ||
-    (profile.crossings?.length ?? 0) > 0;
+  // Merge thoughts + crossings into a single deck sorted by most recent
+  const deckItems: Array<
+    | { kind: "thought"; date: string; data: (typeof profile.thoughts)[number] }
+    | { kind: "crossing"; date: string; data: NonNullable<typeof profile.crossings>[number] }
+  > = [];
+
+  for (const t of profile.thoughts) {
+    deckItems.push({ kind: "thought", date: t.created_at ?? new Date(0).toISOString(), data: t });
+  }
+  for (const c of profile.crossings ?? []) {
+    deckItems.push({ kind: "crossing", date: c.created_at ?? new Date(0).toISOString(), data: c });
+  }
+
+  deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <ScrollView
@@ -298,61 +307,44 @@ export default function MeScreen() {
         </View>
       )}
 
-      {!hasDeckContent ? (
+      {deckItems.length === 0 ? (
         <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
       ) : (
-        profile.thoughts.map((t) => {
-          const feedItem: FeedItemThought = {
-            type: "thought",
-            thought: {
-              id: t.id,
-              sentence: t.sentence,
-              photo_url: t.photo_url,
-              image_url: t.image_url,
-              created_at: t.created_at ?? new Date().toISOString(),
-              has_context: false,
-            },
-            user: {
-              id: myUserId ?? "",
-              name: profile.name,
-              photo_url: profile.photo_url,
-            },
-            warmth_level: t.warmth_level,
-          };
-          return (
-            <View key={t.id} style={styles.thoughtWrap}>
-              <SwipeableThoughtCard
-                item={feedItem}
-                visible
-                isOwn
-                onDelete={handleDeleteThought}
-                onEdit={handleEditThought}
-              />
-            </View>
-          );
-        })
-      )}
-
-      {profile.shifts && profile.shifts.length > 0 && (
-        profile.shifts.map((s) => {
-          const shiftItem: FeedItemShift = {
-            type: "shift",
-            id: s.id,
-            created_at: s.created_at ?? new Date().toISOString(),
-            participant_a: s.participant_a,
-            participant_b: s.participant_b,
-          };
-          return (
-            <View key={s.id} style={styles.thoughtWrap}>
-              <ShiftCard item={shiftItem} />
-            </View>
-          );
-        })
-      )}
-
-      {/* Crossings */}
-      {profile.crossings && profile.crossings.length > 0 && (
-        profile.crossings.map((c) => {
+        deckItems.map((item) => {
+          if (item.kind === "thought") {
+            const t = item.data;
+            const feedItem: FeedItemThought = {
+              type: "thought",
+              thought: {
+                id: t.id,
+                sentence: t.sentence,
+                photo_url: t.photo_url,
+                image_url: t.image_url,
+                created_at: t.created_at ?? new Date().toISOString(),
+                has_context: false,
+              },
+              user: {
+                id: myUserId ?? "",
+                name: profile.name,
+                photo_url: profile.photo_url,
+              },
+              warmth_level: t.warmth_level,
+            };
+            return (
+              <View key={`t-${t.id}`} style={styles.thoughtWrap}>
+                <CardDeck>
+                  <SwipeableThoughtCard
+                    item={feedItem}
+                    visible
+                    isOwn
+                    onDelete={handleDeleteThought}
+                    onEdit={handleEditThought}
+                  />
+                </CardDeck>
+              </View>
+            );
+          }
+          const c = item.data;
           const crossingItem: FeedItemCrossing = {
             type: "crossing",
             crossing: {
@@ -366,8 +358,10 @@ export default function MeScreen() {
             warmth_level: "none",
           };
           return (
-            <View key={c.id} style={styles.thoughtWrap}>
-              <CrossingCard item={crossingItem} visible />
+            <View key={`c-${c.id}`} style={styles.thoughtWrap}>
+              <CardDeck>
+                <CrossingCard item={crossingItem} visible myUserId={myUserId} />
+              </CardDeck>
             </View>
           );
         })

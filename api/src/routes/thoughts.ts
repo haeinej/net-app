@@ -58,8 +58,14 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (!row) return reply.status(500).send();
 
     const thoughtId = row.id;
-    processNewThought(thoughtId).catch(() => {});
-    invalidateFeedCache();
+    processNewThought(thoughtId).catch((err: any) => {
+      console.error("processNewThought failed", {
+        thoughtId,
+        message: err?.message ?? String(err),
+        code: err?.code,
+      });
+    });
+    invalidateFeedCache(userId);
 
     return reply.status(201).send({
       id: thoughtId,
@@ -79,7 +85,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (!t) return reply.status(404).send();
     if (t.userId !== userId) return reply.status(403).send();
     await db.update(thoughts).set({ deletedAt: new Date() }).where(eq(thoughts.id, id));
-    invalidateFeedCache();
+    invalidateFeedCache(userId);
     return reply.status(200).send();
   });
 
@@ -107,7 +113,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
 
     if (Object.keys(updates).length > 0) {
       await db.update(thoughts).set(updates).where(eq(thoughts.id, id));
-      invalidateFeedCache();
+      invalidateFeedCache(userId);
     }
 
     const [updated] = await db.select().from(thoughts).where(eq(thoughts.id, id));

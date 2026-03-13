@@ -223,7 +223,9 @@ export default function ConversationThreadScreen() {
 
   const shiftDraft = convDetail?.shift_draft ?? null;
   const messageCount = convDetail?.message_count ?? messages.length;
-  const canCreateCollaborativeCard = messageCount >= 10 && !(convDetail?.shift_complete ?? false);
+  const shiftCount = convDetail?.shift_count ?? 0;
+  const nextShiftMessageCount = convDetail?.next_shift_message_count ?? 10;
+  const canCreateCollaborativeCard = Boolean(shiftDraft) || Boolean(convDetail?.shift_available);
   const isParticipantA = convDetail ? myUserId === convDetail.participant_a_id : false;
   const viewerReady = shiftDraft
     ? Boolean(isParticipantA ? shiftDraft.participant_a_ready_at : shiftDraft.participant_b_ready_at)
@@ -246,10 +248,10 @@ export default function ConversationThreadScreen() {
   }, [convDetail, isParticipantA, shiftDraft, shiftOpen]);
 
   useEffect(() => {
-    if (bothReady && !shiftOpen && !(convDetail?.shift_complete ?? false)) {
+    if (bothReady && !shiftOpen) {
       setShiftOpen(true);
     }
-  }, [bothReady, convDetail?.shift_complete, shiftOpen]);
+  }, [bothReady, shiftOpen]);
 
   const handleStartCollaborativeCard = useCallback(async () => {
     if (!id) return;
@@ -313,10 +315,15 @@ export default function ConversationThreadScreen() {
   }
 
   const renderCollaborativeBanner = () => {
-    if (!canCreateCollaborativeCard) return null;
-
-    if (convDetail?.shift_complete) {
-      return <Text style={styles.completeLabel}>Collaborative card shared.</Text>;
+    if (!canCreateCollaborativeCard) {
+      if (shiftCount > 0 && messageCount < nextShiftMessageCount) {
+        return (
+          <Text style={styles.completeLabel}>
+            Next collaborative card unlocks at {nextShiftMessageCount} messages.
+          </Text>
+        );
+      }
+      return null;
     }
 
     if (!shiftDraft || !viewerReady) {
@@ -335,7 +342,7 @@ export default function ConversationThreadScreen() {
             loading={shiftSubmitting}
             onComplete={handleStartCollaborativeCard}
           />
-          {shiftDraft && otherReady ? (
+          {shiftDraft && otherReady && shiftCount === 0 ? (
             <TouchableOpacity style={styles.ignoreRow} onPress={handleIgnoreCollaborativeCard}>
               <Text style={styles.ignoreText}>Ignore and delete conversation</Text>
             </TouchableOpacity>
@@ -481,7 +488,7 @@ export default function ConversationThreadScreen() {
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
             keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
-            style={[styles.inputArea, { paddingBottom: insets.bottom + 12 }]}
+            style={styles.inputArea}
           >
             {renderCollaborativeBanner()}
 
@@ -551,6 +558,7 @@ export default function ConversationThreadScreen() {
                 <Text style={styles.sendBtnText}>Send</Text>
               </TouchableOpacity>
             </View>
+            <View style={{ height: insets.bottom + 24 }} />
           </KeyboardAvoidingView>
         </>
       )}

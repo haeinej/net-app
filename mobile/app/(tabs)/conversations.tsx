@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
@@ -102,23 +102,38 @@ export default function ConversationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef<Promise<void> | null>(null);
 
-  const load = useCallback(async () => {
-    try {
+  const load = useCallback(
+    async (opts: { isRefresh?: boolean } = {}) => {
+      if (inFlight.current) {
+        // ignore overlapping calls
+      }
+
+      const { isRefresh } = opts;
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+
       setError(null);
-      const data = await fetchConversations();
-      setList(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+      const p = (async () => {
+        try {
+          const data = await fetchConversations();
+          setList(data);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Failed to load");
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+          inFlight.current = null;
+        }
+      })();
+
+      inFlight.current = p;
+      await p;
+    },
+    []
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -127,8 +142,7 @@ export default function ConversationsScreen() {
   );
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    load();
+    load({ isRefresh: true });
   }, [load]);
 
   const onPressRow = useCallback(

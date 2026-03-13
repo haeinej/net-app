@@ -21,6 +21,7 @@ import { createThought, fetchProfile, getMyUserId } from "../lib/api";
 import { ScreenExitButton } from "../components/ScreenExitButton";
 import { BrandLockup } from "../components/BrandLockup";
 import { ThoughtImageFrame } from "../components/ThoughtImageFrame";
+import { pickComposePrompt, COMPOSE_SUBTITLE } from "../constants/prompts";
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -34,6 +35,7 @@ export default function ComposeScreen() {
   const [posting, setPosting] = useState(false);
   const [thoughtPhotoUrl, setThoughtPhotoUrl] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(true);
+  const [composePlaceholder] = useState(() => pickComposePrompt());
 
   const previewWidth = width - spacing.screenPadding * 2;
   const previewHeight = previewWidth / IMAGE_ASPECT_RATIO;
@@ -169,10 +171,10 @@ export default function ComposeScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>One big thought</Text>
-          <Text style={styles.fieldHint}>This becomes the line on the image.</Text>
+          <Text style={styles.fieldHint}>{COMPOSE_SUBTITLE}</Text>
           <TextInput
             style={[styles.textArea, styles.sentenceInput]}
-            placeholder="The one thought you cannot stop turning over."
+            placeholder={composePlaceholder}
             placeholderTextColor={colors.TYPE_MUTED}
             value={sentence}
             onChangeText={(t) => setSentence(t.slice(0, SENTENCE_MAX))}

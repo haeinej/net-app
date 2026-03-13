@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
-import { colors, spacing, typography } from "../theme";
+import { colors, spacing, typography, shadows } from "../theme";
 import type { NotificationItem } from "../lib/api";
 
 interface NotificationPanelProps {
@@ -79,8 +79,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.CARD_GROUND,
     paddingVertical: 12,
     paddingHorizontal: spacing.screenPadding,
-    borderBottomWidth: 1,
+    borderBottomWidth: 0.5,
     borderBottomColor: "rgba(26,26,22,0.06)",
+    // Glass depth — panel floats above feed
+    ...shadows.card,
+    borderTopWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.12)",
   },
   row: {
     flexDirection: "row",
@@ -128,7 +132,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     backgroundColor: colors.OLIVE,
-    borderRadius: 6,
+    borderRadius: 10,
+    // Glass depth on button
+    ...shadows.raised,
+    borderTopWidth: 0.5,
+    borderTopColor: "rgba(255,255,255,0.2)",
   },
   acceptText: {
     ...typography.label,

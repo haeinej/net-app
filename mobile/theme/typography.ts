@@ -4,6 +4,8 @@
 export const fontFamily = {
   /** Reading text: thought sentence, context, replies. */
   sentient: "Sentient-Light",
+  /** Bold reading text: sentence overlay on cards. */
+  sentientBold: "Sentient-Bold",
   /** Display / structural face. */
   comico: "Comico-Regular",
   /** Fallback when custom fonts not loaded. */

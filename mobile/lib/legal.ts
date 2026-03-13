@@ -8,7 +8,7 @@ export const PRIVACY_POLICY_SECTIONS: Array<{
     title: "What ohm. collects",
     paragraphs: [
       "ohm. collects the information you choose to provide when you create and use your account, including your name, email address, password, profile photo, and any interests you add during onboarding or later profile edits.",
-      "We also store the content you create in the app, including thoughts, replies, private conversations, crossings, and shifts, along with the timestamps and account relationships needed to show that content back to you and the people involved.",
+      "We also store the content you create in the app, including thoughts, replies, private conversations, and crossings, along with the timestamps and account relationships needed to show that content back to you and the people involved.",
       "To operate the product responsibly, we keep limited operational data such as authentication state, engagement signals, and service logs that help us secure the app, understand product performance, and investigate misuse.",
     ],
   },
@@ -23,7 +23,7 @@ export const PRIVACY_POLICY_SECTIONS: Array<{
     title: "Who can see your content",
     paragraphs: [
       "Your profile information and published thoughts may be visible to other people inside ohm. according to the product surfaces where they are shown.",
-      "Replies, accepted conversations, crossings, and shifts are visible only within the contexts created by those interactions and are not intended to be public web content. Pending replies are not shown on the public thought view until the thought author accepts them.",
+      "Replies, accepted conversations, and crossings are visible only within the contexts created by those interactions and are not intended to be public web content. Pending replies are not shown on the public thought view until the thought author accepts them.",
     ],
   },
   {

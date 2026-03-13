@@ -36,6 +36,7 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
   const imageHeight = cardWidth / IMAGE_ASPECT_RATIO;
 
   const { thought, user, warmth_level } = item;
+  const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
 
   const openUserProfile = (event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -51,25 +52,34 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
     >
       <View style={styles.cardInner}>
         <WarmthBar warmthLevel={warmth_level} height={imageHeight + 56} />
-        <ThoughtImageFrame
-          imageUrl={thought.photo_url ?? thought.image_url}
-          aspectRatio={IMAGE_ASPECT_RATIO}
-          borderRadius={0}
-          style={{ width: cardWidth - spacing.warmthBarWidth, height: imageHeight }}
+        <View
+          style={[
+            styles.imageWrap,
+            { width: cardWidth - spacing.warmthBarWidth, height: imageHeight },
+          ]}
         >
-          <Text
-            style={styles.sentence}
-            numberOfLines={4}
-            ellipsizeMode="tail"
-          >
-            {thought.sentence}
-          </Text>
-          <View style={styles.dotsHint}>
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
+          <ThoughtImageFrame
+            imageUrl={thought.photo_url ?? thought.image_url}
+            aspectRatio={IMAGE_ASPECT_RATIO}
+            borderRadius={0}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={styles.imageOverlay} pointerEvents="none">
+            <Text
+              style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
+              numberOfLines={4}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {thought.sentence}
+            </Text>
+            <View style={[styles.dotsHint, !hasPhoto && styles.dotsHintNoPhoto]}>
+              <View style={styles.dot} />
+              <View style={styles.dot} />
+              <View style={styles.dot} />
+            </View>
           </View>
-        </ThoughtImageFrame>
+        </View>
       </View>
       <View style={styles.footer}>
         <TouchableOpacity
@@ -103,20 +113,31 @@ const styles = StyleSheet.create({
   cardInner: {
     flexDirection: "row",
   },
+  imageWrap: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
   sentence: {
     fontFamily: fontFamily.sentient,
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 18,
-    fontSize: 29,
-    lineHeight: 31,
+    bottom: 22,
+    fontSize: 24,
+    lineHeight: 27,
     fontWeight: "700",
     letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
-    textShadowColor: "rgba(8,6,4,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  },
+  sentenceNoPhoto: {
+    color: colors.TYPE_DARK,
+  },
+  dotsHintNoPhoto: {
+    opacity: 0.35,
   },
   dotsHint: {
     position: "absolute",

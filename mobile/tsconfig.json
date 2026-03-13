@@ -11,9 +11,24 @@
     }
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "hooks/**/*.ts",
+    "hooks/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "theme/**/*.ts",
+    "theme/**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "ios",
+    "android",
+    "**/* 2.*"
   ]
 }

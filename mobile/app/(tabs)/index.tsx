@@ -7,13 +7,25 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  Easing,
+  runOnJS,
+} from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing, typography } from "../../theme";
+import { pickPrompt, EMPTY_STATE_PROMPTS } from "../../constants/prompts";
 import { Header } from "../../components/Header";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
-import { ShiftCard } from "../../components/ShiftCard";
 import { CrossingCard } from "../../components/CrossingCard";
+import { CardDeck } from "../../components/CardDeck";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
 import {
@@ -31,6 +43,7 @@ import {
 const WALKTHROUGH_SEEN_KEY = "ohm_walkthrough_seen";
 
 const PAGE_SIZE = 20;
+const FOCUS_REFRESH_INTERVAL_MS = 60_000;
 
 export default function WorldsScreen() {
   const router = useRouter();
@@ -46,8 +59,21 @@ export default function WorldsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
+  // Connection moment — the felt move from stranger to thinking partner
+  const connectionOpacity = useSharedValue(0);
+  const [connectionVisible, setConnectionVisible] = useState(false);
+  const pendingNavRef = useRef<(() => void) | null>(null);
+
+  const connectionOverlayStyle = useAnimatedStyle(() => ({
+    opacity: connectionOpacity.value,
+    pointerEvents: connectionOpacity.value > 0 ? "auto" as const : "none" as const,
+  }));
+
+  const inFlightFeed = useRef<Promise<void> | null>(null);
+  const lastFocusRefreshAt = useRef(0);
+
   useEffect(() => {
-    getMyUserId().then(setMyUserId);
+    getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -59,40 +85,43 @@ export default function WorldsScreen() {
     }
   }, []);
 
-  const handleFeedEdit = useCallback((thoughtId: string) => {
-    const item = feed.find((f) => f.type === "thought" && f.thought.id === thoughtId);
-    if (!item || item.type !== "thought") return;
-    // Alert.prompt is iOS-only but fits ohm's target
-    const { Alert } = require("react-native");
-    Alert.prompt(
-      "Edit thought",
-      "Update your sentence:",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Save",
-          onPress: async (newSentence?: string) => {
-            const s = newSentence?.trim();
-            if (!s) return;
-            try {
-              await editThought(thoughtId, { sentence: s });
-              setFeed((prev) =>
-                prev.map((f) =>
-                  f.type === "thought" && f.thought.id === thoughtId
-                    ? { ...f, thought: { ...f.thought, sentence: s } }
-                    : f
-                )
-              );
-            } catch {
-              Alert.alert("Error", "Could not edit thought");
-            }
+  const handleFeedEdit = useCallback(
+    (thoughtId: string) => {
+      const thought = feed.find((item) => item.type === "thought" && item.thought.id === thoughtId);
+      if (!thought || thought.type !== "thought") return;
+
+      Alert.prompt(
+        "Edit thought",
+        "Update your sentence:",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Save",
+            onPress: async (newSentence?: string) => {
+              const nextSentence = newSentence?.trim();
+              if (!nextSentence) return;
+
+              try {
+                await editThought(thoughtId, { sentence: nextSentence });
+                setFeed((prev) =>
+                  prev.map((item) =>
+                    item.type === "thought" && item.thought.id === thoughtId
+                      ? { ...item, thought: { ...item.thought, sentence: nextSentence } }
+                      : item
+                  )
+                );
+              } catch {
+                // keep the old sentence on failure
+              }
+            },
           },
-        },
-      ],
-      "plain-text",
-      item.thought.sentence
-    );
-  }, [feed]);
+        ],
+        "plain-text",
+        thought.thought.sentence
+      );
+    },
+    [feed]
+  );
 
   // Walkthrough state
   const [walkthroughVisible, setWalkthroughVisible] = useState(false);
@@ -121,23 +150,39 @@ export default function WorldsScreen() {
     AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
   }, []);
 
-  const loadFeed = useCallback(async (off: number, append: boolean) => {
-    try {
+  const loadFeed = useCallback(
+    async (off: number, append: boolean, opts: { isRefresh?: boolean } = {}) => {
+      if (inFlightFeed.current) {
+        // ignore overlapping calls
+      }
+      const { isRefresh } = opts;
       if (append) setLoadingMore(true);
+      else if (isRefresh) setRefreshing(true);
       else if (off === 0) setLoading(true);
+
       setError(null);
-      const items = await fetchFeed(PAGE_SIZE, off);
-      setFeed((prev) => (append ? prev.concat(items) : items));
-      setOffset(off + items.length);
-      setHasMore(items.length === PAGE_SIZE);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-      setLoadingMore(false);
-    }
-  }, []);
+
+      const p = (async () => {
+        try {
+          const items = await fetchFeed(PAGE_SIZE, off);
+          setFeed((prev) => (append ? prev.concat(items) : items));
+          setOffset(off + items.length);
+          setHasMore(items.length === PAGE_SIZE);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Something went wrong");
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+          inFlightFeed.current = null;
+        }
+      })();
+
+      inFlightFeed.current = p;
+      await p;
+    },
+    []
+  );
 
   const loadNotifications = useCallback(async () => {
     setNotificationsLoading(true);
@@ -152,32 +197,32 @@ export default function WorldsScreen() {
   }, []);
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
     setOffset(0);
-    loadFeed(0, false);
     loadNotifications();
+    loadFeed(0, false, { isRefresh: true });
   }, [loadFeed, loadNotifications]);
 
-  const onMomentumScrollEnd = useCallback(() => {
+  const onEndReached = useCallback(() => {
     if (!hasMore || loadingMore || feed.length === 0) return;
     loadFeed(offset, true);
   }, [hasMore, loadingMore, feed.length, offset, loadFeed]);
 
   const openNotifications = useCallback(() => {
-    setNotificationPanelOpen(true);
-    loadNotifications();
+    setNotificationPanelOpen((prev) => {
+      if (!prev) loadNotifications();
+      return !prev;
+    });
   }, [loadNotifications]);
 
   const handleAccept = useCallback(async (item: NotificationItem) => {
     try {
       const result = await acceptReply(item.reply_id);
       setNotificationPanelOpen(false);
-      setNotifications((prev) => {
-        const next = prev.filter((n) => n.reply_id !== item.reply_id);
-        return next;
-      });
-      router.push({
-        pathname: "/conversation/[id]",
+      setNotifications((prev) => prev.filter((n) => n.reply_id !== item.reply_id));
+
+      // Store the navigation for after the moment
+      const navParams = {
+        pathname: "/conversation/[id]" as const,
         params: {
           id: result.conversation_id,
           otherName: item.replier?.name ?? "",
@@ -185,11 +230,35 @@ export default function WorldsScreen() {
           otherId: item.replier?.id ?? "",
           thoughtSentence: item.thought?.sentence ?? "",
         },
-      });
+      };
+
+      // The connection moment — a felt crossing, not a celebration
+      setConnectionVisible(true);
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
+
+      // Fade in warmth, hold, then navigate on fade out
+      connectionOpacity.value = withSequence(
+        // Rise: warmth arrives
+        withTiming(1, { duration: 350, easing: Easing.out(Easing.ease) }),
+        // Hold: the felt moment
+        withTiming(1, { duration: 400 }),
+        // Dissolve: transition to what comes next
+        withTiming(0, { duration: 300, easing: Easing.in(Easing.ease) })
+      );
+
+      // Navigate during the dissolve phase
+      pendingNavRef.current = () => {
+        setConnectionVisible(false);
+        router.push(navParams);
+      };
+      setTimeout(() => {
+        pendingNavRef.current?.();
+        pendingNavRef.current = null;
+      }, 850);
     } catch {
       // keep in list; user can retry
     }
-  }, [router]);
+  }, [router, connectionOpacity]);
 
   const handleIgnore = useCallback(async (replyId: string) => {
     try {
@@ -206,19 +275,18 @@ export default function WorldsScreen() {
 
   const hasNotifications = notifications.length > 0;
 
-  useEffect(() => {
-    loadFeed(0, false);
-  }, [loadFeed]);
-
-  useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
-
   useFocusEffect(
     useCallback(() => {
-      loadFeed(0, false);
-      loadNotifications();
-    }, [loadFeed, loadNotifications])
+      const now = Date.now();
+      const shouldRefresh =
+        feed.length === 0 || now - lastFocusRefreshAt.current > FOCUS_REFRESH_INTERVAL_MS;
+
+      if (shouldRefresh) {
+        lastFocusRefreshAt.current = now;
+        loadFeed(0, false);
+        loadNotifications();
+      }
+    }, [feed.length, loadFeed, loadNotifications])
   );
 
   return (
@@ -247,30 +315,30 @@ export default function WorldsScreen() {
         </View>
       ) : feed.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.emptyText}>Post your first thought.</Text>
+          <Text style={styles.emptyText}>{pickPrompt(EMPTY_STATE_PROMPTS)}</Text>
         </View>
       ) : (
         <FlatList
           data={feed}
-          keyExtractor={(item) => (item.type === "thought" ? item.thought.id : item.type === "crossing" ? `crossing-${item.crossing.id}` : `shift-${item.id}`)}
+          keyExtractor={(item) => (item.type === "thought" ? item.thought.id : item.type === "crossing" ? `crossing-${item.crossing.id}` : "unknown")}
           renderItem={({ item, index }) => (
             <View
               ref={index === 0 ? feedCardRef : undefined}
               collapsable={false}
               style={styles.cardWrap}
             >
-              {item.type === "thought" ? (
-                <SwipeableThoughtCard
-                  item={item}
-                  isOwn={myUserId === item.user.id}
-                  onDelete={handleFeedDelete}
-                  onEdit={handleFeedEdit}
-                />
-              ) : item.type === "crossing" ? (
-                <CrossingCard item={item} />
-              ) : (
-                <ShiftCard item={item} />
-              )}
+              <CardDeck>
+                {item.type === "thought" ? (
+                  <SwipeableThoughtCard
+                    item={item}
+                    isOwn={myUserId === item.user.id}
+                    onDelete={handleFeedDelete}
+                    onEdit={handleFeedEdit}
+                  />
+                ) : item.type === "crossing" ? (
+                  <CrossingCard item={item} myUserId={myUserId} />
+                ) : null}
+              </CardDeck>
             </View>
           )}
           contentContainerStyle={styles.listContent}
@@ -282,7 +350,7 @@ export default function WorldsScreen() {
               tintColor={colors.TYPE_MUTED}
             />
           }
-          onEndReached={onMomentumScrollEnd}
+          onEndReached={onEndReached}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
             loadingMore ? (
@@ -308,6 +376,18 @@ export default function WorldsScreen() {
         onComplete={handleWalkthroughComplete}
         targetRefs={walkthroughRefs}
       />
+
+      {/* Connection moment — the felt crossing from stranger to thinking partner */}
+      {connectionVisible && (
+        <Animated.View style={[StyleSheet.absoluteFill, styles.connectionOverlay, connectionOverlayStyle]}>
+          <LinearGradient
+            colors={[colors.VERMILLION, colors.PANEL_DEEP]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -324,7 +404,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.cardGap,
   },
   cardWrap: {
-    marginBottom: spacing.cardGap,
+    marginBottom: spacing.cardGap + 4,
+    paddingBottom: 6,
   },
   centered: {
     flex: 1,
@@ -360,5 +441,8 @@ const styles = StyleSheet.create({
     left: "33%",
     width: "34%",
     height: 56,
+  },
+  connectionOverlay: {
+    zIndex: 100,
   },
 });

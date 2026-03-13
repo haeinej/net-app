@@ -11,15 +11,43 @@ async function main() {
   const app = Fastify({ logger: true });
   console.log("[boot] fastify created");
 
+  const corsOrigin = process.env.CORS_ORIGIN;
+  const nodeEnv = process.env.NODE_ENV;
+  const jwtSecret = process.env.JWT_SECRET;
+
+  if (nodeEnv === "production") {
+    if (!jwtSecret || jwtSecret.length < 32) {
+      throw new Error("JWT_SECRET must be set to a strong, random value in production");
+    }
+    if (!corsOrigin) {
+      throw new Error("CORS_ORIGIN must be set in production");
+    }
+  }
+
   console.log("[boot] registering cors...");
-  await app.register(cors, { origin: process.env.CORS_ORIGIN ?? true });
+  await app.register(cors, {
+    origin:
+      nodeEnv === "production"
+        ? (corsOrigin ?? "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : corsOrigin ?? true,
+  });
   console.log("[boot] registering jwt...");
-  await app.register(jwt, { secret: process.env.JWT_SECRET ?? "change-me" });
+  await app.register(jwt, {
+    secret: jwtSecret ?? "development-only-secret",
+    sign: { expiresIn: "30d" },
+  });
   console.log("[boot] registering rateLimit...");
   await app.register(rateLimit, {
     max: 60,
     timeWindow: "1 minute",
-    keyGenerator: (req) => (req.headers.authorization as string) ?? req.ip,
+    keyGenerator: (req) => {
+      const user = (req as any).user as { sub?: string } | undefined;
+      if (user?.sub) return `user:${user.sub}`;
+      return `ip:${req.ip}`;
+    },
   });
   console.log("[boot] registering websocket...");
   await app.register(websocket);

@@ -18,39 +18,62 @@ export type LearningMaps = {
   clusterAffinityMap: Map<string, number> | null;
 };
 
+// Simple in-process caches with TTL to avoid reloading learning maps on every feed request
+const LEARNING_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+let crossDomainCache: { map: Map<string, number>; expiresAt: number } | null = null;
+let temporalResonanceCache: { map: Map<number, number>; expiresAt: number } | null = null;
+let clusterAffinityCache: { map: Map<string, number>; expiresAt: number } | null = null;
+
 /** Load cross-domain affinity sustainRates. Key = sorted concentration pair. */
 export async function loadCrossDomainAffinityMap(): Promise<Map<string, number>> {
+  const now = Date.now();
+  if (crossDomainCache && crossDomainCache.expiresAt > now) {
+    return crossDomainCache.map;
+  }
   const rows = await db.select().from(crossDomainAffinity);
   const map = new Map<string, number>();
   for (const r of rows) {
     const key = [r.concentrationA, r.concentrationB].sort().join("\0");
     map.set(key, r.sustainRate ?? 0);
   }
+  crossDomainCache = { map, expiresAt: now + LEARNING_TTL_MS };
   return map;
 }
 
 /** Load temporal resonance: cohort_distance → sustainRate from system_config. */
 export async function loadTemporalResonanceMap(): Promise<Map<number, number>> {
+  const now = Date.now();
+  if (temporalResonanceCache && temporalResonanceCache.expiresAt > now) {
+    return temporalResonanceCache.map;
+  }
   const [row] = await db.select().from(systemConfig).where(eq(systemConfig.key, "temporal_resonance"));
   const map = new Map<number, number>();
-  if (!row?.value) return map;
-  const val = row.value as { by_distance?: Array<{ cohort_distance: number; sustain_rate: number }> };
-  if (Array.isArray(val.by_distance)) {
-    for (const entry of val.by_distance) {
-      map.set(entry.cohort_distance, entry.sustain_rate);
+  if (row?.value) {
+    const val = row.value as { by_distance?: Array<{ cohort_distance: number; sustain_rate: number }> };
+    if (Array.isArray(val.by_distance)) {
+      for (const entry of val.by_distance) {
+        map.set(entry.cohort_distance, entry.sustain_rate);
+      }
     }
   }
+  temporalResonanceCache = { map, expiresAt: now + LEARNING_TTL_MS };
   return map;
 }
 
 /** Load cross-cluster affinity sustainRates. Key = sorted cluster ID pair. */
 export async function loadClusterAffinityMap(): Promise<Map<string, number>> {
+  const now = Date.now();
+  if (clusterAffinityCache && clusterAffinityCache.expiresAt > now) {
+    return clusterAffinityCache.map;
+  }
   const rows = await db.select().from(crossClusterAffinity);
   const map = new Map<string, number>();
   for (const r of rows) {
     const key = [r.clusterAId, r.clusterBId].sort().join("\0");
     map.set(key, r.sustainRate ?? 0);
   }
+  clusterAffinityCache = { map, expiresAt: now + LEARNING_TTL_MS };
   return map;
 }
 
@@ -131,35 +154,89 @@ function clusterNoveltyScore(
   return maxAffinity > 0 ? 0.5 + maxAffinity * 0.5 : 0.5;
 }
 
-/** Reply quality R: accepted reply, sustained conv (10+ msgs), cross-domain ratio. */
-async function replyQualityScore(thoughtId: string, authorConcentration: string | null): Promise<number> {
-  const accepted = await db
-    .select({ replierId: replies.replierId, id: replies.id })
+export type ReplyQualityMap = Map<string, number>;
+
+/**
+ * Build reply quality scores in batch for a set of thought IDs.
+ * R ~ 0.3 base + 0.4 if any sustained conversation (>=10 msgs) + up to 0.3 cross-domain reply ratio.
+ */
+export async function buildReplyQualityMap(
+  thoughtIds: string[],
+  authorConcentrationByThought: Map<string, string | null>
+): Promise<ReplyQualityMap> {
+  const map: ReplyQualityMap = new Map();
+  if (thoughtIds.length === 0) return map;
+
+  // Accepted replies per thought
+  const acceptedRows = await db
+    .select({ thoughtId: replies.thoughtId, replierId: replies.replierId })
     .from(replies)
-    .where(and(eq(replies.thoughtId, thoughtId), eq(replies.status, "accepted")));
-  if (accepted.length === 0) return 0.5;
+    .where(and(inArray(replies.thoughtId, thoughtIds), eq(replies.status, "accepted")));
 
-  let r = 0.3;
-  const convs = await db
-    .select({ messageCount: conversations.messageCount, participantA: conversations.participantA, participantB: conversations.participantB })
+  // Conversations per thought
+  const convRows = await db
+    .select({
+      thoughtId: conversations.thoughtId,
+      messageCount: conversations.messageCount,
+      participantA: conversations.participantA,
+      participantB: conversations.participantB,
+    })
     .from(conversations)
-    .where(eq(conversations.thoughtId, thoughtId));
-  const sustained = convs.filter((c) => (c.messageCount ?? 0) >= 10);
-  if (sustained.length > 0) r += 0.4;
+    .where(inArray(conversations.thoughtId, thoughtIds));
 
-  let crossDomain = 0;
-  const replierIds = accepted.map((a) => a.replierId);
-  if (authorConcentration && replierIds.length > 0) {
-    const repliers = await db
-      .select({ id: users.id, concentration: users.concentration })
-      .from(users)
-      .where(inArray(users.id, replierIds));
-    const authorConc = (authorConcentration ?? "").toLowerCase();
-    const different = repliers.filter((r) => (r.concentration ?? "").toLowerCase() !== authorConc).length;
-    crossDomain = (different / Math.max(accepted.length, 1)) * 0.3;
+  const convByThought = new Map<string, typeof convRows>();
+  for (const row of convRows) {
+    const arr = convByThought.get(row.thoughtId) ?? [];
+    arr.push(row);
+    convByThought.set(row.thoughtId, arr);
   }
-  r += crossDomain;
-  return Math.min(1, r);
+
+  const acceptedByThought = new Map<string, typeof acceptedRows>();
+  for (const row of acceptedRows) {
+    const arr = acceptedByThought.get(row.thoughtId) ?? [];
+    arr.push(row);
+    acceptedByThought.set(row.thoughtId, arr);
+  }
+
+  // Replier users in one batched query
+  const replierIds = [...new Set(acceptedRows.map((r) => r.replierId))];
+  const replierUsers =
+    replierIds.length > 0
+      ? await db
+          .select({ id: users.id, concentration: users.concentration })
+          .from(users)
+          .where(inArray(users.id, replierIds))
+      : [];
+  const replierConc = new Map(replierUsers.map((u) => [u.id, (u.concentration ?? "").toLowerCase()]));
+
+  for (const thoughtId of thoughtIds) {
+    const accepted = acceptedByThought.get(thoughtId) ?? [];
+    if (accepted.length === 0) {
+      map.set(thoughtId, 0.5);
+      continue;
+    }
+
+    let r = 0.3;
+
+    const convs = convByThought.get(thoughtId) ?? [];
+    const sustained = convs.filter((c) => (c.messageCount ?? 0) >= 10);
+    if (sustained.length > 0) r += 0.4;
+
+    const authorConc = (authorConcentrationByThought.get(thoughtId) ?? "").toLowerCase();
+    if (authorConc && accepted.length > 0) {
+      let different = 0;
+      for (const a of accepted) {
+        const c = replierConc.get(a.replierId) ?? "";
+        if (c && c !== authorConc) different++;
+      }
+      const crossDomain = (different / accepted.length) * 0.3;
+      r += crossDomain;
+    }
+
+    map.set(thoughtId, Math.min(1, r));
+  }
+
+  return map;
 }
 
 /** Phase 1 rank: freshness × 0.5 + quality × 0.3 + cohort_diversity × 0.2 */
@@ -175,42 +252,44 @@ export function rankScorePhase1(
 }
 
 /** Phase 2 rank: (Q×w1) + (D×w2) + (F×w3) + (R×w4). Now uses learning data for D. */
-export async function rankScorePhase2(
+export function rankScorePhase2(
   thought: ThoughtCandidate,
   viewer: ViewerProfile,
   layer2Score: number,
   weights: RecommendationWeights,
   layer2Max: number,
   maps?: LearningMaps,
-  viewerClusterIds?: string[]
-): Promise<number> {
+  viewerClusterIds?: string[],
+  replyQuality?: number
+): number {
   const Q = layer2Max > 0 ? Math.min(1, layer2Score / layer2Max) : 0.5;
   const cohortDist = cohortDistance(thought, viewer, maps?.resonanceMap ?? null);
   const concDiff = concentrationDiff(thought, viewer, maps?.affinityMap ?? null);
   const clusterNov = clusterNoveltyScore(thought, viewerClusterIds ?? [], maps?.clusterAffinityMap ?? null);
   const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNov * 0.3;
   const F = freshnessScore(thought.createdAt);
-  const R = await replyQualityScore(thought.id, thought.authorConcentration);
+  const R = typeof replyQuality === "number" ? replyQuality : 0.5;
   return Q * weights.qWeight + D * weights.dWeight + F * weights.fWeight + R * weights.rWeight;
 }
 
 /** Same as rankScorePhase2 but returns components for debug endpoint. */
-export async function rankScorePhase2WithDebug(
+export function rankScorePhase2WithDebug(
   thought: ThoughtCandidate,
   viewer: ViewerProfile,
   layer2Score: number,
   weights: RecommendationWeights,
   layer2Max: number,
   maps?: LearningMaps,
-  viewerClusterIds?: string[]
-): Promise<{ score: number; Q: number; D: number; F: number; R: number }> {
+  viewerClusterIds?: string[],
+  replyQuality?: number
+): { score: number; Q: number; D: number; F: number; R: number } {
   const Q = layer2Max > 0 ? Math.min(1, layer2Score / layer2Max) : 0.5;
   const cohortDist = cohortDistance(thought, viewer, maps?.resonanceMap ?? null);
   const concDiff = concentrationDiff(thought, viewer, maps?.affinityMap ?? null);
   const clusterNov = clusterNoveltyScore(thought, viewerClusterIds ?? [], maps?.clusterAffinityMap ?? null);
   const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNov * 0.3;
   const F = freshnessScore(thought.createdAt);
-  const R = await replyQualityScore(thought.id, thought.authorConcentration);
+  const R = typeof replyQuality === "number" ? replyQuality : 0.5;
   const score = Q * weights.qWeight + D * weights.dWeight + F * weights.fWeight + R * weights.rWeight;
   return { score, Q, D, F, R };
 }

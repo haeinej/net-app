@@ -8,6 +8,7 @@ import { colors } from "../theme";
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     "Sentient-Light": require("../assets/fonts/Sentient-Light.otf"),
+    "Sentient-Bold": require("../assets/fonts/Sentient-Bold.otf"),
     "Comico-Regular": require("../assets/fonts/Comico-Regular.otf"),
   });
 
