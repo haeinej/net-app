@@ -39,6 +39,27 @@ function toCandidate(row: {
   };
 }
 
+async function getViewerSeedEmbedding(viewerId: string): Promise<number[] | null> {
+  const embeddingService = getEmbeddingService();
+  const [viewer] = await db
+    .select({ interests: users.interests })
+    .from(users)
+    .where(eq(users.id, viewerId));
+  const interestsText = Array.isArray(viewer?.interests)
+    ? (viewer.interests as string[]).filter(Boolean).join(" ")
+    : "";
+
+  try {
+    return interestsText.length > 0
+      ? await embeddingService.embed(interestsText, "query")
+      : await embeddingService.embed("general", "query");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[feed] seed embedding unavailable for viewer ${viewerId}: ${message}`);
+    return null;
+  }
+}
+
 /** 50 most recent thoughts (excluding viewer). */
 async function getRecentCandidates(viewerId: string): Promise<ThoughtCandidate[]> {
   const rows = await db
@@ -225,24 +246,15 @@ export async function getCandidates(
       }
     }
   } else {
-    const embeddingService = getEmbeddingService();
-    const [viewer] = await db
-      .select({ interests: users.interests })
-      .from(users)
-      .where(eq(users.id, viewerId));
-    const interestsText = Array.isArray(viewer?.interests)
-      ? (viewer!.interests as string[]).filter(Boolean).join(" ")
-      : "";
-    const interestsEmbedding =
-      interestsText.length > 0
-        ? await embeddingService.embed(interestsText, "query")
-        : await embeddingService.embed("general", "query");
-    const batch = await getNearestBySurface(
-      viewerId,
-      interestsEmbedding,
-      newUserSurfaceLimit
-    );
-    bySimilarity.push(...batch);
+    const interestsEmbedding = await getViewerSeedEmbedding(viewerId);
+    if (interestsEmbedding) {
+      const batch = await getNearestBySurface(
+        viewerId,
+        interestsEmbedding,
+        newUserSurfaceLimit
+      );
+      bySimilarity.push(...batch);
+    }
   }
 
   const bySimilarityIds = new Set(bySimilarity.map((c) => c.id));
@@ -304,20 +316,15 @@ export async function getBucketedCandidates(
       }
     }
   } else {
-    const embeddingService = getEmbeddingService();
-    const [viewer] = await db
-      .select({ interests: users.interests })
-      .from(users)
-      .where(eq(users.id, viewerId));
-    const interestsText = Array.isArray(viewer?.interests)
-      ? (viewer!.interests as string[]).filter(Boolean).join(" ")
-      : "";
-    const interestsEmbedding =
-      interestsText.length > 0
-        ? await embeddingService.embed(interestsText, "query")
-        : await embeddingService.embed("general", "query");
-    const batch = await getNearestBySurface(viewerId, interestsEmbedding, newUserSurfaceLimit);
-    bySimilarity.push(...batch);
+    const interestsEmbedding = await getViewerSeedEmbedding(viewerId);
+    if (interestsEmbedding) {
+      const batch = await getNearestBySurface(
+        viewerId,
+        interestsEmbedding,
+        newUserSurfaceLimit
+      );
+      bySimilarity.push(...batch);
+    }
   }
 
   // Merge similarity + recent, deduplicate

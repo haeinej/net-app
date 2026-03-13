@@ -114,8 +114,15 @@ async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
   if (resonanceEmbeddings.length === 0 && viewer[0]?.interests) {
     const interestsText = (viewer[0].interests as string[]).filter(Boolean).join(" ");
     if (interestsText) {
-      const emb = getEmbeddingService();
-      interestsEmbedding = await emb.embed(interestsText, "query");
+      try {
+        const emb = getEmbeddingService();
+        interestsEmbedding = await emb.embed(interestsText, "query");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[feed] interests embedding unavailable for viewer ${viewerId}: ${message}`
+        );
+      }
     }
   }
 
