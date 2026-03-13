@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ohm. Support</title>
+  <style>
+    :root {
+      --vermillion: #eb4101;
+      --olive: #979c5b;
+      --warm-ground: #f5f0ea;
+      --card-ground: #ede8e2;
+      --deep: #080604;
+      --type-dark: #1a1a16;
+      --type-muted: #7d7a72;
+      --line: rgba(12, 12, 10, 0.08);
+      --warning: #fff5ea;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--warm-ground);
+      color: var(--type-dark);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.65;
+    }
+
+    a {
+      color: var(--vermillion);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .shell {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+
+    .brand {
+      color: var(--deep);
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+
+    .brand span {
+      color: var(--vermillion);
+    }
+
+    .back {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .hero {
+      margin-bottom: 32px;
+    }
+
+    .eyebrow {
+      color: var(--olive);
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin: 0 0 10px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(40px, 7vw, 64px);
+      line-height: 0.96;
+      letter-spacing: -0.05em;
+    }
+
+    .intro {
+      max-width: 720px;
+      color: var(--type-muted);
+      font-size: 18px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.48);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 28px 24px;
+      margin-top: 18px;
+      backdrop-filter: blur(12px);
+    }
+
+    .notice {
+      background: var(--warning);
+      border-color: rgba(235, 65, 1, 0.15);
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    p,
+    li {
+      font-size: 17px;
+    }
+
+    ul {
+      margin: 12px 0 0 20px;
+      padding: 0;
+    }
+
+    code {
+      font-size: 15px;
+      background: rgba(8, 6, 4, 0.06);
+      padding: 2px 6px;
+      border-radius: 8px;
+    }
+
+    .footer-note {
+      margin-top: 36px;
+      color: var(--type-muted);
+      font-size: 15px;
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        padding: 28px 16px 64px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        margin-bottom: 36px;
+      }
+
+      .card {
+        border-radius: 22px;
+        padding: 22px 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <a class="brand" href="https://www.ohmmmm.com">ohm<span>.</span></a>
+      <a class="back" href="https://www.ohmmmm.com">Back to home</a>
+    </div>
+
+    <section class="hero">
+      <p class="eyebrow">Support</p>
+      <h1>Help with ohm.</h1>
+      <p class="intro">
+        Use this page for account questions, privacy requests, bug reports, and
+        help with the app experience.
+      </p>
+    </section>
+
+    <section class="card notice">
+      <h2>Contact support</h2>
+      <p>
+        For help with ohm., email
+        <a href="mailto:support@ohmmmm.com">support@ohmmmm.com</a>.
+        Please monitor this inbox before App Store submission so review and
+        user support requests are received.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>What we can help with</h2>
+      <ul>
+        <li>Login and account access issues</li>
+        <li>Account deletion requests</li>
+        <li>Profile or photo issues</li>
+        <li>Reply, conversation, or collaborative card problems</li>
+        <li>Privacy and data requests</li>
+        <li>Bug reports and app performance issues</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Account deletion</h2>
+      <p>
+        If you want to remove your account, use
+        <strong>Me &gt; Settings &gt; Delete Account</strong> in the app.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Privacy policy</h2>
+      <p>
+        You can review the ohm. privacy policy here:
+        <a href="https://www.ohmmmm.com/privacy-policy.html">www.ohmmmm.com/privacy-policy.html</a>
+      </p>
+    </section>
+
+    <p class="footer-note">
+      Last updated: March 13, 2026
+    </p>
+  </main>
+</body>
+</html>

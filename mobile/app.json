@@ -19,20 +19,24 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ohm.app",
+      "bundleIdentifier": "com.ohmmmm.app",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
-        "NSPhotoLibraryUsageDescription": "Allow ohm. to access your photos so you can choose a profile or thought image."
+        "NSPhotoLibraryUsageDescription": "Allow ohm. to access your photos so you can choose a profile or thought image.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.ohm.app",
+      "package": "com.ohmmmm.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/ohm-app-icon.png",
         "backgroundColor": "#F5F0EA"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-dev-client",
@@ -47,6 +51,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8954382e-1e4f-4137-8714-9890844f9dcd"
+      }
+    },
+    "owner": "haeinej"
   }
 }
