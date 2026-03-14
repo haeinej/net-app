@@ -17,6 +17,7 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
+import { fontFamily } from "../../theme/typography";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { SwipeConfirm } from "../../components/SwipeConfirm";
 import {
@@ -24,13 +25,15 @@ import {
   postConversationMessage,
   fetchConversationDetail,
   getMyUserId,
-  startShift,
-  updateShiftDraft,
-  completeShift,
-  ignoreShift,
+  startCollaborativeCard,
+  updateCollaborativeCardDraft,
+  completeCollaborativeCard,
+  ignoreCollaborativeCard,
   type ConversationMessage,
   type ConversationDetail,
 } from "../../lib/api";
+
+const COLLABORATIVE_CARD_MESSAGE_STEP = 8;
 
 function formatMessageTime(iso: string | null): string {
   if (!iso) return "";
@@ -67,7 +70,7 @@ function getOutgoingPalette(messageCount: number): {
   text: string;
   time: string;
 } {
-  const intensity = clamp(messageCount / 10, 0, 1);
+  const intensity = clamp(messageCount / COLLABORATIVE_CARD_MESSAGE_STEP, 0, 1);
   return {
     bubble: mixHex("#E8CDBE", colors.VERMILLION, intensity),
     text: mixHex("#FFF8F3", colors.TYPE_WHITE, intensity),
@@ -213,7 +216,7 @@ export default function ConversationThreadScreen() {
   const saveShiftDraft = useCallback(async () => {
     if (!id || !convDetail || shiftSubmitting) return;
     const isParticipantA = myUserId === convDetail.participant_a_id;
-    await updateShiftDraft(
+    await updateCollaborativeCardDraft(
       id,
       isParticipantA
         ? { a_before: shiftBefore, a_after: shiftAfter }
@@ -223,7 +226,10 @@ export default function ConversationThreadScreen() {
 
   const shiftDraft = convDetail?.shift_draft ?? null;
   const messageCount = convDetail?.message_count ?? messages.length;
-  const canCreateCollaborativeCard = messageCount >= 10 && !(convDetail?.shift_complete ?? false);
+  const shiftCount = convDetail?.shift_count ?? 0;
+  const nextShiftMessageCount =
+    convDetail?.next_shift_message_count ?? COLLABORATIVE_CARD_MESSAGE_STEP;
+  const canCreateCollaborativeCard = Boolean(shiftDraft) || Boolean(convDetail?.shift_available);
   const isParticipantA = convDetail ? myUserId === convDetail.participant_a_id : false;
   const viewerReady = shiftDraft
     ? Boolean(isParticipantA ? shiftDraft.participant_a_ready_at : shiftDraft.participant_b_ready_at)
@@ -246,15 +252,22 @@ export default function ConversationThreadScreen() {
   }, [convDetail, isParticipantA, shiftDraft, shiftOpen]);
 
   useEffect(() => {
-    if (bothReady && !shiftOpen && !(convDetail?.shift_complete ?? false)) {
+    if (bothReady && !shiftOpen) {
       setShiftOpen(true);
     }
-  }, [bothReady, convDetail?.shift_complete, shiftOpen]);
+  }, [bothReady, shiftOpen]);
 
   const handleStartCollaborativeCard = useCallback(async () => {
     if (!id) return;
-    await startShift(id);
-    await loadDetail();
+    try {
+      await startCollaborativeCard(id);
+      await loadDetail();
+    } catch (error) {
+      Alert.alert(
+        "Could not start collaborative card",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    }
   }, [id, loadDetail]);
 
   const handleIgnoreCollaborativeCard = useCallback(() => {
@@ -269,10 +282,13 @@ export default function ConversationThreadScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await ignoreShift(id);
+              await ignoreCollaborativeCard(id);
               router.replace("/(tabs)/conversations");
-            } catch {
-              // Keep the conversation open if deletion fails.
+            } catch (error) {
+              Alert.alert(
+                "Could not ignore invite",
+                error instanceof Error ? error.message : "Please try again."
+              );
             }
           },
         },
@@ -285,9 +301,14 @@ export default function ConversationThreadScreen() {
     setShiftSubmitting(true);
     try {
       await saveShiftDraft();
-      await completeShift(id);
+      await completeCollaborativeCard(id);
       setShiftOpen(false);
       await loadDetail();
+    } catch (error) {
+      Alert.alert(
+        "Could not create collaborative card",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setShiftSubmitting(false);
     }
@@ -299,6 +320,11 @@ export default function ConversationThreadScreen() {
     try {
       await saveShiftDraft();
       await loadDetail();
+    } catch (error) {
+      Alert.alert(
+        "Could not save collaborative card",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
       setShiftSubmitting(false);
     }
@@ -313,10 +339,15 @@ export default function ConversationThreadScreen() {
   }
 
   const renderCollaborativeBanner = () => {
-    if (!canCreateCollaborativeCard) return null;
-
-    if (convDetail?.shift_complete) {
-      return <Text style={styles.completeLabel}>Collaborative card shared.</Text>;
+    if (!canCreateCollaborativeCard) {
+      if (shiftCount > 0 && messageCount < nextShiftMessageCount) {
+        return (
+          <Text style={styles.completeLabel}>
+            Next collaborative card unlocks at {nextShiftMessageCount} messages.
+          </Text>
+        );
+      }
+      return null;
     }
 
     if (!shiftDraft || !viewerReady) {
@@ -335,7 +366,7 @@ export default function ConversationThreadScreen() {
             loading={shiftSubmitting}
             onComplete={handleStartCollaborativeCard}
           />
-          {shiftDraft && otherReady ? (
+          {shiftDraft && otherReady && shiftCount === 0 ? (
             <TouchableOpacity style={styles.ignoreRow} onPress={handleIgnoreCollaborativeCard}>
               <Text style={styles.ignoreText}>Ignore and delete conversation</Text>
             </TouchableOpacity>
@@ -481,7 +512,7 @@ export default function ConversationThreadScreen() {
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
             keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
-            style={[styles.inputArea, { paddingBottom: insets.bottom + 12 }]}
+            style={styles.inputArea}
           >
             {renderCollaborativeBanner()}
 
@@ -551,6 +582,7 @@ export default function ConversationThreadScreen() {
                 <Text style={styles.sendBtnText}>Send</Text>
               </TouchableOpacity>
             </View>
+            <View style={{ height: insets.bottom + 24 }} />
           </KeyboardAvoidingView>
         </>
       )}
@@ -629,9 +661,9 @@ const styles = StyleSheet.create({
   },
   thoughtSentence: {
     ...typography.thoughtDisplay,
+    fontFamily: fontFamily.sentientBold,
     fontSize: 15,
     lineHeight: 18,
-    fontWeight: "700",
     color: colors.TYPE_DARK,
   },
   historyNotice: {

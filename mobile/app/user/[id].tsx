@@ -13,14 +13,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
 import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
-import { ShiftCard } from "../../components/ShiftCard";
 import { CrossingCard } from "../../components/CrossingCard";
+import { CollaborativeCard } from "../../components/CollaborativeCard";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
 import {
   fetchProfile,
   type ProfileResponse,
-  type FeedItemShift,
   type FeedItemCrossing,
+  type FeedItemCollaborative,
 } from "../../lib/api";
 
 export default function UserProfileScreen() {
@@ -94,7 +94,7 @@ export default function UserProfileScreen() {
 
   const hasDeckContent =
     profile.thoughts.length > 0 ||
-    (profile.shifts?.length ?? 0) > 0 ||
+    (profile.collaborative_cards?.length ?? 0) > 0 ||
     (profile.crossings?.length ?? 0) > 0;
 
   return (
@@ -130,17 +130,31 @@ export default function UserProfileScreen() {
           </View>
         ))
       )}
-      {profile.shifts?.map((s) => {
-        const shiftItem: FeedItemShift = {
-          type: "shift",
-          id: s.id,
-          created_at: s.created_at ?? new Date().toISOString(),
-          participant_a: s.participant_a,
-          participant_b: s.participant_b,
+      {profile.collaborative_cards?.map((c) => {
+        const collaborativeItem: FeedItemCollaborative = {
+          type: "collaborative",
+          collaborative: {
+            id: c.id,
+            created_at: c.created_at ?? new Date().toISOString(),
+          },
+          participant_a: c.participant_a ?? {
+            id: "",
+            name: null,
+            photo_url: null,
+            before: "",
+            after: "",
+          },
+          participant_b: c.participant_b ?? {
+            id: "",
+            name: null,
+            photo_url: null,
+            before: "",
+            after: "",
+          },
         };
         return (
-          <View key={s.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
-            <ShiftCard item={shiftItem} />
+          <View key={`cc-${c.id}`} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
+            <CollaborativeCard item={collaborativeItem} />
           </View>
         );
       })}

@@ -14,10 +14,12 @@ import * as ImagePicker from "expo-image-picker";
 // SVG removed — using simple round photo with border
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, fontFamily } from "../../theme";
+import { LinearGradient } from "expo-linear-gradient";
+import { colors, spacing, fontFamily, shadows } from "../../theme";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
-import { ShiftCard } from "../../components/ShiftCard";
+import { CollaborativeCard } from "../../components/CollaborativeCard";
+import { CardDeck } from "../../components/CardDeck";
 import {
   getMyUserId,
   fetchProfile,
@@ -29,7 +31,7 @@ import {
   type ProfileResponse,
   type FeedItemThought,
   type FeedItemCrossing,
-  type FeedItemShift,
+  type FeedItemCollaborative,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
 
@@ -228,10 +230,32 @@ export default function MeScreen() {
     );
   }
 
-  const hasDeckContent =
-    profile.thoughts.length > 0 ||
-    (profile.shifts?.length ?? 0) > 0 ||
-    (profile.crossings?.length ?? 0) > 0;
+  // Merge thoughts + crossings into a single deck sorted by most recent
+  const deckItems: Array<
+    | { kind: "thought"; date: string; data: (typeof profile.thoughts)[number] }
+    | {
+        kind: "collaborative";
+        date: string;
+        data: NonNullable<typeof profile.collaborative_cards>[number];
+      }
+    | { kind: "crossing"; date: string; data: NonNullable<typeof profile.crossings>[number] }
+  > = [];
+
+  for (const t of profile.thoughts) {
+    deckItems.push({ kind: "thought", date: t.created_at ?? new Date(0).toISOString(), data: t });
+  }
+  for (const c of profile.crossings ?? []) {
+    deckItems.push({ kind: "crossing", date: c.created_at ?? new Date(0).toISOString(), data: c });
+  }
+  for (const collaborative of profile.collaborative_cards ?? []) {
+    deckItems.push({
+      kind: "collaborative",
+      date: collaborative.created_at ?? new Date(0).toISOString(),
+      data: collaborative,
+    });
+  }
+
+  deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <ScrollView
@@ -239,13 +263,22 @@ export default function MeScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* Profile photo — clean round with warm white border */}
-      <View style={[styles.photoCircle, { width: photoSize, height: photoSize, borderRadius: photoSize / 2 }]}>
-        {profile.photo_url ? (
-          <Image source={{ uri: profile.photo_url }} style={{ width: photoSize - 8, height: photoSize - 8, borderRadius: (photoSize - 8) / 2 }} contentFit="cover" />
-        ) : (
-          <View style={{ width: photoSize - 8, height: photoSize - 8, borderRadius: (photoSize - 8) / 2, backgroundColor: "rgba(245,240,234,0.08)" }} />
-        )}
+      {/* Subtle depth gradient — warm glow behind profile, fading into depth */}
+      <LinearGradient
+        colors={["rgba(255,252,245,0.035)", "rgba(255,252,245,0.015)", "transparent", "rgba(0,0,0,0.08)"]}
+        locations={[0, 0.15, 0.4, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {/* Profile photo — organic asymmetric round shape */}
+      <View style={styles.photoOuter}>
+        <View style={styles.photoInner}>
+          {profile.photo_url ? (
+            <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
+          ) : (
+            <View style={styles.photoEmpty} />
+          )}
+        </View>
       </View>
 
       {/* Name */}
@@ -298,76 +331,93 @@ export default function MeScreen() {
         </View>
       )}
 
-      {!hasDeckContent ? (
+      {deckItems.length === 0 ? (
         <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
       ) : (
-        profile.thoughts.map((t) => {
-          const feedItem: FeedItemThought = {
-            type: "thought",
-            thought: {
-              id: t.id,
-              sentence: t.sentence,
-              photo_url: t.photo_url,
-              image_url: t.image_url,
-              created_at: t.created_at ?? new Date().toISOString(),
-              has_context: false,
-            },
-            user: {
-              id: myUserId ?? "",
-              name: profile.name,
-              photo_url: profile.photo_url,
-            },
-            warmth_level: t.warmth_level,
-          };
-          return (
-            <View key={t.id} style={styles.thoughtWrap}>
-              <SwipeableThoughtCard
-                item={feedItem}
-                visible
-                isOwn
-                onDelete={handleDeleteThought}
-                onEdit={handleEditThought}
-              />
-            </View>
-          );
-        })
-      )}
+        deckItems.map((item) => {
+          if (item.kind === "thought") {
+            const t = item.data;
+            const feedItem: FeedItemThought = {
+              type: "thought",
+              thought: {
+                id: t.id,
+                sentence: t.sentence,
+                photo_url: t.photo_url,
+                image_url: t.image_url,
+                created_at: t.created_at ?? new Date().toISOString(),
+                has_context: false,
+              },
+              user: {
+                id: myUserId ?? "",
+                name: profile.name,
+                photo_url: profile.photo_url,
+              },
+              warmth_level: t.warmth_level,
+            };
+            return (
+              <View key={`t-${t.id}`} style={styles.thoughtWrap}>
+                <CardDeck>
+                  <SwipeableThoughtCard
+                    item={feedItem}
+                    visible
+                    isOwn
+                    onDelete={handleDeleteThought}
+                    onEdit={handleEditThought}
+                  />
+                </CardDeck>
+              </View>
+            );
+          }
+          if (item.kind === "crossing") {
+            const c = item.data;
+            const crossingItem: FeedItemCrossing = {
+              type: "crossing",
+              crossing: {
+                id: c.id,
+                sentence: c.sentence,
+                context: c.context,
+                created_at: c.created_at ?? new Date().toISOString(),
+              },
+              participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
+              participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
+              warmth_level: "none",
+            };
+            return (
+              <View key={`c-${c.id}`} style={styles.thoughtWrap}>
+                <CardDeck>
+                  <CrossingCard item={crossingItem} visible myUserId={myUserId} />
+                </CardDeck>
+              </View>
+            );
+          }
 
-      {profile.shifts && profile.shifts.length > 0 && (
-        profile.shifts.map((s) => {
-          const shiftItem: FeedItemShift = {
-            type: "shift",
-            id: s.id,
-            created_at: s.created_at ?? new Date().toISOString(),
-            participant_a: s.participant_a,
-            participant_b: s.participant_b,
-          };
-          return (
-            <View key={s.id} style={styles.thoughtWrap}>
-              <ShiftCard item={shiftItem} />
-            </View>
-          );
-        })
-      )}
-
-      {/* Crossings */}
-      {profile.crossings && profile.crossings.length > 0 && (
-        profile.crossings.map((c) => {
-          const crossingItem: FeedItemCrossing = {
-            type: "crossing",
-            crossing: {
-              id: c.id,
-              sentence: c.sentence,
-              context: c.context,
-              created_at: c.created_at ?? new Date().toISOString(),
+          const collaborative = item.data;
+          const collaborativeItem: FeedItemCollaborative = {
+            type: "collaborative",
+            collaborative: {
+              id: collaborative.id,
+              created_at: collaborative.created_at ?? new Date().toISOString(),
             },
-            participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
-            participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
-            warmth_level: "none",
+            participant_a: collaborative.participant_a ?? {
+              id: "",
+              name: null,
+              photo_url: null,
+              before: "",
+              after: "",
+            },
+            participant_b: collaborative.participant_b ?? {
+              id: "",
+              name: null,
+              photo_url: null,
+              before: "",
+              after: "",
+            },
           };
           return (
-            <View key={c.id} style={styles.thoughtWrap}>
-              <CrossingCard item={crossingItem} visible />
+            <View key={`cc-${collaborative.id}`} style={styles.thoughtWrap}>
+              <CardDeck>
+                <CollaborativeCard item={collaborativeItem} />
+              </CardDeck>
             </View>
           );
         })
@@ -379,7 +429,7 @@ export default function MeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.OLIVE,
+    backgroundColor: "#1A1A16",
   },
   content: {
     paddingBottom: 48,
@@ -387,13 +437,42 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
-  /* ── Photo ── */
-  photoCircle: {
+  /* ── Photo — organic asymmetric shape, no border ── */
+  photoOuter: {
     alignSelf: "center",
     marginBottom: 10,
-    backgroundColor: "rgba(245,240,234,0.55)",
+    width: 164,
+    height: 164,
     alignItems: "center",
     justifyContent: "center",
+    // Asymmetric radii — organic blob feel
+    borderTopLeftRadius: 74,
+    borderTopRightRadius: 90,
+    borderBottomRightRadius: 78,
+    borderBottomLeftRadius: 86,
+    // Slight rotation for alive feel
+    transform: [{ rotate: "-2deg" }],
+    // Natural depth shadow — floats above background
+    shadowColor: "#0A0A08",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 8,
+    backgroundColor: "#1A1A16",
+  },
+  photoInner: {
+    width: 164,
+    height: 164,
+    overflow: "hidden",
+    // Matching asymmetry
+    borderTopLeftRadius: 74,
+    borderTopRightRadius: 90,
+    borderBottomRightRadius: 78,
+    borderBottomLeftRadius: 86,
+  },
+  photoImage: {
+    width: "100%",
+    height: "100%",
   },
 
   /* ── Name ── */
@@ -419,6 +498,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 11,
     paddingHorizontal: 24,
+    // Soft organic float
+    ...shadows.raised,
   },
   glassBtnText: {
     fontFamily: fontFamily.comico,
@@ -501,7 +582,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   thoughtWrap: {
-    marginBottom: spacing.cardGap,
+    marginBottom: spacing.cardGap + 4,
     paddingHorizontal: spacing.screenPadding,
   },
   emptyDeck: {
@@ -571,5 +652,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  photoEmpty: {},
+  photoEmpty: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(245,240,234,0.06)",
+  },
 });

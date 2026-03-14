@@ -149,14 +149,6 @@ export interface FeedItemThought {
   warmth_level: WarmthLevel;
 }
 
-export interface FeedItemShift {
-  type: "shift";
-  id: string;
-  created_at: string;
-  participant_a: FeedItemUser & { before: string; after: string };
-  participant_b: FeedItemUser & { before: string; after: string };
-}
-
 export interface FeedItemCrossing {
   type: "crossing";
   crossing: {
@@ -170,7 +162,30 @@ export interface FeedItemCrossing {
   warmth_level: WarmthLevel;
 }
 
-export type FeedItem = FeedItemThought | FeedItemShift | FeedItemCrossing;
+export interface CollaborativeParticipant extends FeedItemUser {
+  before: string;
+  after: string;
+}
+
+export interface FeedItemCollaborative {
+  type: "collaborative";
+  collaborative: {
+    id: string;
+    created_at: string;
+  };
+  participant_a: CollaborativeParticipant;
+  participant_b: CollaborativeParticipant;
+}
+
+interface RawFeedItemShift {
+  type: "shift";
+  id: string;
+  created_at: string;
+  participant_a: CollaborativeParticipant;
+  participant_b: CollaborativeParticipant;
+};
+
+export type FeedItem = FeedItemThought | FeedItemCrossing | FeedItemCollaborative;
 
 export interface NotificationItem {
   reply_id: string;
@@ -204,10 +219,24 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 export async function fetchFeed(limit: number, offset: number): Promise<FeedItem[]> {
-  return requestJson<FeedItem[]>(
+  const items = await requestJson<Array<FeedItem | RawFeedItemShift>>(
     `/api/feed?limit=${limit}&offset=${offset}`,
     "Feed failed",
     { auth: true }
+  );
+
+  return items.map((item) =>
+    item.type === "shift"
+      ? {
+          type: "collaborative",
+          collaborative: {
+            id: item.id,
+            created_at: item.created_at,
+          },
+          participant_a: item.participant_a,
+          participant_b: item.participant_b,
+        }
+      : item
   );
 }
 
@@ -381,7 +410,7 @@ export async function postConversationMessage(
   );
 }
 
-// Conversation detail (message_count, crossing/shift state)
+// Conversation detail (message_count + collaborative card state)
 export interface CrossingDraft {
   id: string;
   initiator_id: string;
@@ -418,6 +447,9 @@ export interface ConversationDetail {
   shift_draft: ShiftDraft | null;
   crossing_complete: boolean;
   shift_complete: boolean;
+  shift_count: number;
+  shift_available: boolean;
+  next_shift_message_count: number;
   history_cleared: boolean;
   history_expires_at: string | null;
 }
@@ -487,51 +519,67 @@ export async function abandonCrossing(conversationId: string): Promise<void> {
   );
 }
 
-// Shift
-export async function startShift(conversationId: string): Promise<ShiftDraft & { id: string }> {
+// Collaborative card (backed by legacy /shift routes on the API)
+export async function startCollaborativeCard(
+  conversationId: string
+): Promise<ShiftDraft & { id: string }> {
   return requestJson<ShiftDraft & { id: string }>(
     `/api/conversations/${conversationId}/shift/start`,
-    "Start shift failed",
+    "Start collaborative card failed",
     { method: "POST", auth: true }
   );
 }
 
-export async function getShiftDraft(conversationId: string): Promise<(ShiftDraft & { id: string }) | null> {
+export async function getCollaborativeCardDraft(
+  conversationId: string
+): Promise<(ShiftDraft & { id: string }) | null> {
   return requestJson<ShiftDraft & { id: string }>(
     `/api/conversations/${conversationId}/shift`,
-    "Get shift failed",
+    "Get collaborative card draft failed",
     { auth: true, allow404: true }
   );
 }
 
-export async function updateShiftDraft(
+export async function updateCollaborativeCardDraft(
   conversationId: string,
   body: { a_before?: string; a_after?: string; b_before?: string; b_after?: string }
 ): Promise<void> {
-  await requestVoid(`/api/conversations/${conversationId}/shift`, "Update shift failed", {
-    method: "PUT",
-    auth: true,
-    headers: JSON_HEADERS,
-    body: JSON.stringify(body),
-  });
+  await requestVoid(
+    `/api/conversations/${conversationId}/shift`,
+    "Update collaborative card failed",
+    {
+      method: "PUT",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify(body),
+    }
+  );
 }
 
-export async function completeShift(conversationId: string): Promise<{ id: string }> {
+export async function completeCollaborativeCard(
+  conversationId: string
+): Promise<{ id: string }> {
   return requestJson<{ id: string }>(
     `/api/conversations/${conversationId}/shift/complete`,
-    "Complete shift failed",
+    "Complete collaborative card failed",
     { method: "POST", auth: true }
   );
 }
 
-export async function abandonShift(conversationId: string): Promise<void> {
-  await requestVoid(`/api/conversations/${conversationId}/shift/abandon`, "Abandon failed", {
-    method: "POST",
-    auth: true,
-  });
+export async function abandonCollaborativeCard(conversationId: string): Promise<void> {
+  await requestVoid(
+    `/api/conversations/${conversationId}/shift/abandon`,
+    "Abandon failed",
+    {
+      method: "POST",
+      auth: true,
+    }
+  );
 }
 
-export async function ignoreShift(conversationId: string): Promise<{ deleted: boolean }> {
+export async function ignoreCollaborativeCard(
+  conversationId: string
+): Promise<{ deleted: boolean }> {
   return requestJson<{ deleted: boolean }>(
     `/api/conversations/${conversationId}/shift/ignore`,
     "Ignore failed",
@@ -541,6 +589,13 @@ export async function ignoreShift(conversationId: string): Promise<{ deleted: bo
     }
   );
 }
+
+export const startShift = startCollaborativeCard;
+export const getShiftDraft = getCollaborativeCardDraft;
+export const updateShiftDraft = updateCollaborativeCardDraft;
+export const completeShift = completeCollaborativeCard;
+export const abandonShift = abandonCollaborativeCard;
+export const ignoreShift = ignoreCollaborativeCard;
 
 // Profile
 export interface ProfileThought {
@@ -562,11 +617,11 @@ export interface ProfileCrossing {
   participant_b: FeedItemUser | null;
 }
 
-export interface ProfileShift {
+export interface ProfileCollaborativeCard {
   id: string;
   created_at: string | null;
-  participant_a: FeedItemUser & { before: string; after: string };
-  participant_b: FeedItemUser & { before: string; after: string };
+  participant_a: CollaborativeParticipant | null;
+  participant_b: CollaborativeParticipant | null;
 }
 
 export interface ProfileResponse {
@@ -575,14 +630,21 @@ export interface ProfileResponse {
   photo_url: string | null;
   interests?: string[];
   thoughts: ProfileThought[];
-  shifts?: ProfileShift[];
   crossings?: ProfileCrossing[];
+  collaborative_cards?: ProfileCollaborativeCard[];
 }
 
 export async function fetchProfile(userId: string): Promise<ProfileResponse> {
-  return requestJson<ProfileResponse>(`/api/users/${userId}/profile`, "Profile failed", {
+  return requestJson<
+    Omit<ProfileResponse, "collaborative_cards"> & {
+      shifts?: ProfileCollaborativeCard[];
+    }
+  >(`/api/users/${userId}/profile`, "Profile failed", {
     auth: true,
-  });
+  }).then((profile) => ({
+    ...profile,
+    collaborative_cards: profile.shifts ?? [],
+  }));
 }
 
 export interface UpdateProfileBody {

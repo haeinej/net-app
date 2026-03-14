@@ -3,11 +3,15 @@ import { eq, and, or, desc, asc, lt, inArray } from "drizzle-orm";
 import { db, conversations, messages, users, thoughts, crossingDrafts, crossings, shiftDrafts, shifts } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
+import {
+  clearConversationHistories,
+  getConversationHistoryExpiresAt,
+  isConversationHistoryExpired,
+} from "../conversations/history";
 
 const DORMANT_DAYS = 14;
-const HISTORY_RETENTION_DAYS = 14;
-const HISTORY_RETENTION_MS = HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const MESSAGE_PREVIEW_LEN = 100;
+const COLLABORATIVE_CARD_MESSAGE_STEP = 8;
 
 interface ConvIdParam {
   id: string;
@@ -41,21 +45,6 @@ async function markConversationRead(
   }
 }
 
-function getHistoryExpiresAt(lastMessageAt: Date | null): Date | null {
-  if (!lastMessageAt) return null;
-  return new Date(lastMessageAt.getTime() + HISTORY_RETENTION_MS);
-}
-
-function isHistoryExpired(lastMessageAt: Date | null, now = Date.now()): boolean {
-  const historyExpiresAt = getHistoryExpiresAt(lastMessageAt);
-  return Boolean(historyExpiresAt && historyExpiresAt.getTime() <= now);
-}
-
-async function clearConversationHistory(conversationIds: string[]): Promise<void> {
-  if (conversationIds.length === 0) return;
-  await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
-}
-
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
@@ -70,9 +59,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const convIds = list.map((c) => c.id);
     if (convIds.length === 0) return reply.send([]);
     const expiredIds = list
-      .filter((conversation) => isHistoryExpired(conversation.lastMessageAt ?? null))
+      .filter((conversation) => isConversationHistoryExpired(conversation.lastMessageAt ?? null))
       .map((conversation) => conversation.id);
-    await clearConversationHistory(expiredIds);
+    await clearConversationHistories(expiredIds);
     const lastMessages = await db
       .select({
         conversationId: messages.conversationId,
@@ -98,7 +87,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const otherIds = list.map((c) =>
       c.participantA === userId ? c.participantB : c.participantA
     );
-    const otherUsers = await db.select().from(users).where(inArray(users.id, otherIds));
+    const otherUsers = otherIds.length
+      ? await db
+          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+          .from(users)
+          .where(inArray(users.id, otherIds))
+      : [];
     const userMap = new Map(otherUsers.map((u) => [u.id, u]));
     const cutoff = new Date(Date.now() - DORMANT_DAYS * 24 * 60 * 60 * 1000);
     const body = list.map((c) => {
@@ -107,7 +101,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const last = lastByConv.get(c.id);
       const seenAt =
         c.participantA === userId ? c.participantASeenAt : c.participantBSeenAt;
-      const historyExpiresAt = getHistoryExpiresAt(c.lastMessageAt ?? null);
+      const historyExpiresAt = getConversationHistoryExpiresAt(c.lastMessageAt ?? null);
       const unread = Boolean(
         last &&
           last.senderId &&
@@ -141,9 +135,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!conv) return reply.status(404).send();
     if (conv.participantA !== userId && conv.participantB !== userId)
       return reply.status(403).send();
-    const historyCleared = isHistoryExpired(conv.lastMessageAt ?? null);
+    const historyCleared = isConversationHistoryExpired(conv.lastMessageAt ?? null);
     if (historyCleared) {
-      await clearConversationHistory([convId]);
+      await clearConversationHistories([convId]);
     }
     await markConversationRead(convId, userId, conv.participantA, conv.participantB);
     const messageCount = conv.messageCount ?? 0;
@@ -152,20 +146,23 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .from(crossingDrafts)
       .where(and(eq(crossingDrafts.conversationId, convId), eq(crossingDrafts.status, "draft")))
       .limit(1);
-    const [shiftDraft] = await db
-      .select()
-      .from(shiftDrafts)
-      .where(and(eq(shiftDrafts.conversationId, convId), eq(shiftDrafts.status, "draft")))
-      .limit(1);
     const hasCrossing = await db
       .select({ id: crossings.id })
       .from(crossings)
       .where(eq(crossings.conversationId, convId))
       .limit(1);
-    const hasShift = await db
+    const shiftRows = await db
       .select({ id: shifts.id })
       .from(shifts)
-      .where(eq(shifts.conversationId, convId))
+      .where(eq(shifts.conversationId, convId));
+    const shiftCount = shiftRows.length;
+    const unlockedShiftSlots = Math.floor(
+      messageCount / COLLABORATIVE_CARD_MESSAGE_STEP
+    );
+    const [shiftDraft] = await db
+      .select()
+      .from(shiftDrafts)
+      .where(and(eq(shiftDrafts.conversationId, convId), eq(shiftDrafts.status, "draft")))
       .limit(1);
     const [thought] = await db
       .select({
@@ -224,9 +221,13 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           }
         : null,
       crossing_complete: hasCrossing.length > 0,
-      shift_complete: hasShift.length > 0,
+      shift_complete: shiftCount > 0,
+      shift_count: shiftCount,
+      shift_available: Boolean(shiftDraft) || unlockedShiftSlots > shiftCount,
+      next_shift_message_count:
+        (shiftCount + 1) * COLLABORATIVE_CARD_MESSAGE_STEP,
       history_cleared: historyCleared,
-      history_expires_at: getHistoryExpiresAt(conv.lastMessageAt ?? null)?.toISOString() ?? null,
+      history_expires_at: getConversationHistoryExpiresAt(conv.lastMessageAt ?? null)?.toISOString() ?? null,
     });
   });
 
@@ -243,8 +244,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
-      if (isHistoryExpired(conv.lastMessageAt ?? null)) {
-        await clearConversationHistory([convId]);
+      if (isConversationHistoryExpired(conv.lastMessageAt ?? null)) {
+        await clearConversationHistories([convId]);
       }
       await markConversationRead(convId, userId, conv.participantA, conv.participantB);
       const limit = Math.min(50, Math.max(1, parseInt(request.query.limit ?? "50", 10) || 50));
@@ -288,6 +289,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Params: ConvIdParam; Body: { text?: string } }>(
     "/api/conversations/:id/messages",
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => {
+            const userId = getUserId(req as any);
+            return userId ? `user:${userId}` : `ip:${req.ip}`;
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const userId = getUserId(request);
       if (!userId) return reply.status(401).send();
@@ -301,8 +314,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
-      if (isHistoryExpired(conv.lastMessageAt ?? null)) {
-        await clearConversationHistory([convId]);
+      if (isConversationHistoryExpired(conv.lastMessageAt ?? null)) {
+        await clearConversationHistories([convId]);
       }
       const now = new Date();
       const cutoff = new Date(Date.now() - DORMANT_DAYS * 24 * 60 * 60 * 1000);
@@ -331,7 +344,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           session_id: "",
           metadata: { conversation_depth_milestone: newCount, conversation_id: convId },
           timestamp: new Date().toISOString(),
-        }]).catch(() => {});
+        }]).catch((err: any) => {
+          console.error("trackEngagementEvents failed", {
+            userId,
+            convId,
+            message: err?.message ?? String(err),
+            code: err?.code,
+          });
+        });
       }
       return reply.send({
         id: msg.id,
