@@ -1,4 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  type GestureResponderEvent,
+} from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { colors, spacing, typography, fontFamily } from "../theme";
@@ -79,7 +85,8 @@ export function ProfileThoughtCard({
               style={styles.footerProfile}
               activeOpacity={0.7}
               disabled={!authorUserId}
-              onPress={() => {
+              onPress={(event: GestureResponderEvent) => {
+                event.stopPropagation();
                 if (!authorUserId) return;
                 router.push({ pathname: "/user/[id]", params: { id: authorUserId } });
               }}

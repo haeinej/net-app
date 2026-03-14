@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -55,7 +56,10 @@ function ConversationRow({
     >
       <TouchableOpacity
         style={styles.avatarWrap}
-        onPress={onProfilePress}
+        onPress={(event: GestureResponderEvent) => {
+          event.stopPropagation();
+          onProfilePress();
+        }}
         disabled={!item.other_user?.id}
         activeOpacity={0.7}
       >
