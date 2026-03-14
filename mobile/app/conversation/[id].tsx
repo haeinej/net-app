@@ -18,7 +18,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
 import { fontFamily } from "../../theme/typography";
-import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { SwipeConfirm } from "../../components/SwipeConfirm";
 import {
   fetchConversationMessages,
@@ -372,9 +371,6 @@ export default function ConversationThreadScreen() {
               <Text style={styles.ignoreText}>Ignore and delete conversation</Text>
             </TouchableOpacity>
           ) : null}
-          <Text style={styles.historyPolicyText}>
-            Chat history clears itself after 2 weeks without a reply.
-          </Text>
         </View>
       );
     }
@@ -385,9 +381,6 @@ export default function ConversationThreadScreen() {
           <Text style={styles.waitingTitle}>Collaborative card started.</Text>
           <Text style={styles.waitingText}>
             Waiting for {otherParticipantName} to join from this conversation.
-          </Text>
-          <Text style={styles.historyPolicyText}>
-            The invite stays here until they join or ignore it.
           </Text>
         </View>
       );
@@ -429,7 +422,6 @@ export default function ConversationThreadScreen() {
             {otherName ? otherName.toUpperCase() : "Conversation"}
           </Text>
         </TouchableOpacity>
-        <ScreenExitButton onPress={() => router.back()} style={styles.headerExit} />
       </View>
 
       {loading && messages.length === 0 ? (
@@ -633,21 +625,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   headerAvatarPlc: {
     backgroundColor: colors.CARD_GROUND,
   },
   headerName: {
     ...typography.label,
-    fontSize: 11.5,
+    fontSize: 14,
     color: colors.TYPE_DARK,
     flex: 1,
-  },
-  headerExit: {
-    marginLeft: 8,
   },
   loadingWrap: {
     flex: 1,
@@ -774,13 +763,6 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     fontSize: 11,
     color: colors.VERMILLION,
-  },
-  historyPolicyText: {
-    ...typography.context,
-    fontSize: 13.5,
-    lineHeight: 18,
-    color: colors.TYPE_MUTED,
-    marginTop: 6,
   },
   waitingCard: {
     borderRadius: 16,

@@ -19,7 +19,7 @@ function ConvoIcon({ focused }: { focused: boolean }) {
   return (
     <Image
       source={ohmLogo}
-      style={[iconStyles.ohmIcon, { opacity: focused ? 1 : 0.4 }]}
+      style={[iconStyles.iconLift, iconStyles.ohmIcon, { opacity: focused ? 1 : 0.4 }]}
       contentFit="contain"
     />
   );
@@ -92,39 +92,42 @@ export default function TabLayout() {
 }
 
 const iconStyles = StyleSheet.create({
+  iconLift: {
+    transform: [{ translateY: -6 }],
+  },
   blob: {
-    width: 21,
-    height: 19,
-    borderTopLeftRadius: 11,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 9,
-    borderBottomRightRadius: 12,
+    width: 32,
+    height: 29,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 12,
+    borderBottomLeftRadius: 13,
+    borderBottomRightRadius: 18,
     borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ rotate: "-4deg" }],
+    transform: [{ translateY: -6 }, { rotate: "-4deg" }],
   },
   dot: {
-    width: 5,
-    height: 6,
-    borderTopLeftRadius: 3,
-    borderTopRightRadius: 2,
-    borderBottomLeftRadius: 2.5,
-    borderBottomRightRadius: 3,
+    width: 8,
+    height: 9,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 3,
+    borderBottomLeftRadius: 3.5,
+    borderBottomRightRadius: 4,
     transform: [{ rotate: "6deg" }],
   },
   ohmIcon: {
-    width: 20,
-    height: 20,
+    width: 30,
+    height: 30,
   },
   meBlob: {
-    width: 19,
-    height: 17,
-    borderTopLeftRadius: 9,
-    borderTopRightRadius: 10,
-    borderBottomLeftRadius: 11,
-    borderBottomRightRadius: 7,
-    transform: [{ rotate: "3deg" }],
+    width: 29,
+    height: 26,
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 15,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 10,
+    transform: [{ translateY: -6 }, { rotate: "3deg" }],
   },
 });
 
@@ -134,8 +137,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     elevation: 0,
     shadowOpacity: 0,
-    paddingTop: 8,
-    height: 52,
+    paddingTop: 4,
+    paddingBottom: 10,
+    height: 62,
     overflow: "visible",
   },
 });

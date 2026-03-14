@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
   type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
@@ -179,9 +180,30 @@ export default function ConversationsScreen() {
     [router]
   );
 
+  const openHistoryInfo = useCallback(() => {
+    Alert.alert(
+      "Conversation history",
+      "If neither person replies for 2 weeks, the chat history clears automatically."
+    );
+  }, []);
+
+  const header = (
+    <View style={styles.screenHeader}>
+      <Text style={styles.screenTitle}>Conversations</Text>
+      <TouchableOpacity
+        style={styles.infoButton}
+        activeOpacity={0.8}
+        onPress={openHistoryInfo}
+      >
+        <Text style={styles.infoButtonText}>i</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   if (loading && list.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {header}
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
@@ -193,6 +215,7 @@ export default function ConversationsScreen() {
   if (error && list.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {header}
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={() => { setLoading(true); load(); }}>
@@ -206,6 +229,7 @@ export default function ConversationsScreen() {
   if (list.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {header}
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
             When you accept a reply, the conversation begins here.
@@ -217,9 +241,7 @@ export default function ConversationsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Conversations</Text>
-      </View>
+      {header}
       <FlatList
         data={list}
         keyExtractor={(item) => item.id}
@@ -249,26 +271,44 @@ const styles = StyleSheet.create({
     backgroundColor: colors.WARM_GROUND,
   },
   screenHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 14,
+    paddingVertical: 18,
   },
   screenTitle: {
     fontFamily: fontFamily.comico,
-    fontSize: 14,
-    letterSpacing: -0.3,
+    fontSize: 28,
+    letterSpacing: -0.6,
     color: colors.TYPE_DARK,
+  },
+  infoButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.CARD_GROUND,
+  },
+  infoButtonText: {
+    fontFamily: fontFamily.comico,
+    fontSize: 22,
+    color: colors.TYPE_DARK,
+    marginTop: -1,
   },
   listContent: {
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: 0,
-    paddingBottom: spacing.cardGap,
+    paddingTop: 4,
+    paddingBottom: spacing.cardGap + 10,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: spacing.cardRadius,
-    padding: 10,
-    marginBottom: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
   rowUnread: {
     backgroundColor: "rgba(26,26,22,0.08)",
@@ -289,12 +329,12 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     position: "relative",
-    marginRight: 10,
+    marginRight: 14,
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   avatarPlc: {
     backgroundColor: colors.PANEL_DEEP,
@@ -307,12 +347,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 2,
+    marginBottom: 4,
   },
   name: {
     ...typography.label,
-    fontSize: 7,
-    letterSpacing: 1,
+    fontSize: 13,
+    letterSpacing: 1.1,
     flex: 1,
     marginRight: 8,
   },
@@ -324,7 +364,7 @@ const styles = StyleSheet.create({
   },
   time: {
     fontFamily: fontFamily.comico,
-    fontSize: 6,
+    fontSize: 10,
     letterSpacing: 0.5,
   },
   timeUnread: {
@@ -335,8 +375,8 @@ const styles = StyleSheet.create({
   },
   preview: {
     ...typography.context,
-    fontSize: 8.5,
-    lineHeight: 12,
+    fontSize: 14,
+    lineHeight: 18,
   },
   previewUnread: {
     color: "rgba(26,26,22,0.55)",
@@ -355,24 +395,26 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...typography.replyInput,
-    fontSize: 11,
+    fontSize: 15,
     color: colors.TYPE_MUTED,
     textAlign: "center",
   },
   errorText: {
     ...typography.context,
+    fontSize: 16,
     color: colors.TYPE_DARK,
     marginBottom: 12,
   },
   retryText: {
     color: colors.OLIVE,
     ...typography.label,
+    fontSize: 13,
   },
   skeletonRow: {
-    height: 56,
+    height: 78,
     backgroundColor: colors.CARD_GROUND,
     marginHorizontal: spacing.screenPadding,
-    marginBottom: 8,
+    marginBottom: 12,
     borderRadius: spacing.cardRadius,
     opacity: 0.6,
   },
