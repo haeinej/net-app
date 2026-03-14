@@ -12,7 +12,7 @@ import {
 import { colors, typography } from "../theme";
 
 const KNOB_SIZE = 42;
-const TRACK_HEIGHT = 54;
+const TRACK_HEIGHT = 60;
 
 interface SwipeConfirmProps {
   label: string;
@@ -145,14 +145,14 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.replyInput,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 16,
+    lineHeight: 21,
     color: colors.TYPE_DARK,
   },
   hint: {
     ...typography.context,
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 14,
+    lineHeight: 18,
     color: colors.TYPE_MUTED,
     marginTop: 4,
   },
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   },
   trackLabel: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.VERMILLION,
     textAlign: "center",
   },
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   },
   knobText: {
     ...typography.label,
-    fontSize: 12,
+    fontSize: 18,
     color: colors.TYPE_WHITE,
     letterSpacing: 0,
   },

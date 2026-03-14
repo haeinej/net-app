@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
   label: {
     ...typography.label,
     color: colors.TYPE_MUTED,
-    fontSize: 8,
+    fontSize: 9.5,
     marginBottom: 10,
   },
   titleRow: {
@@ -112,15 +112,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fontFamily.sentientBold,
-    fontSize: 20,
-    lineHeight: 27,
+    fontSize: 24,
+    lineHeight: 31,
     color: colors.TYPE_DARK,
     flex: 1,
   },
   date: {
     ...typography.label,
     color: colors.TYPE_MUTED,
-    fontSize: 8,
+    fontSize: 9.5,
     marginTop: 4,
   },
   participantBlock: {
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   participantName: {
     ...typography.label,
     color: colors.TYPE_MUTED,
-    fontSize: 8,
+    fontSize: 9.5,
   },
   beforeAfterLabel: {
     fontFamily: fontFamily.sentientBold,
@@ -152,14 +152,14 @@ const styles = StyleSheet.create({
   beforeText: {
     ...typography.context,
     color: colors.TYPE_DARK,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 17,
+    lineHeight: 24,
   },
   afterText: {
     ...typography.context,
     color: colors.TYPE_DARK,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 17,
+    lineHeight: 24,
   },
   divider: {
     height: 1,

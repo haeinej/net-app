@@ -36,6 +36,7 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
   const imageHeight = cardWidth / IMAGE_ASPECT_RATIO;
 
   const { thought, user, warmth_level } = item;
+  const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
 
   const openUserProfile = (event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -51,25 +52,34 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
     >
       <View style={styles.cardInner}>
         <WarmthBar warmthLevel={warmth_level} height={imageHeight + 56} />
-        <ThoughtImageFrame
-          imageUrl={thought.photo_url ?? thought.image_url}
-          aspectRatio={IMAGE_ASPECT_RATIO}
-          borderRadius={0}
-          style={{ width: cardWidth - spacing.warmthBarWidth, height: imageHeight }}
+        <View
+          style={[
+            styles.imageWrap,
+            { width: cardWidth - spacing.warmthBarWidth, height: imageHeight },
+          ]}
         >
-          <Text
-            style={styles.sentence}
-            numberOfLines={4}
-            ellipsizeMode="tail"
-          >
-            {thought.sentence}
-          </Text>
-          <View style={styles.dotsHint}>
-            <View style={styles.dot} />
-            <View style={styles.dot} />
-            <View style={styles.dot} />
+          <ThoughtImageFrame
+            imageUrl={thought.photo_url ?? thought.image_url}
+            aspectRatio={IMAGE_ASPECT_RATIO}
+            borderRadius={0}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={styles.imageOverlay} pointerEvents="none">
+            <Text
+              style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
+              numberOfLines={4}
+              adjustsFontSizeToFit
+              minimumFontScale={0.72}
+            >
+              {thought.sentence}
+            </Text>
+            <View style={[styles.dotsHint, !hasPhoto && styles.dotsHintNoPhoto]}>
+              <View style={styles.dot} />
+              <View style={styles.dot} />
+              <View style={styles.dot} />
+            </View>
           </View>
-        </ThoughtImageFrame>
+        </View>
       </View>
       <View style={styles.footer}>
         <TouchableOpacity
@@ -103,20 +113,30 @@ const styles = StyleSheet.create({
   cardInner: {
     flexDirection: "row",
   },
+  imageWrap: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
   sentence: {
-    fontFamily: fontFamily.sentient,
+    fontFamily: fontFamily.sentientBold,
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 18,
+    bottom: 22,
     fontSize: 29,
-    lineHeight: 31,
-    fontWeight: "700",
+    lineHeight: 33,
     letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
-    textShadowColor: "rgba(8,6,4,0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  },
+  sentenceNoPhoto: {
+    color: colors.TYPE_DARK,
+  },
+  dotsHintNoPhoto: {
+    opacity: 0.35,
   },
   dotsHint: {
     position: "absolute",
@@ -157,8 +177,8 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 9.5,
-    lineHeight: 11,
+    fontSize: 11.5,
+    lineHeight: 13.5,
     letterSpacing: 1,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
@@ -166,8 +186,8 @@ const styles = StyleSheet.create({
   },
   timestamp: {
     fontFamily: typography.metadata.fontFamily,
-    fontSize: 8,
-    lineHeight: 10,
+    fontSize: 9.5,
+    lineHeight: 11.5,
     letterSpacing: 0.8,
     color: colors.TYPE_MUTED,
   },

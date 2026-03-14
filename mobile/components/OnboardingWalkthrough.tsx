@@ -137,6 +137,7 @@ export function OnboardingWalkthrough({
 
   const [currentStep, setCurrentStep] = useState(0);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
+  const [tooltipHeight, setTooltipHeight] = useState(ESTIMATED_TOOLTIP_HEIGHT);
 
   // Animation values
   const overlayOpacity = useSharedValue(0);
@@ -194,7 +195,14 @@ export function OnboardingWalkthrough({
       });
     }, 120);
 
-    return () => clearTimeout(timer);
+    const retryTimer = setTimeout(() => {
+      measureTarget(STEPS[currentStep]?.targetTestID ?? null);
+    }, 420);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(retryTimer);
+    };
   }, [cardOpacity, cardTranslateY, currentStep, measureTarget, visible]);
 
   /* ---- Initial appearance ---- */
@@ -249,8 +257,9 @@ export function OnboardingWalkthrough({
     const minTop = Math.max(insets.top + 72, 96);
     const maxTop = Math.max(
       minTop,
-      screenHeight - ESTIMATED_TOOLTIP_HEIGHT - Math.max(insets.bottom + 28, 110)
+      screenHeight - tooltipHeight - Math.max(insets.bottom + 28, 110)
     );
+    const maxHeight = Math.max(220, screenHeight - minTop - Math.max(insets.bottom + 28, 110));
 
     if (isFullScreen) {
       return {
@@ -258,6 +267,7 @@ export function OnboardingWalkthrough({
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
         top: Math.min(Math.max(screenHeight * 0.38, minTop), maxTop),
+        maxHeight,
       };
     }
 
@@ -270,6 +280,7 @@ export function OnboardingWalkthrough({
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
         top: Math.min(Math.max(desiredTop, minTop), maxTop),
+        maxHeight,
       };
     }
 
@@ -280,6 +291,7 @@ export function OnboardingWalkthrough({
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
         top: Math.min(Math.max(desiredTop, minTop), maxTop),
+        maxHeight,
       };
     }
 
@@ -289,6 +301,7 @@ export function OnboardingWalkthrough({
       left: TOOLTIP_H_MARGIN,
       right: TOOLTIP_H_MARGIN,
       top: Math.min(Math.max(screenHeight * 0.38, minTop), maxTop),
+      maxHeight,
     };
   };
 
@@ -389,7 +402,15 @@ export function OnboardingWalkthrough({
 
       {/* Tooltip card */}
       {step && (
-        <Animated.View style={[styles.tooltipCard, getTooltipStyle(), cardAnimatedStyle]}>
+        <Animated.View
+          style={[styles.tooltipCard, getTooltipStyle(), cardAnimatedStyle]}
+          onLayout={(event) => {
+            const nextHeight = event.nativeEvent.layout.height;
+            if (Math.abs(nextHeight - tooltipHeight) > 4) {
+              setTooltipHeight(nextHeight);
+            }
+          }}
+        >
           {/* Skip link — shown from step 2 onward */}
           {currentStep > 0 && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>

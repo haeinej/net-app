@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
   },
   glassBtnText: {
     fontFamily: fontFamily.comico,
-    fontSize: 8,
+    fontSize: 11,
     letterSpacing: 0.6,
     textTransform: "uppercase",
     color: "rgba(245,240,234,0.45)",
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
   },
   changePhotoText: {
     fontFamily: fontFamily.sentient,
-    fontSize: 11,
+    fontSize: 15.5,
     letterSpacing: 0.2,
     color: "rgba(245,240,234,0.5)",
     marginTop: 8,
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
   saveBtnDisabled: { opacity: 0.5 },
   saveBtnText: {
     fontFamily: fontFamily.comico,
-    fontSize: 8,
+    fontSize: 11,
     letterSpacing: 0.5,
     textTransform: "uppercase",
     color: colors.WARM_GROUND,
@@ -573,7 +573,7 @@ const styles = StyleSheet.create({
   /* ── Deck ── */
   deckTitle: {
     fontFamily: fontFamily.comico,
-    fontSize: 7,
+    fontSize: 10,
     letterSpacing: 1.5,
     textTransform: "uppercase",
     color: "rgba(245,240,234,0.35)",
@@ -587,7 +587,7 @@ const styles = StyleSheet.create({
   },
   emptyDeck: {
     fontFamily: fontFamily.sentient,
-    fontSize: 12,
+    fontSize: 16.5,
     color: "rgba(245,240,234,0.35)",
     textAlign: "center",
     marginTop: 12,
@@ -621,7 +621,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontFamily: fontFamily.sentient,
-    fontSize: 12,
+    fontSize: 16.5,
     color: "rgba(245,240,234,0.4)",
     textAlign: "center",
   },
@@ -635,20 +635,20 @@ const styles = StyleSheet.create({
   reauthButtonText: {
     color: colors.PANEL_DEEP,
     fontFamily: fontFamily.comico,
-    fontSize: 8,
+    fontSize: 11,
     letterSpacing: 0.6,
     textTransform: "uppercase",
   },
   errorText: {
     fontFamily: fontFamily.sentient,
-    fontSize: 12,
+    fontSize: 16.5,
     color: "rgba(245,240,234,0.6)",
     marginBottom: 12,
   },
   retryText: {
     color: colors.WARM_GROUND,
     fontFamily: fontFamily.comico,
-    fontSize: 8,
+    fontSize: 11,
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },

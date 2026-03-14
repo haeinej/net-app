@@ -511,7 +511,7 @@ export default function ConversationThreadScreen() {
 
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
-            keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
+            keyboardVerticalOffset={0}
             style={styles.inputArea}
           >
             {renderCollaborativeBanner()}
@@ -582,7 +582,7 @@ export default function ConversationThreadScreen() {
                 <Text style={styles.sendBtnText}>Send</Text>
               </TouchableOpacity>
             </View>
-            <View style={{ height: insets.bottom + 24 }} />
+            <View style={{ height: Math.max(insets.bottom, 10) }} />
           </KeyboardAvoidingView>
         </>
       )}
@@ -606,11 +606,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.WARM_GROUND,
   },
   backBtn: {
-    padding: 8,
+    padding: 10,
     marginRight: 8,
   },
   backArrow: {
-    fontSize: 24,
+    fontSize: 36,
     color: colors.TYPE_DARK,
   },
   headerAvatarWrap: {
@@ -626,7 +626,7 @@ const styles = StyleSheet.create({
   },
   headerName: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11.5,
     color: colors.TYPE_DARK,
     flex: 1,
   },
@@ -655,15 +655,15 @@ const styles = StyleSheet.create({
   },
   thoughtLabel: {
     ...typography.metadata,
-    fontSize: 7,
+    fontSize: 10,
     color: colors.TYPE_MUTED,
     marginBottom: 6,
   },
   thoughtSentence: {
     ...typography.thoughtDisplay,
     fontFamily: fontFamily.sentientBold,
-    fontSize: 15,
-    lineHeight: 18,
+    fontSize: 21,
+    lineHeight: 27,
     color: colors.TYPE_DARK,
   },
   historyNotice: {
@@ -675,14 +675,14 @@ const styles = StyleSheet.create({
   },
   historyNoticeTitle: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.VERMILLION,
     marginBottom: 4,
   },
   historyNoticeText: {
     ...typography.context,
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 14,
+    lineHeight: 19,
     color: colors.TYPE_MUTED,
   },
   messageWrap: {
@@ -696,7 +696,7 @@ const styles = StyleSheet.create({
   },
   firstMessageLabelText: {
     ...typography.metadata,
-    fontSize: 7,
+    fontSize: 10,
     color: colors.TYPE_MUTED,
   },
   bubbleWrap: {
@@ -710,9 +710,9 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: "84%",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 22,
   },
   bubbleSent: {
     borderBottomRightRadius: 4,
@@ -727,8 +727,8 @@ const styles = StyleSheet.create({
   },
   bubbleText: {
     ...typography.replyInput,
-    fontSize: 11.5,
-    lineHeight: 15,
+    fontSize: 16,
+    lineHeight: 21,
     color: colors.TYPE_DARK,
   },
   bubbleTextSent: {
@@ -737,11 +737,12 @@ const styles = StyleSheet.create({
   bubbleTime: {
     ...typography.metadata,
     marginTop: 4,
+    fontSize: 10,
     color: colors.TYPE_MUTED,
   },
   inputArea: {
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: 12,
+    paddingTop: 8,
     backgroundColor: colors.WARM_GROUND,
     borderTopWidth: 1,
     borderTopColor: "rgba(26,26,22,0.06)",
@@ -755,13 +756,13 @@ const styles = StyleSheet.create({
   },
   ignoreText: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.VERMILLION,
   },
   historyPolicyText: {
     ...typography.context,
-    fontSize: 9.5,
-    lineHeight: 12,
+    fontSize: 13.5,
+    lineHeight: 18,
     color: colors.TYPE_MUTED,
     marginTop: 6,
   },
@@ -774,19 +775,19 @@ const styles = StyleSheet.create({
   },
   waitingTitle: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_DARK,
     marginBottom: 5,
   },
   waitingText: {
     ...typography.context,
-    fontSize: 10.5,
-    lineHeight: 14,
+    fontSize: 15,
+    lineHeight: 20,
     color: colors.TYPE_DARK,
   },
   completeLabel: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.OLIVE,
     marginBottom: 8,
   },
@@ -798,24 +799,24 @@ const styles = StyleSheet.create({
   },
   flowTitle: {
     ...typography.label,
-    fontSize: 10,
+    fontSize: 14,
     color: colors.TYPE_DARK,
     marginBottom: 8,
   },
   flowLabel: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_MUTED,
     marginTop: 6,
     marginBottom: 4,
   },
   flowInput: {
     ...typography.replyInput,
-    fontSize: 11,
+    fontSize: 16,
     color: colors.TYPE_DARK,
     backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 8,
     marginBottom: 6,
   },
@@ -826,8 +827,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   flowBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderRadius: 8,
   },
   flowBtnPrimary: {
@@ -838,12 +839,12 @@ const styles = StyleSheet.create({
   },
   flowBtnTextPrimary: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_WHITE,
   },
   flowBtnTextSecondary: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_MUTED,
   },
   flowClose: {
@@ -854,19 +855,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    paddingTop: 4,
   },
   input: {
     flex: 1,
     ...typography.replyInput,
+    fontSize: 16,
     color: colors.TYPE_DARK,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     backgroundColor: colors.CARD_GROUND,
     borderRadius: 8,
   },
   sendBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: 8,
     backgroundColor: colors.OLIVE,
   },
@@ -875,7 +878,7 @@ const styles = StyleSheet.create({
   },
   sendBtnText: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_WHITE,
   },
   errorText: {

@@ -40,8 +40,10 @@ export function ScreenExitButton({
 
 const styles = StyleSheet.create({
   button: {
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    minWidth: 28,
+    minHeight: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -56,7 +58,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: fontFamily.comico,
-    fontSize: 11,
+    fontSize: 16.5,
     letterSpacing: 0.8,
   },
   labelLight: {

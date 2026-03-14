@@ -21,6 +21,7 @@ import { createThought, fetchProfile, getMyUserId } from "../lib/api";
 import { ScreenExitButton } from "../components/ScreenExitButton";
 import { BrandLockup } from "../components/BrandLockup";
 import { ThoughtImageFrame } from "../components/ThoughtImageFrame";
+import { pickComposePrompt, COMPOSE_SUBTITLE } from "../constants/prompts";
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -34,6 +35,7 @@ export default function ComposeScreen() {
   const [posting, setPosting] = useState(false);
   const [thoughtPhotoUrl, setThoughtPhotoUrl] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(true);
+  const [composePlaceholder] = useState(() => pickComposePrompt());
 
   const previewWidth = width - spacing.screenPadding * 2;
   const previewHeight = previewWidth / IMAGE_ASPECT_RATIO;
@@ -169,10 +171,10 @@ export default function ComposeScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>One big thought</Text>
-          <Text style={styles.fieldHint}>This becomes the line on the image.</Text>
+          <Text style={styles.fieldHint}>{COMPOSE_SUBTITLE}</Text>
           <TextInput
             style={[styles.textArea, styles.sentenceInput]}
-            placeholder="The one thought you cannot stop turning over."
+            placeholder={composePlaceholder}
             placeholderTextColor={colors.TYPE_MUTED}
             value={sentence}
             onChangeText={(t) => setSentence(t.slice(0, SENTENCE_MAX))}
@@ -237,7 +239,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...typography.label,
-    fontSize: 8.5,
+    fontSize: 12,
     color: colors.TYPE_MUTED,
   },
   scroll: {
@@ -256,14 +258,13 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   previewSentence: {
-    fontFamily: fontFamily.sentient,
-    fontWeight: "700",
+    fontFamily: fontFamily.sentientBold,
     position: "absolute",
     left: 16,
     right: 16,
     bottom: 14,
-    fontSize: 22,
-    lineHeight: 26,
+    fontSize: 26,
+    lineHeight: 31,
     letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
   },
@@ -280,14 +281,14 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     ...typography.label,
-    fontSize: 8.5,
+    fontSize: 12,
     color: colors.TYPE_MUTED,
     marginBottom: 6,
   },
   fieldHint: {
     fontFamily: fontFamily.sentient,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 15.5,
+    lineHeight: 22,
     color: colors.TYPE_MUTED,
     marginBottom: 10,
   },
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
   },
   photoActionText: {
     ...typography.label,
-    fontSize: 7.5,
+    fontSize: 10.5,
     color: colors.TYPE_DARK,
   },
   photoFallbackText: {
@@ -322,18 +323,17 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   sentenceInput: {
-    fontFamily: fontFamily.sentient,
-    fontWeight: "600",
-    fontSize: 20,
-    lineHeight: 26,
+    fontFamily: fontFamily.sentientBold,
+    fontSize: 24,
+    lineHeight: 31,
     color: colors.TYPE_DARK,
     minHeight: 148,
     textAlignVertical: "top",
   },
   contextInput: {
     fontFamily: fontFamily.sentient,
-    fontSize: 11.5,
-    lineHeight: 17,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.TYPE_DARK,
     minHeight: 88,
     textAlignVertical: "top",
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
   },
   postBtnText: {
     ...typography.label,
-    fontSize: 10,
+    fontSize: 14,
     color: colors.TYPE_WHITE,
   },
 });

@@ -199,10 +199,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backBtn: {
-    padding: 8,
+    padding: 10,
   },
   backArrow: {
-    fontSize: 24,
+    fontSize: 36,
     color: colors.TYPE_DARK,
   },
   headerExit: {

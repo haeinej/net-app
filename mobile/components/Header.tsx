@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fontFamily, spacing } from "../theme";
+import { colors, fontFamily, spacing, shadows } from "../theme";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../assets/images/ohm-logo.png");
@@ -75,25 +75,35 @@ const styles = StyleSheet.create({
     backgroundColor: colors.VERMILLION,
     alignItems: "center",
     justifyContent: "center",
+    // Organic liquid lift
+    ...shadows.raised,
   },
   notificationDotInactive: {
     backgroundColor: colors.CARD_GROUND,
+    shadowOpacity: 0.04,
   },
   notificationInner: {
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: colors.TYPE_WHITE,
+    // Tiny inner glow
+    shadowColor: colors.TYPE_WHITE,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 2,
   },
   compose: {
     backgroundColor: colors.VERMILLION,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
     borderRadius: 20,
+    // Organic liquid lift
+    ...shadows.raised,
   },
   composeText: {
     fontFamily: fontFamily.comico,
-    fontSize: 8,
+    fontSize: 11,
     letterSpacing: 1.5,
     textTransform: "uppercase",
     color: colors.TYPE_WHITE,
