@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
-import { colors, spacing, typography } from "../theme";
+import { useRouter } from "expo-router";
+import { colors, spacing, typography, shadows } from "../theme";
 import type { NotificationItem } from "../lib/api";
 
 interface NotificationPanelProps {
@@ -16,6 +17,8 @@ export function NotificationPanel({
   onAccept,
   onIgnore,
 }: NotificationPanelProps) {
+  const router = useRouter();
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -36,11 +39,20 @@ export function NotificationPanel({
       <Text style={styles.caption}>Your own thought view shows the full reply inbox.</Text>
       {items.map((n) => (
         <View key={n.reply_id} style={styles.row}>
-          {n.replier?.photo_url ? (
-            <Image source={{ uri: n.replier.photo_url }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]} />
-          )}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            disabled={!n.replier?.id}
+            onPress={() => {
+              if (!n.replier?.id) return;
+              router.push({ pathname: "/user/[id]", params: { id: n.replier.id } });
+            }}
+          >
+            {n.replier?.photo_url ? (
+              <Image source={{ uri: n.replier.photo_url }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]} />
+            )}
+          </TouchableOpacity>
           <View style={styles.body}>
             <Text style={styles.name} numberOfLines={1}>
               {n.replier?.name ? n.replier.name.toUpperCase() : "—"}
@@ -79,8 +91,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.CARD_GROUND,
     paddingVertical: 12,
     paddingHorizontal: spacing.screenPadding,
-    borderBottomWidth: 1,
+    borderBottomWidth: 0.5,
     borderBottomColor: "rgba(26,26,22,0.06)",
+    // Soft organic lift
+    ...shadows.card,
   },
   row: {
     flexDirection: "row",
@@ -128,7 +142,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     backgroundColor: colors.OLIVE,
-    borderRadius: 6,
+    borderRadius: 10,
+    // Soft organic lift
+    ...shadows.raised,
   },
   acceptText: {
     ...typography.label,

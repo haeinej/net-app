@@ -126,6 +126,7 @@ export default function UserProfileScreen() {
               thought={t}
               authorName={profile.name ?? undefined}
               authorPhotoUrl={profile.photo_url}
+              authorUserId={profile.id}
             />
           </View>
         ))

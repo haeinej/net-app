@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
@@ -48,6 +49,7 @@ interface CrossingCardProps {
 }
 
 export function CrossingCard({ item, visible = false, myUserId }: CrossingCardProps) {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const cardWidth = width - spacing.screenPadding * 2;
 
@@ -296,6 +298,14 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
     setIsTyping(false);
   }, []);
 
+  const openUserProfile = useCallback(
+    (userId?: string | null) => {
+      if (!userId) return;
+      router.push({ pathname: "/user/[id]", params: { id: userId } });
+    },
+    [router]
+  );
+
   const p2 = detailData?.panel_2;
   const p3 = detailData?.panel_3;
 
@@ -307,7 +317,12 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
           {/* Top half — Person A */}
           <View style={styles.halfTop}>
             <View style={{ width: spacing.warmthBarWidth }} />
-            <View style={styles.halfContent}>
+            <TouchableOpacity
+              style={styles.halfContent}
+              activeOpacity={0.75}
+              disabled={!participant_a.id}
+              onPress={() => openUserProfile(participant_a.id)}
+            >
               {participant_a.photo_url ? (
                 <Image source={{ uri: participant_a.photo_url }} style={styles.avatar} />
               ) : (
@@ -321,14 +336,19 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {crossing.sentence}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
           {/* Divider */}
           <View style={styles.divider} />
           {/* Bottom half — Person B */}
           <View style={styles.halfBottom}>
             <View style={{ width: spacing.warmthBarWidth }} />
-            <View style={styles.halfContent}>
+            <TouchableOpacity
+              style={styles.halfContent}
+              activeOpacity={0.75}
+              disabled={!participant_b.id}
+              onPress={() => openUserProfile(participant_b.id)}
+            >
               {participant_b.photo_url ? (
                 <Image source={{ uri: participant_b.photo_url }} style={styles.avatar} />
               ) : (
@@ -342,7 +362,7 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {crossing.sentence}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -358,7 +378,12 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
           ) : p2 ? (
             <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
               {/* A context */}
-              <View style={styles.panelHalf}>
+              <TouchableOpacity
+                style={styles.panelHalf}
+                activeOpacity={0.75}
+                disabled={!participant_a.id}
+                onPress={() => openUserProfile(participant_a.id)}
+              >
                 {participant_a.photo_url ? (
                   <Image source={{ uri: participant_a.photo_url }} style={styles.panelAvatar} />
                 ) : (
@@ -368,10 +393,15 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   <Text style={styles.panelName}>{(participant_a.name ?? "—").toUpperCase()}</Text>
                   <Text style={styles.panelText}>{p2.context ?? "No context shared."}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
               <View style={styles.panelDivider} />
               {/* B context */}
-              <View style={styles.panelHalf}>
+              <TouchableOpacity
+                style={styles.panelHalf}
+                activeOpacity={0.75}
+                disabled={!participant_b.id}
+                onPress={() => openUserProfile(participant_b.id)}
+              >
                 {participant_b.photo_url ? (
                   <Image source={{ uri: participant_b.photo_url }} style={styles.panelAvatar} />
                 ) : (
@@ -381,7 +411,7 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   <Text style={styles.panelName}>{(participant_b.name ?? "—").toUpperCase()}</Text>
                   <Text style={styles.panelText}>{p2.context ?? "No context shared."}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             </ScrollView>
           ) : (
             <View style={styles.panelCentered}>
@@ -412,10 +442,16 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {p3.accepted_replies
                     .filter((r) => r.target_participant_id === participant_a.id)
                     .map((r) => (
-                      <View key={r.id} style={styles.replyItem}>
+                      <TouchableOpacity
+                        key={r.id}
+                        style={styles.replyItem}
+                        activeOpacity={0.75}
+                        disabled={!r.user?.id}
+                        onPress={() => openUserProfile(r.user?.id)}
+                      >
                         <Text style={styles.replyFrom}>{r.user?.name ? r.user.name.toUpperCase() : "—"}</Text>
                         <Text style={styles.replyText} numberOfLines={2}>{r.text}</Text>
-                      </View>
+                      </TouchableOpacity>
                     ))}
                 </View>
                 {/* B replies */}
@@ -424,10 +460,16 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {p3.accepted_replies
                     .filter((r) => r.target_participant_id === participant_b.id)
                     .map((r) => (
-                      <View key={r.id} style={styles.replyItem}>
+                      <TouchableOpacity
+                        key={r.id}
+                        style={styles.replyItem}
+                        activeOpacity={0.75}
+                        disabled={!r.user?.id}
+                        onPress={() => openUserProfile(r.user?.id)}
+                      >
                         <Text style={styles.replyFrom}>{r.user?.name ? r.user.name.toUpperCase() : "—"}</Text>
                         <Text style={styles.replyText} numberOfLines={2}>{r.text}</Text>
-                      </View>
+                      </TouchableOpacity>
                     ))}
                 </View>
               </>

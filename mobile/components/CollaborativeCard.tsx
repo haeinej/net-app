@@ -1,5 +1,6 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { colors, spacing, typography, fontFamily } from "../theme";
 import type { FeedItemCollaborative } from "../lib/api";
 
@@ -8,26 +9,38 @@ interface CollaborativeCardProps {
 }
 
 function ParticipantBlock({
+  userId,
   name,
   photoUrl,
   before,
   after,
 }: {
+  userId: string | null;
   name: string | null;
   photoUrl: string | null;
   before: string;
   after: string;
 }) {
+  const router = useRouter();
+
   return (
     <View style={styles.participantBlock}>
-      <View style={styles.identityRow}>
+      <TouchableOpacity
+        style={styles.identityRow}
+        activeOpacity={0.7}
+        disabled={!userId}
+        onPress={() => {
+          if (!userId) return;
+          router.push({ pathname: "/user/[id]", params: { id: userId } });
+        }}
+      >
         {photoUrl ? (
           <Image source={{ uri: photoUrl }} style={styles.avatar} />
         ) : (
           <View style={[styles.avatar, styles.avatarPlaceholder]} />
         )}
         <Text style={styles.participantName}>{(name ?? "someone").toUpperCase()}</Text>
-      </View>
+      </TouchableOpacity>
       <Text style={styles.beforeText}>
         <Text style={styles.beforeAfterLabel}>Before: </Text>
         {before}
@@ -61,6 +74,7 @@ export function CollaborativeCard({ item }: CollaborativeCardProps) {
       </View>
 
       <ParticipantBlock
+        userId={item.participant_a.id}
         name={item.participant_a.name}
         photoUrl={item.participant_a.photo_url}
         before={item.participant_a.before}
@@ -70,6 +84,7 @@ export function CollaborativeCard({ item }: CollaborativeCardProps) {
       <View style={styles.divider} />
 
       <ParticipantBlock
+        userId={item.participant_b.id}
         name={item.participant_b.name}
         photoUrl={item.participant_b.photo_url}
         before={item.participant_b.before}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
@@ -34,9 +34,11 @@ function formatTimeAgo(iso: string | null): string {
 function ConversationRow({
   item,
   onPress,
+  onProfilePress,
 }: {
   item: ConversationListItem;
   onPress: () => void;
+  onProfilePress: () => void;
 }) {
   const isDormant = item.is_dormant;
   const isUnread = item.unread;
@@ -51,13 +53,18 @@ function ConversationRow({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={styles.avatarWrap}>
+      <TouchableOpacity
+        style={styles.avatarWrap}
+        onPress={onProfilePress}
+        disabled={!item.other_user?.id}
+        activeOpacity={0.7}
+      >
         {item.other_user?.photo_url ? (
           <Image source={{ uri: item.other_user.photo_url }} style={styles.avatar} />
         ) : (
           <View style={[styles.avatar, styles.avatarPlc]} />
         )}
-      </View>
+      </TouchableOpacity>
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
           <Text
@@ -102,23 +109,38 @@ export default function ConversationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef<Promise<void> | null>(null);
 
-  const load = useCallback(async () => {
-    try {
+  const load = useCallback(
+    async (opts: { isRefresh?: boolean } = {}) => {
+      if (inFlight.current) {
+        // ignore overlapping calls
+      }
+
+      const { isRefresh } = opts;
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+
       setError(null);
-      const data = await fetchConversations();
-      setList(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+      const p = (async () => {
+        try {
+          const data = await fetchConversations();
+          setList(data);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Failed to load");
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+          inFlight.current = null;
+        }
+      })();
+
+      inFlight.current = p;
+      await p;
+    },
+    []
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -127,8 +149,7 @@ export default function ConversationsScreen() {
   );
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    load();
+    load({ isRefresh: true });
   }, [load]);
 
   const onPressRow = useCallback(
@@ -142,6 +163,14 @@ export default function ConversationsScreen() {
           otherId: item.other_user?.id ?? "",
         },
       });
+    },
+    [router]
+  );
+
+  const onPressProfile = useCallback(
+    (item: ConversationListItem) => {
+      if (!item.other_user?.id) return;
+      router.push({ pathname: "/user/[id]", params: { id: item.other_user.id } });
     },
     [router]
   );
@@ -191,7 +220,11 @@ export default function ConversationsScreen() {
         data={list}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ConversationRow item={item} onPress={() => onPressRow(item)} />
+          <ConversationRow
+            item={item}
+            onPress={() => onPressRow(item)}
+            onProfilePress={() => onPressProfile(item)}
+          />
         )}
         contentContainerStyle={styles.listContent}
         refreshControl={

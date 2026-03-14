@@ -31,6 +31,8 @@ interface ProfileThoughtCardProps {
   authorName?: string;
   /** Author photo to display in meta row */
   authorPhotoUrl?: string | null;
+  /** Author user id for profile navigation */
+  authorUserId?: string | null;
 }
 
 export function ProfileThoughtCard({
@@ -39,6 +41,7 @@ export function ProfileThoughtCard({
   dark,
   authorName,
   authorPhotoUrl,
+  authorUserId,
 }: ProfileThoughtCardProps) {
   const router = useRouter();
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
@@ -72,14 +75,24 @@ export function ProfileThoughtCard({
             </View>
           </View>
           <View style={[styles.footer, dark && styles.footerDark]}>
-            {authorPhotoUrl ? (
-              <Image source={{ uri: authorPhotoUrl }} style={styles.avatar} contentFit="cover" />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlc]} />
-            )}
-            <Text style={[styles.name, dark && styles.nameDark]} numberOfLines={1}>
-              {authorName ? authorName.toUpperCase() : "—"}
-            </Text>
+            <TouchableOpacity
+              style={styles.footerProfile}
+              activeOpacity={0.7}
+              disabled={!authorUserId}
+              onPress={() => {
+                if (!authorUserId) return;
+                router.push({ pathname: "/user/[id]", params: { id: authorUserId } });
+              }}
+            >
+              {authorPhotoUrl ? (
+                <Image source={{ uri: authorPhotoUrl }} style={styles.avatar} contentFit="cover" />
+              ) : (
+                <View style={[styles.avatar, styles.avatarPlc]} />
+              )}
+              <Text style={[styles.name, dark && styles.nameDark]} numberOfLines={1}>
+                {authorName ? authorName.toUpperCase() : "—"}
+              </Text>
+            </TouchableOpacity>
             <Text style={[styles.date, dark && styles.dateDark]}>
               {thought.created_at ? formatRelativeTime(thought.created_at) : ""}
             </Text>
@@ -129,6 +142,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.CARD_GROUND,
     height: spacing.compactFooterHeight,
     paddingHorizontal: 10,
+    gap: 8,
+  },
+  footerProfile: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   footerDark: {

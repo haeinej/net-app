@@ -79,10 +79,11 @@ function getOutgoingPalette(messageCount: number): {
 }
 
 export default function ConversationThreadScreen() {
-  const { id, otherName, otherPhoto, thoughtSentence } = useLocalSearchParams<{
+  const { id, otherName, otherPhoto, otherId, thoughtSentence } = useLocalSearchParams<{
     id: string;
     otherName?: string;
     otherPhoto?: string;
+    otherId?: string;
     thoughtSentence?: string;
   }>();
   const router = useRouter();
@@ -408,16 +409,26 @@ export default function ConversationThreadScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <View style={styles.headerAvatarWrap}>
-          {otherPhoto ? (
-            <Image source={{ uri: otherPhoto }} style={styles.headerAvatar} />
-          ) : (
-            <View style={[styles.headerAvatar, styles.headerAvatarPlc]} />
-          )}
-        </View>
-        <Text style={styles.headerName} numberOfLines={1}>
-          {otherName ? otherName.toUpperCase() : "Conversation"}
-        </Text>
+        <TouchableOpacity
+          style={styles.headerIdentity}
+          activeOpacity={0.7}
+          disabled={!otherId}
+          onPress={() => {
+            if (!otherId) return;
+            router.push({ pathname: "/user/[id]", params: { id: otherId } });
+          }}
+        >
+          <View style={styles.headerAvatarWrap}>
+            {otherPhoto ? (
+              <Image source={{ uri: otherPhoto }} style={styles.headerAvatar} />
+            ) : (
+              <View style={[styles.headerAvatar, styles.headerAvatarPlc]} />
+            )}
+          </View>
+          <Text style={styles.headerName} numberOfLines={1}>
+            {otherName ? otherName.toUpperCase() : "Conversation"}
+          </Text>
+        </TouchableOpacity>
         <ScreenExitButton onPress={() => router.back()} style={styles.headerExit} />
       </View>
 
@@ -615,6 +626,11 @@ const styles = StyleSheet.create({
   },
   headerAvatarWrap: {
     marginRight: 10,
+  },
+  headerIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
   },
   headerAvatar: {
     width: 32,
