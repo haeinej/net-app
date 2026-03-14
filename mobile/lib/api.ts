@@ -725,6 +725,11 @@ export interface RegisterBody {
   password: string;
 }
 
+export interface RegisterResponse {
+  verification_required: true;
+  verification_email: string;
+}
+
 export interface AuthResponse {
   token: string;
   user_id: string;
@@ -732,8 +737,8 @@ export interface AuthResponse {
   onboarding_complete: boolean;
 }
 
-export async function register(body: RegisterBody): Promise<AuthResponse> {
-  return requestJson<AuthResponse>("/api/auth/register", "Registration failed", {
+export async function register(body: RegisterBody): Promise<RegisterResponse> {
+  return requestJson<RegisterResponse>("/api/auth/register", "Registration failed", {
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify(body),
@@ -746,6 +751,39 @@ export async function login(email: string, password: string): Promise<AuthRespon
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify({ email, password }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export async function verifyEmail(email: string, code: string): Promise<AuthResponse> {
+  return requestJson<AuthResponse>("/api/auth/verify-email", "Email verification failed", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ email, code }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export async function verifyEmailLink(
+  tokenHash: string,
+  type?: string
+): Promise<AuthResponse> {
+  return requestJson<AuthResponse>("/api/auth/verify-email", "Email verification failed", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      token_hash: tokenHash,
+      type,
+    }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export async function resendVerificationEmail(email: string): Promise<void> {
+  await requestVoid("/api/auth/resend-verification", "Could not resend verification email", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ email }),
     timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
 }

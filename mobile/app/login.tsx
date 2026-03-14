@@ -15,7 +15,7 @@ import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily } from "../theme";
-import { login } from "../lib/api";
+import { ApiError, login } from "../lib/api";
 import {
   setAuth,
   setOnboardingComplete,
@@ -66,6 +66,10 @@ export default function LoginScreen() {
       setCachedUserId(user_id);
       router.replace(onboarding_complete ? "/(tabs)" : "/onboarding");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        router.replace({ pathname: "/verify-email", params: { email: e } });
+        return;
+      }
       setError(err instanceof Error ? err.message : "Incorrect email or password");
     } finally {
       setLoading(false);

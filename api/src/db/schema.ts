@@ -53,6 +53,7 @@ export const users = pgTable("users", {
   interests: text("interests").array(), // internal cold-start strings, max 3
   email: text("email").unique(),
   passwordHash: text("password_hash"),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 

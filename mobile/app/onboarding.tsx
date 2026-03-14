@@ -27,7 +27,6 @@ import {
   type RegisterBody,
 } from "../lib/api";
 import {
-  setAuth,
   setOnboardingComplete,
   setOnboardingStep,
   getOnboardingStep,
@@ -43,6 +42,15 @@ const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
 const PHOTO_SIZE = 80;
 
+function validateStrongPassword(password: string): string | null {
+  if (password.length < 10) return "Password must be at least 10 characters";
+  if (!/[a-z]/.test(password)) return "Password must include a lowercase letter";
+  if (!/[A-Z]/.test(password)) return "Password must include an uppercase letter";
+  if (!/\d/.test(password)) return "Password must include a number";
+  if (!/[^A-Za-z0-9]/.test(password)) return "Password must include a symbol";
+  return null;
+}
+
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -55,6 +63,7 @@ export default function OnboardingScreen() {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [regError, setRegError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [sendingStep1, setSendingStep1] = useState(false);
@@ -163,10 +172,20 @@ export default function OnboardingScreen() {
   const canContinueStep1 =
     name.trim().length > 0 &&
     email.trim().length > 0 &&
-    password.length >= 8;
+    password.length >= 10 &&
+    confirmPassword.length > 0;
 
   const handleStep1Continue = useCallback(async () => {
     if (!canContinueStep1 || sendingStep1) return;
+    const passwordError = validateStrongPassword(password);
+    if (passwordError) {
+      setRegError(passwordError);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setRegError("Passwords do not match");
+      return;
+    }
     setRegError(null);
     setSendingStep1(true);
     try {
@@ -176,13 +195,11 @@ export default function OnboardingScreen() {
         email: email.trim(),
         password,
       };
-      const { token, user_id, onboarding_complete, onboarding_step } =
-        await register(body);
-      await setAuth(token, user_id);
-      await setOnboardingComplete(onboarding_complete);
-      await setOnboardingStep(onboarding_step);
-      setCachedUserId(user_id);
-      setStepState(onboarding_step);
+      const { verification_email } = await register(body);
+      router.replace({
+        pathname: "/verify-email",
+        params: { email: verification_email },
+      });
     } catch (err) {
       setRegError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -195,6 +212,8 @@ export default function OnboardingScreen() {
     selectedProfilePhoto,
     email,
     password,
+    confirmPassword,
+    router,
   ]);
 
   const handleStep2Continue = useCallback(async () => {
@@ -321,10 +340,19 @@ export default function OnboardingScreen() {
           />
           <TextInput
             style={styles.input}
-            placeholder="Password (min 8 characters)"
+            placeholder="Password"
             placeholderTextColor={colors.TYPE_MUTED}
             value={password}
             onChangeText={(t) => { setPassword(t); setRegError(null); }}
+            secureTextEntry
+            editable={!sendingStep1}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Confirm password"
+            placeholderTextColor={colors.TYPE_MUTED}
+            value={confirmPassword}
+            onChangeText={(t) => { setConfirmPassword(t); setRegError(null); }}
             secureTextEntry
             editable={!sendingStep1}
           />
