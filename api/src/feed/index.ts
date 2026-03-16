@@ -15,7 +15,8 @@ export { feedConfig } from "./config";
 export type {
   FeedItem,
   FeedItemUser,
-  WarmthLevel,
+  FeedServeTrace,
+  FeedPhaseUsed,
   ThoughtCandidate,
   ViewerEmbeddings,
   ViewerProfile,

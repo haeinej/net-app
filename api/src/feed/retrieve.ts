@@ -3,15 +3,12 @@
  * Three-bucket system: Resonance Matches / Adjacent Territory / Wild Cards.
  */
 
-import { and, desc, eq, ne, sql, isNull, or } from "drizzle-orm";
+import { and, desc, eq, ne, sql, isNull, or, notInArray } from "drizzle-orm";
 import { cosineDistance } from "drizzle-orm";
 import { db, thoughts, users, conversations } from "../db";
-import { getEmbeddingService } from "../embedding";
-import { feedConfig } from "./config";
+import { feedConfig, type FeedRuntimeConfig } from "./config";
 import { getSimilarities } from "./score";
 import type { ThoughtCandidate, ViewerEmbeddings, BucketedCandidate, UserStage } from "./types";
-
-const { candidateLimit, recentLimit, newUserSurfaceLimit } = feedConfig;
 
 /** Map DB row to ThoughtCandidate (embeddings as number[] from driver). */
 function toCandidate(row: {
@@ -39,29 +36,21 @@ function toCandidate(row: {
   };
 }
 
-async function getViewerSeedEmbedding(viewerId: string): Promise<number[] | null> {
-  const embeddingService = getEmbeddingService();
-  const [viewer] = await db
-    .select({ interests: users.interests })
-    .from(users)
-    .where(eq(users.id, viewerId));
-  const interestsText = Array.isArray(viewer?.interests)
-    ? (viewer.interests as string[]).filter(Boolean).join(" ")
-    : "";
-
-  try {
-    return interestsText.length > 0
-      ? await embeddingService.embed(interestsText, "query")
-      : await embeddingService.embed("general", "query");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(`[feed] seed embedding unavailable for viewer ${viewerId}: ${message}`);
-    return null;
+function stableShuffleScore(viewerId: string, thoughtId: string, dayKey: number): number {
+  const input = `${viewerId}:${thoughtId}:${dayKey}`;
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
   }
+  return hash >>> 0;
 }
 
 /** 50 most recent thoughts (excluding viewer). */
-async function getRecentCandidates(viewerId: string): Promise<ThoughtCandidate[]> {
+async function getRecentCandidates(
+  viewerId: string,
+  config: FeedRuntimeConfig = feedConfig
+): Promise<ThoughtCandidate[]> {
   const rows = await db
     .select({
       thought: thoughts,
@@ -72,7 +61,7 @@ async function getRecentCandidates(viewerId: string): Promise<ThoughtCandidate[]
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(and(ne(thoughts.userId, viewerId), isNull(thoughts.deletedAt)))
     .orderBy(desc(thoughts.createdAt))
-    .limit(recentLimit);
+    .limit(config.recentLimit);
   return rows.map(toCandidate);
 }
 
@@ -132,19 +121,26 @@ async function getNearestBySurface(
 async function getRandomCandidates(
   viewerId: string,
   excludeIds: Set<string>,
-  limit: number
+  limit: number,
+  config: FeedRuntimeConfig = feedConfig
 ): Promise<ThoughtCandidate[]> {
-  const { thoughtActiveDays, thoughtSleepTransitionDays, wildcardMinQuality } = feedConfig;
+  const { thoughtActiveDays, thoughtSleepTransitionDays, wildcardMinQuality } = config;
   const maxAgeDays = thoughtActiveDays + thoughtSleepTransitionDays;
   const excludeArr = [...excludeIds];
+  const poolLimit = Math.max(limit * 6, 120);
+  const dayKey = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
 
-  const baseWhere = and(
+  const conditions = [
     ne(thoughts.userId, viewerId),
     isNull(thoughts.deletedAt),
     sql`${thoughts.qualityScore} >= ${wildcardMinQuality}`,
     sql`${thoughts.createdAt} > now() - interval '${sql.raw(String(maxAgeDays))} days'`,
-    excludeArr.length > 0 ? sql`${thoughts.id} NOT IN (${sql.raw(excludeArr.map(id => `'${id}'`).join(","))})` : sql`true`
-  );
+  ];
+
+  if (excludeArr.length > 0) {
+    const limited = excludeArr.slice(0, 200);
+    conditions.push(notInArray(thoughts.id, limited));
+  }
 
   const rows = await db
     .select({
@@ -154,15 +150,25 @@ async function getRandomCandidates(
     })
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
-    .where(baseWhere)
-    .orderBy(sql`random()`)
-    .limit(limit);
-  return rows.map(toCandidate);
+    .where(and(...conditions))
+    .orderBy(desc(thoughts.createdAt))
+    .limit(poolLimit);
+  return rows
+    .map((row) => ({
+      score: stableShuffleScore(viewerId, row.thought.id, dayKey),
+      candidate: toCandidate(row),
+    }))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, limit)
+    .map((row) => row.candidate);
 }
 
 /** Determine user stage from accepted conversation count. */
-async function getUserStage(viewerId: string): Promise<UserStage> {
-  const { stageThresholds } = feedConfig;
+async function getUserStage(
+  viewerId: string,
+  config: FeedRuntimeConfig = feedConfig
+): Promise<UserStage> {
+  const { stageThresholds } = config;
   const [result] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(conversations)
@@ -206,12 +212,14 @@ async function getActiveConversationUserIds(viewerId: string): Promise<Set<strin
 
 /**
  * Layer 1 (legacy): flat candidate retrieval. Kept for backward compat.
+ * Uses a single averaged resonance embedding for the viewer to avoid per-thought kNN queries.
  */
 export async function getCandidates(
   viewerId: string,
-  limit: number = candidateLimit
+  limit: number = feedConfig.candidateLimit,
+  config: FeedRuntimeConfig = feedConfig
 ): Promise<ThoughtCandidate[]> {
-  const recent = await getRecentCandidates(viewerId);
+  const recent = await getRecentCandidates(viewerId, config);
 
   const viewerThoughts = await db
     .select({
@@ -221,40 +229,27 @@ export async function getCandidates(
     .from(thoughts)
     .where(eq(thoughts.userId, viewerId));
 
-  const hasViewerThoughts =
-    viewerThoughts.length > 0 &&
-    viewerThoughts.some(
-      (t) => t.resonanceEmbedding != null && Array.isArray(t.resonanceEmbedding)
-    );
+  const resonanceVecs = viewerThoughts
+    .map((t) =>
+      Array.isArray(t.resonanceEmbedding)
+        ? (t.resonanceEmbedding as number[])
+        : null
+    )
+    .filter((v): v is number[] => v != null);
+
+  const hasViewerThoughts = resonanceVecs.length > 0;
 
   const bySimilarity: ThoughtCandidate[] = [];
 
   if (hasViewerThoughts) {
-    const perQuery = Math.ceil(limit / Math.max(viewerThoughts.length, 1));
-    const seen = new Set<string>();
-    for (const row of viewerThoughts) {
-      const q = Array.isArray(row.resonanceEmbedding)
-        ? (row.resonanceEmbedding as number[])
-        : null;
-      if (!q) continue;
-      const batch = await getNearestByResonance(viewerId, q, perQuery);
-      for (const c of batch) {
-        if (!seen.has(c.id)) {
-          seen.add(c.id);
-          bySimilarity.push(c);
-        }
-      }
+    const dim = resonanceVecs[0]!.length;
+    const sum = new Array(dim).fill(0);
+    for (const v of resonanceVecs) {
+      for (let i = 0; i < dim; i++) sum[i] += v[i]!;
     }
-  } else {
-    const interestsEmbedding = await getViewerSeedEmbedding(viewerId);
-    if (interestsEmbedding) {
-      const batch = await getNearestBySurface(
-        viewerId,
-        interestsEmbedding,
-        newUserSurfaceLimit
-      );
-      bySimilarity.push(...batch);
-    }
+    const avg = sum.map((x) => x / resonanceVecs.length);
+    const batch = await getNearestByResonance(viewerId, avg, limit);
+    bySimilarity.push(...batch);
   }
 
   const bySimilarityIds = new Set(bySimilarity.map((c) => c.id));
@@ -276,13 +271,15 @@ export async function getCandidates(
 export async function getBucketedCandidates(
   viewerId: string,
   viewerEmbeddings: ViewerEmbeddings,
-  limit: number = candidateLimit
+  limit: number = feedConfig.candidateLimit,
+  config: FeedRuntimeConfig = feedConfig
 ): Promise<{ candidates: BucketedCandidate[]; stage: UserStage }> {
-  const stage = await getUserStage(viewerId);
+  const stage = await getUserStage(viewerId, config);
   const activeConvUserIds = await getActiveConversationUserIds(viewerId);
 
   // Retrieve flat candidate pool (reuse existing logic)
-  const recent = await getRecentCandidates(viewerId);
+  const recent = await getRecentCandidates(viewerId, config);
+  const bySimilarity: ThoughtCandidate[] = [];
   const viewerThoughts = await db
     .select({
       resonanceEmbedding: thoughts.questionEmbedding,
@@ -291,40 +288,24 @@ export async function getBucketedCandidates(
     .from(thoughts)
     .where(eq(thoughts.userId, viewerId));
 
-  const hasViewerThoughts =
-    viewerThoughts.length > 0 &&
-    viewerThoughts.some(
-      (t) => t.resonanceEmbedding != null && Array.isArray(t.resonanceEmbedding)
-    );
-
-  const bySimilarity: ThoughtCandidate[] = [];
+  const resonanceVecs = viewerThoughts
+    .map((t) =>
+      Array.isArray(t.resonanceEmbedding)
+        ? (t.resonanceEmbedding as number[])
+        : null
+    )
+    .filter((v): v is number[] => v != null);
+  const hasViewerThoughts = resonanceVecs.length > 0;
 
   if (hasViewerThoughts) {
-    const perQuery = Math.ceil(limit / Math.max(viewerThoughts.length, 1));
-    const seen = new Set<string>();
-    for (const row of viewerThoughts) {
-      const q = Array.isArray(row.resonanceEmbedding)
-        ? (row.resonanceEmbedding as number[])
-        : null;
-      if (!q) continue;
-      const batch = await getNearestByResonance(viewerId, q, perQuery);
-      for (const c of batch) {
-        if (!seen.has(c.id)) {
-          seen.add(c.id);
-          bySimilarity.push(c);
-        }
-      }
+    const dim = resonanceVecs[0]!.length;
+    const sum = new Array(dim).fill(0);
+    for (const v of resonanceVecs) {
+      for (let i = 0; i < dim; i++) sum[i] += v[i]!;
     }
-  } else {
-    const interestsEmbedding = await getViewerSeedEmbedding(viewerId);
-    if (interestsEmbedding) {
-      const batch = await getNearestBySurface(
-        viewerId,
-        interestsEmbedding,
-        newUserSurfaceLimit
-      );
-      bySimilarity.push(...batch);
-    }
+    const avg = sum.map((x) => x / resonanceVecs.length);
+    const batch = await getNearestByResonance(viewerId, avg, limit);
+    bySimilarity.push(...batch);
   }
 
   // Merge similarity + recent, deduplicate
@@ -337,7 +318,7 @@ export async function getBucketedCandidates(
   }
 
   // Pre-filter: remove thoughts from users with active conversations
-  const { thoughtActiveDays, thoughtSleepTransitionDays } = feedConfig;
+  const { thoughtActiveDays, thoughtSleepTransitionDays } = config;
   const maxAgeMs = (thoughtActiveDays + thoughtSleepTransitionDays) * 24 * 60 * 60 * 1000;
   const pool = bySimilarity.filter((c) => {
     if (activeConvUserIds.has(c.userId)) return false;
@@ -348,7 +329,12 @@ export async function getBucketedCandidates(
   });
 
   // Compute similarities for bucket assignment
-  const { resonanceTopFraction, adjacentMinResonance, adjacentMinSurfaceDistance, wildcardMinQuality } = feedConfig;
+  const {
+    resonanceTopFraction,
+    adjacentMinResonance,
+    adjacentMinSurfaceDistance,
+    wildcardMinQuality,
+  } = config;
 
   const scored = pool.map((thought) => {
     const { resonance_similarity, surface_similarity } = getSimilarities(thought, viewerEmbeddings);
@@ -382,7 +368,7 @@ export async function getBucketedCandidates(
   }
 
   // Bucket 3: wild cards from remaining + random DB query
-  const ratios = feedConfig.bucketRatios[stage];
+  const ratios = config.bucketRatios[stage];
   const wildcardTarget = Math.max(1, Math.ceil(limit * ratios.wildcard));
   const bucket1And2Ids = new Set([
     ...bucket1.map((c) => c.thought.id),
@@ -402,7 +388,7 @@ export async function getBucketedCandidates(
   if (bucket3.length < wildcardTarget) {
     const needed = wildcardTarget - bucket3.length;
     const allExclude = new Set([...bucket1And2Ids, ...bucket3.map((c) => c.thought.id)]);
-    const random = await getRandomCandidates(viewerId, allExclude, needed);
+    const random = await getRandomCandidates(viewerId, allExclude, needed, config);
     for (const t of random) {
       if (!activeConvUserIds.has(t.userId)) {
         bucket3.push({ thought: t, bucket: "wildcard" });

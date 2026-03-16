@@ -4,7 +4,7 @@ services:
     runtime: node
     rootDir: api
     buildCommand: npm ci && npm run build
-    startCommand: npm run start
+    startCommand: npm run db:migrate && npm run start
     healthCheckPath: /health
     autoDeploy: true
     envVars:
@@ -14,5 +14,7 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: INTERNAL_METRICS_KEY
+        sync: false
       - key: CORS_ORIGIN
         value: https://www.ohmmmm.com
