@@ -12,6 +12,8 @@ import {
   upsertRankingConfig,
 } from "../feed/runtime-config";
 
+type DebugFeedItem = Awaited<ReturnType<typeof getFeedWithDebug>>[number];
+
 function hasValidInternalKey(request: FastifyRequest): boolean {
   const configuredKey = process.env.INTERNAL_METRICS_KEY?.trim();
   if (!configuredKey) return false;
@@ -61,6 +63,210 @@ function buildAuditContext(
     metadata: input?.metadata ?? null,
     requestIp: request.ip ?? null,
     userAgent: request.headers["user-agent"]?.toString() ?? null,
+  };
+}
+
+function compareItemId(item: DebugFeedItem): string {
+  return item.type === "thought" ? item.thought.id : item.crossing.id;
+}
+
+function compareItemSentence(item: DebugFeedItem): string {
+  return item.type === "thought" ? item.thought.sentence : item.crossing.sentence;
+}
+
+function compareItemAuthor(item: DebugFeedItem): string {
+  if (item.type === "thought") {
+    return item.user.name ?? "Unknown";
+  }
+  return `${item.participant_a.name ?? "Unknown"} + ${item.participant_b.name ?? "Unknown"}`;
+}
+
+function average(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function weightedRateFromMix(
+  mix: Record<string, number>,
+  bucketMetrics: Record<string, Record<string, number | null | undefined>> | undefined,
+  metricKey: string
+): number | null {
+  const total = Object.values(mix).reduce((sum, value) => sum + value, 0);
+  if (total <= 0 || !bucketMetrics) return null;
+  let weighted = 0;
+  let weight = 0;
+  for (const [bucket, count] of Object.entries(mix)) {
+    const value = bucketMetrics[bucket]?.[metricKey];
+    if (typeof value !== "number" || Number.isNaN(value)) continue;
+    const share = count / total;
+    weighted += share * value;
+    weight += share;
+  }
+  if (weight <= 0) return null;
+  return weighted / weight;
+}
+
+function buildCompareSummary(input: {
+  currentItems: DebugFeedItem[];
+  candidateItems: DebugFeedItem[];
+  bucketMetrics?: Record<string, Record<string, number | null | undefined>>;
+}) {
+  const currentById = new Map(
+    input.currentItems.map((item, index) => [compareItemId(item), { item, index }])
+  );
+  const candidateById = new Map(
+    input.candidateItems.map((item, index) => [compareItemId(item), { item, index }])
+  );
+
+  const allIds = new Set([...currentById.keys(), ...candidateById.keys()]);
+  const currentMix: Record<string, number> = {};
+  const candidateMix: Record<string, number> = {};
+  const bucketSwapCounts: Record<string, number> = {};
+  const overlapping: Array<{
+    id: string;
+    sentence: string;
+    author: string;
+    current_rank: number;
+    candidate_rank: number;
+    rank_delta: number;
+    current_bucket: string | null;
+    candidate_bucket: string | null;
+    current_final_rank: number | null;
+    candidate_final_rank: number | null;
+    final_rank_delta: number | null;
+  }> = [];
+  const currentOnly: Array<{ id: string; sentence: string; author: string; current_rank: number }> =
+    [];
+  const candidateOnly: Array<{
+    id: string;
+    sentence: string;
+    author: string;
+    candidate_rank: number;
+  }> = [];
+
+  for (const currentEntry of currentById.values()) {
+    const bucket = currentEntry.item._debug.bucket;
+    currentMix[bucket] = (currentMix[bucket] ?? 0) + 1;
+  }
+  for (const candidateEntry of candidateById.values()) {
+    const bucket = candidateEntry.item._debug.bucket;
+    candidateMix[bucket] = (candidateMix[bucket] ?? 0) + 1;
+  }
+
+  for (const id of allIds) {
+    const currentEntry = currentById.get(id);
+    const candidateEntry = candidateById.get(id);
+
+    if (currentEntry && candidateEntry) {
+      const currentBucket = currentEntry.item._debug.bucket ?? null;
+      const candidateBucket = candidateEntry.item._debug.bucket ?? null;
+      const swapKey = `${currentBucket ?? "unknown"}->${candidateBucket ?? "unknown"}`;
+      bucketSwapCounts[swapKey] = (bucketSwapCounts[swapKey] ?? 0) + 1;
+
+      const currentFinal = currentEntry.item._debug.scores.final_rank ?? null;
+      const candidateFinal = candidateEntry.item._debug.scores.final_rank ?? null;
+      overlapping.push({
+        id,
+        sentence: compareItemSentence(candidateEntry.item),
+        author: compareItemAuthor(candidateEntry.item),
+        current_rank: currentEntry.index + 1,
+        candidate_rank: candidateEntry.index + 1,
+        rank_delta: currentEntry.index - candidateEntry.index,
+        current_bucket: currentBucket,
+        candidate_bucket: candidateBucket,
+        current_final_rank: currentFinal,
+        candidate_final_rank: candidateFinal,
+        final_rank_delta:
+          currentFinal != null && candidateFinal != null
+            ? candidateFinal - currentFinal
+            : null,
+      });
+      continue;
+    }
+
+    if (currentEntry) {
+      currentOnly.push({
+        id,
+        sentence: compareItemSentence(currentEntry.item),
+        author: compareItemAuthor(currentEntry.item),
+        current_rank: currentEntry.index + 1,
+      });
+    }
+
+    if (candidateEntry) {
+      candidateOnly.push({
+        id,
+        sentence: compareItemSentence(candidateEntry.item),
+        author: compareItemAuthor(candidateEntry.item),
+        candidate_rank: candidateEntry.index + 1,
+      });
+    }
+  }
+
+  const rankDeltas = overlapping.map((item) => item.rank_delta);
+  const changedBuckets = Object.entries(bucketSwapCounts)
+    .filter(([key]) => {
+      const [from, to] = key.split("->");
+      return from !== to;
+    })
+    .sort((a, b) => b[1] - a[1])
+    .map(([swap, count]) => ({ swap, count }));
+
+  const likelyOutcomeMetrics = [
+    "qualified_reply_rate",
+    "reply_accept_rate",
+    "conversation_depth_10_rate",
+    "crossing_approval_rate",
+    "crossing_autopost_rate",
+  ] as const;
+
+  const likely_outcome_deltas = Object.fromEntries(
+    likelyOutcomeMetrics.map((metricKey) => {
+      const currentEstimate = weightedRateFromMix(
+        currentMix,
+        input.bucketMetrics,
+        metricKey
+      );
+      const candidateEstimate = weightedRateFromMix(
+        candidateMix,
+        input.bucketMetrics,
+        metricKey
+      );
+      return [
+        metricKey,
+        {
+          current: currentEstimate,
+          candidate: candidateEstimate,
+          delta:
+            currentEstimate != null && candidateEstimate != null
+              ? candidateEstimate - currentEstimate
+              : null,
+        },
+      ];
+    })
+  );
+
+  return {
+    overlap_count: overlapping.length,
+    current_only_count: currentOnly.length,
+    candidate_only_count: candidateOnly.length,
+    average_rank_delta: average(rankDeltas),
+    items_moved_up: overlapping.filter((item) => item.rank_delta > 0).length,
+    items_moved_down: overlapping.filter((item) => item.rank_delta < 0).length,
+    current_bucket_mix: currentMix,
+    candidate_bucket_mix: candidateMix,
+    bucket_swaps: changedBuckets,
+    top_gainers: [...overlapping]
+      .filter((item) => item.rank_delta > 0)
+      .sort((a, b) => b.rank_delta - a.rank_delta)
+      .slice(0, 10),
+    top_losers: [...overlapping]
+      .filter((item) => item.rank_delta < 0)
+      .sort((a, b) => a.rank_delta - b.rank_delta)
+      .slice(0, 10),
+    newly_added: [...candidateOnly].slice(0, 10),
+    removed: [...currentOnly].slice(0, 10),
+    likely_outcome_deltas,
   };
 }
 
@@ -453,7 +659,45 @@ function renderBoardHtml(): string {
               <button id="compareButton" class="secondary" type="button">Compare feeds</button>
             </div>
           </div>
-          <pre id="compareOutput">No compare run yet.</pre>
+          <div id="compareSummaryMetrics" class="grid metrics" style="margin-bottom:12px;"></div>
+          <div class="row" style="margin-top:0;">
+            <div class="span-4">
+              <h3>Likely outcome deltas</h3>
+              <div id="compareOutcomeTable"></div>
+            </div>
+            <div class="span-4">
+              <h3>Bucket swaps</h3>
+              <div id="compareSwapTable"></div>
+            </div>
+            <div class="span-4">
+              <h3>Bucket mix</h3>
+              <div id="compareBucketMixTable"></div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <div class="span-6">
+              <h3>Top gainers</h3>
+              <div id="compareGainersTable"></div>
+            </div>
+            <div class="span-6">
+              <h3>Top losers</h3>
+              <div id="compareLosersTable"></div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <div class="span-6">
+              <h3>Newly added</h3>
+              <div id="compareAddedTable"></div>
+            </div>
+            <div class="span-6">
+              <h3>Removed</h3>
+              <div id="compareRemovedTable"></div>
+            </div>
+          </div>
+          <details style="margin-top:12px;">
+            <summary class="muted">Raw compare payload</summary>
+            <pre id="compareOutput">No compare run yet.</pre>
+          </details>
         </div>
       </div>
     </div>
@@ -557,6 +801,112 @@ function renderBoardHtml(): string {
           "<table><thead><tr><th>Action</th><th>Config</th><th>Prev active</th><th>Actor</th><th>Reason</th><th>Time</th><th>Metadata</th></tr></thead><tbody>" +
           rows +
           "</tbody></table>";
+      }
+
+      function renderSimpleCompareTable(rows, columns, emptyMessage) {
+        if (!rows || !rows.length) {
+          return '<div class="muted">' + (emptyMessage || "No data.") + '</div>';
+        }
+        var head = columns.map(function(column) {
+          return "<th>" + escapeHtml(column.label) + "</th>";
+        }).join("");
+        var body = rows.map(function(row) {
+          return "<tr>" + columns.map(function(column) {
+            var value = typeof column.render === "function" ? column.render(row) : row[column.key];
+            return "<td>" + (value == null ? "—" : value) + "</td>";
+          }).join("") + "</tr>";
+        }).join("");
+        return "<table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table>";
+      }
+
+      function renderCompareResult(result) {
+        var summary = (result && result.summary) || {};
+        document.getElementById("compareSummaryMetrics").innerHTML = [
+          metricCard("Overlap", summary.overlap_count, "count"),
+          metricCard("Added", summary.candidate_only_count, "count"),
+          metricCard("Removed", summary.current_only_count, "count"),
+          metricCard("Avg rank delta", summary.average_rank_delta, "count"),
+          metricCard("Moved up", summary.items_moved_up, "count"),
+          metricCard("Moved down", summary.items_moved_down, "count")
+        ].join("");
+
+        var outcomeRows = Object.entries(summary.likely_outcome_deltas || {}).map(function(entry) {
+          return {
+            metric: entry[0],
+            current: entry[1] && entry[1].current,
+            candidate: entry[1] && entry[1].candidate,
+            delta: entry[1] && entry[1].delta
+          };
+        });
+        document.getElementById("compareOutcomeTable").innerHTML = renderSimpleCompareTable(
+          outcomeRows,
+          [
+            { label: "Metric", render: function(row) { return escapeHtml(row.metric); } },
+            { label: "Current", render: function(row) { return percentText(row.current); } },
+            { label: "Candidate", render: function(row) { return percentText(row.candidate); } },
+            { label: "Delta", render: function(row) { return percentText(row.delta); } }
+          ],
+          "No outcome estimate yet."
+        );
+
+        document.getElementById("compareSwapTable").innerHTML = renderSimpleCompareTable(
+          summary.bucket_swaps || [],
+          [
+            { label: "Swap", render: function(row) { return escapeHtml(row.swap); } },
+            { label: "Count", render: function(row) { return numberText(row.count, 0); } }
+          ],
+          "No bucket swaps."
+        );
+
+        var bucketMixRows = ["resonance", "adjacent", "wildcard"].map(function(bucket) {
+          return {
+            bucket: bucket,
+            current: summary.current_bucket_mix && summary.current_bucket_mix[bucket],
+            candidate: summary.candidate_bucket_mix && summary.candidate_bucket_mix[bucket]
+          };
+        });
+        document.getElementById("compareBucketMixTable").innerHTML = renderSimpleCompareTable(
+          bucketMixRows,
+          [
+            { label: "Bucket", render: function(row) { return escapeHtml(row.bucket); } },
+            { label: "Current", render: function(row) { return numberText(row.current, 0); } },
+            { label: "Candidate", render: function(row) { return numberText(row.candidate, 0); } }
+          ],
+          "No bucket mix."
+        );
+
+        var movementColumns = [
+          { label: "Thought", render: function(row) { return "<strong>" + escapeHtml(row.sentence) + "</strong><div class=\"muted\">" + escapeHtml(row.author) + "</div>"; } },
+          { label: "Current", render: function(row) { return numberText(row.current_rank, 0); } },
+          { label: "Candidate", render: function(row) { return numberText(row.candidate_rank, 0); } },
+          { label: "Delta", render: function(row) { return numberText(row.rank_delta, 0); } },
+          { label: "Bucket", render: function(row) { return escapeHtml((row.current_bucket || "—") + " → " + (row.candidate_bucket || "—")); } }
+        ];
+        document.getElementById("compareGainersTable").innerHTML = renderSimpleCompareTable(
+          summary.top_gainers || [],
+          movementColumns,
+          "No major rank gains."
+        );
+        document.getElementById("compareLosersTable").innerHTML = renderSimpleCompareTable(
+          summary.top_losers || [],
+          movementColumns,
+          "No major rank drops."
+        );
+
+        var edgeColumns = [
+          { label: "Thought", render: function(row) { return "<strong>" + escapeHtml(row.sentence) + "</strong><div class=\"muted\">" + escapeHtml(row.author) + "</div>"; } },
+          { label: "Rank", render: function(row) { return numberText(row.current_rank || row.candidate_rank, 0); } }
+        ];
+        document.getElementById("compareAddedTable").innerHTML = renderSimpleCompareTable(
+          summary.newly_added || [],
+          edgeColumns,
+          "No newly added thoughts."
+        );
+        document.getElementById("compareRemovedTable").innerHTML = renderSimpleCompareTable(
+          summary.removed || [],
+          edgeColumns,
+          "No removed thoughts."
+        );
       }
 
       function renderGroupTable(groups) {
@@ -768,13 +1118,16 @@ function renderBoardHtml(): string {
           var viewerId = document.getElementById("viewerIdInput").value.trim();
           var version = document.getElementById("candidateVersionInput").value.trim();
           var limit = document.getElementById("compareLimitInput").value.trim() || "20";
+          var days = document.getElementById("daysInput").value;
           if (!viewerId || !version) {
             throw new Error("Viewer ID and candidate version are required");
           }
           var query = "/api/internal/feed/compare?viewer_id=" + encodeURIComponent(viewerId) +
             "&candidate_version=" + encodeURIComponent(version) +
-            "&limit=" + encodeURIComponent(limit);
+            "&limit=" + encodeURIComponent(limit) +
+            "&days=" + encodeURIComponent(days);
           var result = await fetchInternal(query);
+          renderCompareResult(result);
           document.getElementById("compareOutput").textContent = JSON.stringify(result, null, 2);
           setStatus("Compare complete.", false);
         } catch (error) {
@@ -1008,6 +1361,7 @@ export async function internalFeedMetricsRoutes(
       candidate_version?: string;
       limit?: string;
       offset?: string;
+      days?: string;
     };
   }>(
     "/api/internal/feed/compare",
@@ -1023,6 +1377,7 @@ export async function internalFeedMetricsRoutes(
 
     const limit = Math.min(100, Math.max(1, parseInt(request.query.limit ?? "20", 10) || 20));
     const offset = Math.max(0, parseInt(request.query.offset ?? "0", 10) || 0);
+    const days = parseWindowDays(request.query.days);
 
     const [activeConfig, candidateConfig] = await Promise.all([
       getActiveRankingConfig(),
@@ -1032,7 +1387,7 @@ export async function internalFeedMetricsRoutes(
       return reply.status(404).send({ error: "candidate config not found" });
     }
 
-    const [currentItems, candidateItems] = await Promise.all([
+    const [currentItems, candidateItems, metrics] = await Promise.all([
       getFeedWithDebug(viewerId, limit, offset, {
         config: activeConfig.config,
         configVersion: activeConfig.version,
@@ -1045,10 +1400,18 @@ export async function internalFeedMetricsRoutes(
         skipCache: true,
         disableServeLogging: true,
       }),
+      getFeedMetrics(days),
     ]);
+
+    const summary = buildCompareSummary({
+      currentItems,
+      candidateItems,
+      bucketMetrics: metrics.by_bucket,
+    });
 
     return reply.send({
       viewer_id: viewerId,
+      window_days: days,
       current: {
         version: activeConfig.version,
         name: activeConfig.name,
@@ -1059,6 +1422,7 @@ export async function internalFeedMetricsRoutes(
         name: candidateConfig.name,
         items: candidateItems,
       },
+      summary,
     });
     }
   );
