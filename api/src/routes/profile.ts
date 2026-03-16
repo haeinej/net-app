@@ -18,6 +18,8 @@ import {
 import { getUserId, authenticate } from "../lib/auth";
 import { verifyPassword } from "../lib/password";
 const INTERESTS_MAX = 3;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface UserIdParam {
   id: string;
@@ -37,62 +39,96 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
   app.get<{ Params: UserIdParam }>("/api/users/:id/profile", async (request, reply) => {
-    const userId = getUserId(request);
-    if (!userId) return reply.status(401).send();
-    const targetId = request.params.id;
-    const [[user], userThoughts, userCrossings] = await Promise.all([
-      db.select().from(users).where(eq(users.id, targetId)).limit(1),
-      db
-        .select()
-        .from(thoughts)
-        .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
-        .orderBy(desc(thoughts.createdAt)),
-      db
-        .select()
-        .from(crossings)
-        .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
-        .orderBy(desc(crossings.createdAt)),
-    ]);
+    try {
+      const userId = getUserId(request);
+      if (!userId) return reply.status(401).send();
+      const targetId = request.params.id;
+      if (!UUID_PATTERN.test(targetId)) {
+        return reply.status(404).send({ error: "Profile not found" });
+      }
 
-    if (!user) return reply.status(404).send();
+      const [[user], userThoughts] = await Promise.all([
+        db.select().from(users).where(eq(users.id, targetId)).limit(1),
+        db
+          .select()
+          .from(thoughts)
+          .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
+          .orderBy(desc(thoughts.createdAt)),
+      ]);
 
-    const participantIds = [
-      ...new Set([
-        ...userCrossings.flatMap((c) => [c.participantA, c.participantB]),
-      ]),
-    ];
-    const participantUsers = await (participantIds.length > 0
-        ? db
-            .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
-            .from(users)
-            .where(inArray(users.id, participantIds))
-        : Promise.resolve(
-            [] as Array<{ id: string; name: string | null; photoUrl: string | null }>
-          ));
-    const thoughtsForProfile = userThoughts.map((t) => ({
-      id: t.id,
-      sentence: t.sentence,
-      photo_url: t.photoUrl,
-      image_url: t.imageUrl,
-      created_at: t.createdAt?.toISOString(),
-    }));
-    const userInfoMap = new Map(participantUsers.map((p) => [p.id, { id: p.id, name: p.name, photo_url: p.photoUrl }]));
-    const crossingsForProfile = userCrossings.map((c) => ({
-      id: c.id,
-      sentence: c.sentence,
-      context: c.context,
-      image_url: c.imageUrl,
-      created_at: c.createdAt?.toISOString(),
-      participant_a: userInfoMap.get(c.participantA) ?? null,
-      participant_b: userInfoMap.get(c.participantB) ?? null,
-    }));
-    return reply.send({
-      id: user.id,
-      name: user.name,
-      photo_url: user.photoUrl,
-      thoughts: thoughtsForProfile,
-      crossings: crossingsForProfile,
-    });
+      if (!user) return reply.status(404).send({ error: "Profile not found" });
+
+      const thoughtsForProfile = userThoughts.map((t) => ({
+        id: t.id,
+        sentence: t.sentence,
+        photo_url: t.photoUrl,
+        image_url: t.imageUrl,
+        created_at: t.createdAt?.toISOString(),
+      }));
+
+      let crossingsForProfile: Array<{
+        id: string;
+        sentence: string;
+        context: string | null;
+        image_url: string | null;
+        created_at: string | null;
+        participant_a: { id: string; name: string | null; photo_url: string | null } | null;
+        participant_b: { id: string; name: string | null; photo_url: string | null } | null;
+      }> = [];
+
+      try {
+        const userCrossings = await db
+          .select()
+          .from(crossings)
+          .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
+          .orderBy(desc(crossings.createdAt));
+
+        const participantIds = [
+          ...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB])),
+        ];
+
+        const participantUsers =
+          participantIds.length > 0
+            ? await db
+                .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+                .from(users)
+                .where(inArray(users.id, participantIds))
+            : [];
+
+        const userInfoMap = new Map(
+          participantUsers.map((p) => [
+            p.id,
+            { id: p.id, name: p.name, photo_url: p.photoUrl },
+          ])
+        );
+
+        crossingsForProfile = userCrossings.map((c) => ({
+          id: c.id,
+          sentence: c.sentence,
+          context: c.context,
+          image_url: c.imageUrl,
+          created_at: c.createdAt?.toISOString() ?? null,
+          participant_a: userInfoMap.get(c.participantA) ?? null,
+          participant_b: userInfoMap.get(c.participantB) ?? null,
+        }));
+      } catch (error) {
+        request.log.error(
+          { error, targetId },
+          "profile crossing hydration failed; returning profile without crossings"
+        );
+      }
+
+      return reply.send({
+        id: user.id,
+        name: user.name,
+        photo_url: user.photoUrl,
+        thoughts: thoughtsForProfile,
+        crossings: crossingsForProfile,
+      });
+    } catch (error) {
+      request.log.error({ error, targetId: request.params.id }, "profile load failed");
+      return reply.status(500).send({ error: "Internal server error" });
+    }
   });
 
   app.put<{ Body: UpdateProfileBody }>("/api/me/profile", async (request, reply) => {
