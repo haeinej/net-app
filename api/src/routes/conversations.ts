@@ -1,16 +1,19 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and, or, desc, asc, lt, inArray } from "drizzle-orm";
-import { db, conversations, messages, users, thoughts, crossingDrafts, crossings, shiftDrafts, shifts } from "../db";
+import { eq, and, or, desc, asc, lt, inArray, sql } from "drizzle-orm";
+import { db, conversations, messages, users, thoughts, crossingDrafts, crossings } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
-import {
-  clearConversationHistories,
-  getConversationHistoryExpiresAt,
-  isConversationHistoryExpired,
-} from "../conversations/history";
 
 const DORMANT_DAYS = 14;
 const MESSAGE_PREVIEW_LEN = 100;
+const MESSAGE_TEXT_MAX = 2000;
+const CROSSING_MESSAGE_STEP = 10;
+type CrossingDraftStatus = typeof crossingDrafts.$inferSelect.status;
+const AUTO_POSTED_CROSSING_DRAFT_STATUSES: CrossingDraftStatus[] = ["auto_posted"];
+
+function getNextCrossingMessageCount(resolvedCrossingCount: number): number {
+  return (resolvedCrossingCount + 1) * CROSSING_MESSAGE_STEP;
+}
 
 interface ConvIdParam {
   id: string;
@@ -57,30 +60,31 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(conversations.lastMessageAt));
     const convIds = list.map((c) => c.id);
     if (convIds.length === 0) return reply.send([]);
-    const expiredIds = list
-      .filter((conversation) => isConversationHistoryExpired(conversation.lastMessageAt ?? null))
-      .map((conversation) => conversation.id);
-    await clearConversationHistories(expiredIds);
-    const lastMessages = await db
-      .select({
-        conversationId: messages.conversationId,
-        text: messages.text,
-        createdAt: messages.createdAt,
-        senderId: messages.senderId,
-      })
-      .from(messages)
-      .where(inArray(messages.conversationId, convIds))
-      .orderBy(desc(messages.createdAt));
+    const lastMessages = await db.execute<{
+      conversation_id: string;
+      text: string;
+      created_at: Date | null;
+      sender_id: string | null;
+    }>(sql`
+      select distinct on (conversation_id)
+        conversation_id,
+        text,
+        created_at,
+        sender_id
+      from messages
+      where conversation_id in (${sql.join(convIds.map((value) => sql`${value}`), sql`, `)})
+      order by conversation_id, created_at desc, id desc
+    `);
     const lastByConv = new Map<
       string | null,
       { text: string; createdAt: Date | null; senderId: string | null }
     >();
     for (const m of lastMessages) {
-      if (m.conversationId && !lastByConv.has(m.conversationId))
-        lastByConv.set(m.conversationId, {
+      if (m.conversation_id && !lastByConv.has(m.conversation_id))
+        lastByConv.set(m.conversation_id, {
           text: m.text,
-          createdAt: m.createdAt,
-          senderId: m.senderId,
+          createdAt: m.created_at,
+          senderId: m.sender_id,
         });
     }
     const otherIds = list.map((c) =>
@@ -100,7 +104,6 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const last = lastByConv.get(c.id);
       const seenAt =
         c.participantA === userId ? c.participantASeenAt : c.participantBSeenAt;
-      const historyExpiresAt = getConversationHistoryExpiresAt(c.lastMessageAt ?? null);
       const unread = Boolean(
         last &&
           last.senderId &&
@@ -115,7 +118,6 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           : null,
         last_message_preview: last ? last.text.slice(0, MESSAGE_PREVIEW_LEN) : "",
         last_message_at: c.lastMessageAt?.toISOString() ?? null,
-        history_expires_at: historyExpiresAt?.toISOString() ?? null,
         is_dormant: (c.lastMessageAt ? c.lastMessageAt < cutoff : true),
         unread,
       };
@@ -134,33 +136,40 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!conv) return reply.status(404).send();
     if (conv.participantA !== userId && conv.participantB !== userId)
       return reply.status(403).send();
-    const historyCleared = isConversationHistoryExpired(conv.lastMessageAt ?? null);
-    if (historyCleared) {
-      await clearConversationHistories([convId]);
-    }
     await markConversationRead(convId, userId, conv.participantA, conv.participantB);
     const messageCount = conv.messageCount ?? 0;
     const [crossDraft] = await db
       .select()
       .from(crossingDrafts)
-      .where(and(eq(crossingDrafts.conversationId, convId), eq(crossingDrafts.status, "draft")))
+      .where(
+        and(
+          eq(crossingDrafts.conversationId, convId),
+          or(eq(crossingDrafts.status, "draft"), eq(crossingDrafts.status, "awaiting_other"))
+        )
+      )
+      .orderBy(desc(crossingDrafts.updatedAt), desc(crossingDrafts.createdAt))
       .limit(1);
-    const hasCrossing = await db
-      .select({ id: crossings.id })
+    const [completedCrossingCountRow] = await db
+      .select({
+        count: sql<number>`cast(count(*) as int)`,
+      })
       .from(crossings)
-      .where(eq(crossings.conversationId, convId))
-      .limit(1);
-    const shiftRows = await db
-      .select({ id: shifts.id })
-      .from(shifts)
-      .where(eq(shifts.conversationId, convId));
-    const shiftCount = shiftRows.length;
-    const unlockedShiftSlots = Math.floor(messageCount / 10);
-    const [shiftDraft] = await db
-      .select()
-      .from(shiftDrafts)
-      .where(and(eq(shiftDrafts.conversationId, convId), eq(shiftDrafts.status, "draft")))
-      .limit(1);
+      .where(eq(crossings.conversationId, convId));
+    const [autoPostedCrossingCountRow] = await db
+      .select({
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(crossingDrafts)
+      .where(
+        and(
+          eq(crossingDrafts.conversationId, convId),
+          inArray(crossingDrafts.status, AUTO_POSTED_CROSSING_DRAFT_STATUSES)
+        )
+      );
+    const resolvedCrossingCount =
+      Number(completedCrossingCountRow?.count ?? 0) +
+      Number(autoPostedCrossingCountRow?.count ?? 0);
+    const nextCrossingMessageCount = getNextCrossingMessageCount(resolvedCrossingCount);
     const [thought] = await db
       .select({
         id: thoughts.id,
@@ -172,14 +181,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(thoughts.id, conv.thoughtId))
       .limit(1);
     let initiatorName: string | null = null;
-    let shiftInitiatorName: string | null = null;
     if (crossDraft) {
       const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, crossDraft.initiatorId)).limit(1);
       initiatorName = u?.name ?? null;
-    }
-    if (shiftDraft) {
-      const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, shiftDraft.initiatorId)).limit(1);
-      shiftInitiatorName = u?.name ?? null;
     }
     return reply.send({
       id: conv.id,
@@ -199,31 +203,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             id: crossDraft.id,
             initiator_id: crossDraft.initiatorId,
             initiator_name: initiatorName,
-            sentence_a: crossDraft.sentenceA,
-            sentence_b: crossDraft.sentenceB,
+            sentence: crossDraft.sentence,
             context: crossDraft.context,
+            status: crossDraft.status,
+            submitted_at: crossDraft.submittedAt?.toISOString() ?? null,
+            auto_post_at: crossDraft.autoPostAt?.toISOString() ?? null,
+            auto_posted_thought_id: crossDraft.autoPostedThoughtId ?? null,
           }
         : null,
-      shift_draft: shiftDraft
-        ? {
-            id: shiftDraft.id,
-            initiator_id: shiftDraft.initiatorId,
-            initiator_name: shiftInitiatorName,
-            participant_a_ready_at: shiftDraft.participantAReadyAt?.toISOString() ?? null,
-            participant_b_ready_at: shiftDraft.participantBReadyAt?.toISOString() ?? null,
-            a_before: shiftDraft.aBefore,
-            a_after: shiftDraft.aAfter,
-            b_before: shiftDraft.bBefore,
-            b_after: shiftDraft.bAfter,
-          }
-        : null,
-      crossing_complete: hasCrossing.length > 0,
-      shift_complete: shiftCount > 0,
-      shift_count: shiftCount,
-      shift_available: Boolean(shiftDraft) || unlockedShiftSlots > shiftCount,
-      next_shift_message_count: (shiftCount + 1) * 10,
-      history_cleared: historyCleared,
-      history_expires_at: getConversationHistoryExpiresAt(conv.lastMessageAt ?? null)?.toISOString() ?? null,
+      crossing_complete: resolvedCrossingCount > 0,
+      crossing_available:
+        Boolean(crossDraft) || messageCount >= nextCrossingMessageCount,
+      next_crossing_message_count: nextCrossingMessageCount,
     });
   });
 
@@ -240,23 +231,25 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
-      if (isConversationHistoryExpired(conv.lastMessageAt ?? null)) {
-        await clearConversationHistories([convId]);
-      }
       await markConversationRead(convId, userId, conv.participantA, conv.participantB);
       const limit = Math.min(50, Math.max(1, parseInt(request.query.limit ?? "50", 10) || 50));
       const beforeId = request.query.before_id;
       if (beforeId) {
         const [before] = await db
-          .select({ createdAt: messages.createdAt })
+          .select({ id: messages.id, createdAt: messages.createdAt })
           .from(messages)
           .where(and(eq(messages.conversationId, convId), eq(messages.id, beforeId)));
-        if (before) {
+        if (before?.createdAt) {
           const rows = await db
             .select()
             .from(messages)
-            .where(and(eq(messages.conversationId, convId), lt(messages.createdAt, before.createdAt!)))
-            .orderBy(desc(messages.createdAt))
+            .where(
+              and(
+                eq(messages.conversationId, convId),
+                sql`(${messages.createdAt}, ${messages.id}) < (${before.createdAt}, ${before.id})`
+              )
+            )
+            .orderBy(desc(messages.createdAt), desc(messages.id))
             .limit(limit);
           const out = rows.reverse().map((m) => ({
             id: m.id,
@@ -271,7 +264,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         .select()
         .from(messages)
         .where(eq(messages.conversationId, convId))
-        .orderBy(asc(messages.createdAt))
+        .orderBy(asc(messages.createdAt), asc(messages.id))
         .limit(limit);
       const out = rows.map((m) => ({
         id: m.id,
@@ -303,6 +296,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const convId = request.params.id;
       const text = typeof request.body?.text === "string" ? request.body.text.trim() : "";
       if (!text) return reply.status(400).send({ error: "text required" });
+      if (text.length > MESSAGE_TEXT_MAX) {
+        return reply.status(400).send({ error: `text max ${MESSAGE_TEXT_MAX} chars` });
+      }
       const [conv] = await db
         .select()
         .from(conversations)
@@ -310,29 +306,34 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
-      if (isConversationHistoryExpired(conv.lastMessageAt ?? null)) {
-        await clearConversationHistories([convId]);
-      }
       const now = new Date();
       const cutoff = new Date(Date.now() - DORMANT_DAYS * 24 * 60 * 60 * 1000);
       const wasDormant = conv.isDormant === true || (conv.lastMessageAt && conv.lastMessageAt < cutoff);
-      const [msg] = await db
-        .insert(messages)
-        .values({ conversationId: convId, senderId: userId, text })
-        .returning({ id: messages.id, text: messages.text, createdAt: messages.createdAt });
-      if (!msg) return reply.status(500).send();
-      const newCount = (conv.messageCount ?? 0) + 1;
-      await db
-        .update(conversations)
-        .set({
-          lastMessageAt: now,
-          messageCount: newCount,
-          ...(conv.participantA === userId
-            ? { participantASeenAt: now }
-            : { participantBSeenAt: now }),
-          ...(wasDormant ? { isDormant: false } : {}),
-        })
-        .where(eq(conversations.id, convId));
+      const result = await db.transaction(async (tx) => {
+        const [msg] = await tx
+          .insert(messages)
+          .values({ conversationId: convId, senderId: userId, text })
+          .returning({ id: messages.id, text: messages.text, createdAt: messages.createdAt });
+        if (!msg) return null;
+        const [updatedConversation] = await tx
+          .update(conversations)
+          .set({
+            lastMessageAt: now,
+            messageCount: sql`coalesce(${conversations.messageCount}, 0) + 1`,
+            ...(conv.participantA === userId
+              ? { participantASeenAt: now }
+              : { participantBSeenAt: now }),
+            ...(wasDormant ? { isDormant: false } : {}),
+          })
+          .where(eq(conversations.id, convId))
+          .returning({ messageCount: conversations.messageCount });
+        return {
+          msg,
+          newCount: updatedConversation?.messageCount ?? (conv.messageCount ?? 0) + 1,
+        };
+      });
+      if (!result) return reply.status(500).send();
+      const { msg, newCount } = result;
       if ([5, 10, 20].includes(newCount)) {
         trackEngagementEvents(userId, [{
           event_type: "reply_sent",

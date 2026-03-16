@@ -47,19 +47,20 @@ export async function engagementRoutes(app: FastifyInstance): Promise<void> {
       if (body.events.length > 100) {
         return reply.status(400).send({ error: "Too many events" });
       }
-      await trackEngagementEvents(userId, body.events);
+      const ingested = await trackEngagementEvents(userId, body.events);
       // Increment aggregated total engagement events counter in system_config
-      const increment = body.events.length;
-      await db
-        .insert(systemConfig)
-        .values({ key: "total_engagement_events", value: increment })
-        .onConflictDoUpdate({
-          target: systemConfig.key,
-          set: {
-            value: sql`to_jsonb(coalesce((system_config.value)::int, 0) + ${increment})`,
-          },
-        });
-      return reply.status(200).send({ ingested: body.events.length });
+      if (ingested > 0) {
+        await db
+          .insert(systemConfig)
+          .values({ key: "total_engagement_events", value: ingested })
+          .onConflictDoUpdate({
+            target: systemConfig.key,
+            set: {
+              value: sql`to_jsonb(coalesce((system_config.value)::int, 0) + ${ingested})`,
+            },
+          });
+      }
+      return reply.status(200).send({ ingested });
     }
   );
 }
