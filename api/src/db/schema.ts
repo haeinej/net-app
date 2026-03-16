@@ -398,6 +398,33 @@ export const rankingConfigs = pgTable(
   ]
 );
 
+// 15b. ranking_config_audits (internal config history + promotion decisions)
+export const rankingConfigAudits = pgTable(
+  "ranking_config_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    configVersion: text("config_version").notNull(),
+    action: text("action").notNull(),
+    outcome: text("outcome").notNull().default("success"),
+    previousActiveVersion: text("previous_active_version"),
+    actor: text("actor"),
+    reason: text("reason"),
+    source: text("source"),
+    requestIp: text("request_ip"),
+    userAgent: text("user_agent"),
+    configSnapshot: jsonb("config_snapshot"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("ranking_config_audits_config_created_idx").on(
+      table.configVersion,
+      table.createdAt.desc()
+    ),
+    index("ranking_config_audits_created_idx").on(table.createdAt.desc()),
+  ]
+);
+
 // 16. learning_log (Phase 7 — job runs and details)
 export const learningLog = pgTable("learning_log", {
   id: uuid("id").primaryKey().defaultRandom(),

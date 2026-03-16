@@ -1,12 +1,14 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { getFeedMetrics } from "../feed/analytics";
+import { evaluateRankingPromotion, getFeedMetrics } from "../feed/analytics";
 import { getFeedWithDebug } from "../feed";
 import {
   activateRankingConfig,
   getActiveRankingConfig,
   getRankingConfigByVersion,
   getRankingConfigOverview,
+  listRankingConfigAudits,
+  recordRankingConfigAudit,
   upsertRankingConfig,
 } from "../feed/runtime-config";
 
@@ -31,6 +33,35 @@ async function ensureInternalAccess(
   if (!hasValidInternalKey(request)) {
     return reply.status(404).send();
   }
+}
+
+function parseWindowDays(value: string | undefined): number {
+  const parsed = parseInt(value ?? "7", 10);
+  return Number.isFinite(parsed) ? Math.min(30, Math.max(1, parsed)) : 7;
+}
+
+function parseMinimumImpressions(value: string | undefined): number {
+  const parsed = parseInt(value ?? "200", 10);
+  return Number.isFinite(parsed) ? Math.min(5000, Math.max(25, parsed)) : 200;
+}
+
+function buildAuditContext(
+  request: FastifyRequest,
+  input?: {
+    actor?: string;
+    reason?: string | null;
+    source?: string | null;
+    metadata?: unknown;
+  }
+) {
+  return {
+    actor: input?.actor?.trim() || null,
+    reason: input?.reason?.trim() || null,
+    source: input?.source?.trim() || "board",
+    metadata: input?.metadata ?? null,
+    requestIp: request.ip ?? null,
+    userAgent: request.headers["user-agent"]?.toString() ?? null,
+  };
 }
 
 function renderBoardHtml(): string {
@@ -367,6 +398,41 @@ function renderBoardHtml(): string {
       </div>
 
       <div class="row" style="margin-top:16px;">
+        <div class="panel span-5">
+          <h2>Promotion gate</h2>
+          <div class="controls small" style="margin-bottom:12px;">
+            <div>
+              <label>Operator</label>
+              <input id="operatorActorInput" placeholder="your name" />
+            </div>
+            <div>
+              <label>Reason</label>
+              <input id="operatorReasonInput" placeholder="what we are trying to improve" />
+            </div>
+            <div>
+              <label>Min impressions</label>
+              <input id="promotionMinImpressionsInput" type="number" min="25" max="5000" value="200" />
+            </div>
+            <div>
+              <label>Force promote</label>
+              <select id="promotionForceInput">
+                <option value="false" selected>No</option>
+                <option value="true">Yes</option>
+              </select>
+            </div>
+          </div>
+          <div class="muted" style="margin-bottom:12px;">
+            Use <strong>Promote</strong> from a config card after the candidate clears the mission gate. Use <strong>Activate</strong> only when you intentionally want to override the gate.
+          </div>
+          <pre id="promotionOutput">No promotion check yet.</pre>
+        </div>
+        <div class="panel span-7">
+          <h2>Audit history</h2>
+          <div id="auditTable"></div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:16px;">
         <div class="panel span-12">
           <h2>Per-user compare</h2>
           <div class="controls small" style="margin-bottom:12px;">
@@ -393,7 +459,7 @@ function renderBoardHtml(): string {
     </div>
 
     <script>
-      var state = { metrics: null, configs: null };
+      var state = { metrics: null, configs: null, audits: null };
 
       function getKey() {
         return document.getElementById("keyInput").value.trim();
@@ -416,6 +482,12 @@ function renderBoardHtml(): string {
         );
         var response = await fetch(path, Object.assign({}, options || {}, { headers: headers }));
         if (!response.ok) {
+          var errorContentType = response.headers.get("content-type") || "";
+          if (errorContentType.includes("application/json")) {
+            var payload = await response.json();
+            var message = payload && (payload.error || payload.reason);
+            throw new Error(message || JSON.stringify(payload));
+          }
           var text = await response.text();
           throw new Error(text || ("Request failed: " + response.status));
         }
@@ -461,6 +533,30 @@ function renderBoardHtml(): string {
         document.getElementById("phaseTable").innerHTML = renderGroupTable(metrics.by_phase);
         document.getElementById("configVersionTable").innerHTML = renderGroupTable(metrics.by_config_version);
         document.getElementById("scoreSummary").innerHTML = renderScoreSummary(metrics.score_summary);
+      }
+
+      function renderAudits(audits) {
+        var entries = Array.isArray(audits) ? audits : [];
+        if (!entries.length) {
+          document.getElementById("auditTable").innerHTML = '<div class="muted">No audit events yet.</div>';
+          return;
+        }
+        var rows = entries.map(function(entry) {
+          var metadata = entry.metadata ? escapeHtml(JSON.stringify(entry.metadata)) : "—";
+          return "<tr>" +
+            "<td><strong>" + escapeHtml(entry.action || "—") + "</strong><div class=\"muted\">" + escapeHtml(entry.outcome || "—") + "</div></td>" +
+            "<td>" + escapeHtml(entry.config_version || "—") + "</td>" +
+            "<td>" + escapeHtml(entry.previous_active_version || "—") + "</td>" +
+            "<td>" + escapeHtml(entry.actor || "—") + "</td>" +
+            "<td>" + escapeHtml(entry.reason || "—") + "</td>" +
+            "<td>" + escapeHtml(entry.created_at || "—") + "</td>" +
+            "<td><div class=\"muted\">" + metadata + "</div></td>" +
+            "</tr>";
+        }).join("");
+        document.getElementById("auditTable").innerHTML =
+          "<table><thead><tr><th>Action</th><th>Config</th><th>Prev active</th><th>Actor</th><th>Reason</th><th>Time</th><th>Metadata</th></tr></thead><tbody>" +
+          rows +
+          "</tbody></table>";
       }
 
       function renderGroupTable(groups) {
@@ -515,15 +611,19 @@ function renderBoardHtml(): string {
         }
         document.getElementById("configList").innerHTML = list.map(function(config) {
           var activeClass = config.is_active ? "config-card active" : "config-card";
-          var activateButton = config.is_active
+          var actionHtml = config.is_active
             ? '<span class="pill">active</span>'
-            : '<button type="button" class="secondary" data-activate-version="' + config.version + '">Activate</button>';
+            : '<div class="actions">' +
+                '<button type="button" class="secondary" data-check-version="' + config.version + '">Check</button>' +
+                '<button type="button" class="success" data-promote-version="' + config.version + '">Promote</button>' +
+                '<button type="button" class="secondary" data-activate-version="' + config.version + '">Activate</button>' +
+              '</div>';
           return '<div class="' + activeClass + '">' +
             '<div style="display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:8px;">' +
-              '<div><strong>' + config.name + '</strong><div class="muted">' + config.version + '</div></div>' +
-              '<div>' + activateButton + '</div>' +
+              '<div><strong>' + escapeHtml(config.name) + '</strong><div class="muted">' + escapeHtml(config.version) + '</div></div>' +
+              '<div>' + actionHtml + '</div>' +
             '</div>' +
-            '<div class="muted" style="margin-bottom:8px;">' + (config.notes || "No notes") + '</div>' +
+            '<div class="muted" style="margin-bottom:8px;">' + escapeHtml(config.notes || "No notes") + '</div>' +
             '<pre style="margin:0;">' + escapeHtml(JSON.stringify(config.config, null, 2)) + '</pre>' +
           '</div>';
         }).join("");
@@ -531,6 +631,16 @@ function renderBoardHtml(): string {
         Array.from(document.querySelectorAll("[data-activate-version]")).forEach(function(node) {
           node.addEventListener("click", function() {
             activateConfig(node.getAttribute("data-activate-version"));
+          });
+        });
+        Array.from(document.querySelectorAll("[data-check-version]")).forEach(function(node) {
+          node.addEventListener("click", function() {
+            runPromotionCheck(node.getAttribute("data-check-version"));
+          });
+        });
+        Array.from(document.querySelectorAll("[data-promote-version]")).forEach(function(node) {
+          node.addEventListener("click", function() {
+            promoteConfig(node.getAttribute("data-promote-version"));
           });
         });
       }
@@ -542,18 +652,30 @@ function renderBoardHtml(): string {
           .replace(/>/g, "&gt;");
       }
 
+      function getOperatorPayload(extraMetadata) {
+        return {
+          actor: document.getElementById("operatorActorInput").value.trim() || undefined,
+          reason: document.getElementById("operatorReasonInput").value.trim() || undefined,
+          source: "board",
+          metadata: extraMetadata || undefined
+        };
+      }
+
       async function loadBoard() {
         setStatus("Loading board...", false);
         try {
           var days = document.getElementById("daysInput").value;
           var results = await Promise.all([
             fetchInternal("/api/internal/feed/metrics?days=" + encodeURIComponent(days)),
-            fetchInternal("/api/internal/feed/configs")
+            fetchInternal("/api/internal/feed/configs"),
+            fetchInternal("/api/internal/feed/config-audits?limit=50")
           ]);
           state.metrics = results[0];
           state.configs = results[1];
+          state.audits = results[2];
           renderMetrics(state.metrics);
           renderConfigs(state.configs);
+          renderAudits(state.audits);
           setStatus("Board loaded.", false);
         } catch (error) {
           setStatus(error.message || String(error), true);
@@ -570,7 +692,10 @@ function renderBoardHtml(): string {
             name: document.getElementById("configNameInput").value.trim() || undefined,
             notes: document.getElementById("configNotesInput").value.trim() || null,
             activate: document.getElementById("configActivateInput").value === "true",
-            config: parsedConfig
+            config: parsedConfig,
+            actor: document.getElementById("operatorActorInput").value.trim() || undefined,
+            reason: document.getElementById("operatorReasonInput").value.trim() || undefined,
+            source: "board"
           };
           await fetchInternal("/api/internal/feed/configs/" + encodeURIComponent(version), {
             method: "PUT",
@@ -588,9 +713,50 @@ function renderBoardHtml(): string {
         if (!version) return;
         try {
           await fetchInternal("/api/internal/feed/configs/" + encodeURIComponent(version) + "/activate", {
-            method: "POST"
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(getOperatorPayload({ mode: "override_activate" }))
           });
           setStatus("Config activated.", false);
+          await loadBoard();
+        } catch (error) {
+          setStatus(error.message || String(error), true);
+        }
+      }
+
+      async function runPromotionCheck(version) {
+        if (!version) return;
+        try {
+          var days = document.getElementById("daysInput").value;
+          var minImpressions = document.getElementById("promotionMinImpressionsInput").value.trim() || "200";
+          var query = "/api/internal/feed/configs/" + encodeURIComponent(version) +
+            "/promotion-check?days=" + encodeURIComponent(days) +
+            "&min_impressions=" + encodeURIComponent(minImpressions);
+          var result = await fetchInternal(query);
+          document.getElementById("promotionOutput").textContent = JSON.stringify(result, null, 2);
+          setStatus("Promotion check complete.", false);
+        } catch (error) {
+          setStatus(error.message || String(error), true);
+        }
+      }
+
+      async function promoteConfig(version) {
+        if (!version) return;
+        try {
+          var days = document.getElementById("daysInput").value;
+          var minImpressions = document.getElementById("promotionMinImpressionsInput").value.trim() || "200";
+          var force = document.getElementById("promotionForceInput").value === "true";
+          var result = await fetchInternal("/api/internal/feed/configs/" + encodeURIComponent(version) + "/promote", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(Object.assign(getOperatorPayload({ min_impressions: Number(minImpressions), days: Number(days) }), {
+              days: Number(days),
+              min_impressions: Number(minImpressions),
+              force: force
+            }))
+          });
+          document.getElementById("promotionOutput").textContent = JSON.stringify(result, null, 2);
+          setStatus(result && result.promoted ? "Config promoted." : "Promotion blocked by gate.", !result || !result.promoted);
           await loadBoard();
         } catch (error) {
           setStatus(error.message || String(error), true);
@@ -638,13 +804,24 @@ export async function internalFeedMetricsRoutes(
     "/api/internal/feed/metrics",
     { preHandler: ensureInternalAccess },
     async (request, reply) => {
-    const parsedDays = parseInt(request.query.days ?? "7", 10);
-    const days = Number.isFinite(parsedDays)
-      ? Math.min(30, Math.max(1, parsedDays))
-      : 7;
+      const days = parseWindowDays(request.query.days);
+      const metrics = await getFeedMetrics(days);
+      return reply.send(metrics);
+    }
+  );
 
-    const metrics = await getFeedMetrics(days);
-    return reply.send(metrics);
+  app.get<{
+    Querystring: { limit?: string };
+  }>(
+    "/api/internal/feed/config-audits",
+    { preHandler: ensureInternalAccess },
+    async (request, reply) => {
+      const parsedLimit = parseInt(request.query.limit ?? "50", 10);
+      const limit = Number.isFinite(parsedLimit)
+        ? Math.min(200, Math.max(1, parsedLimit))
+        : 50;
+      const audits = await listRankingConfigAudits(limit);
+      return reply.send(audits);
     }
   );
 
@@ -664,6 +841,9 @@ export async function internalFeedMetricsRoutes(
       notes?: string | null;
       config?: unknown;
       activate?: boolean;
+      actor?: string;
+      reason?: string | null;
+      source?: string | null;
     };
   }>(
     "/api/internal/feed/configs/:version",
@@ -676,6 +856,11 @@ export async function internalFeedMetricsRoutes(
         notes: request.body?.notes,
         config: request.body?.config,
         activate: request.body?.activate,
+        audit: buildAuditContext(request, {
+          actor: request.body?.actor,
+          reason: request.body?.reason,
+          source: request.body?.source,
+        }),
       });
       return reply.send(snapshot);
     } catch (error) {
@@ -688,15 +873,132 @@ export async function internalFeedMetricsRoutes(
 
   app.post<{
     Params: { version: string };
+    Body: {
+      actor?: string;
+      reason?: string | null;
+      source?: string | null;
+    };
   }>(
     "/api/internal/feed/configs/:version/activate",
     { preHandler: ensureInternalAccess },
     async (request, reply) => {
-      const snapshot = await activateRankingConfig(request.params.version);
+      const snapshot = await activateRankingConfig(request.params.version, {
+        auditAction: "activate",
+        audit: buildAuditContext(request, {
+          actor: request.body?.actor,
+          reason: request.body?.reason,
+          source: request.body?.source,
+        }),
+      });
       if (!snapshot) {
         return reply.status(404).send({ error: "config not found" });
       }
       return reply.send(snapshot);
+    }
+  );
+
+  app.get<{
+    Params: { version: string };
+    Querystring: {
+      days?: string;
+      baseline_version?: string;
+      min_impressions?: string;
+    };
+  }>(
+    "/api/internal/feed/configs/:version/promotion-check",
+    { preHandler: ensureInternalAccess },
+    async (request, reply) => {
+      const active = await getActiveRankingConfig();
+      const evaluation = await evaluateRankingPromotion({
+        candidateVersion: request.params.version,
+        baselineVersion:
+          request.query.baseline_version?.trim() || active.version,
+        days: parseWindowDays(request.query.days),
+        minimumImpressions: parseMinimumImpressions(
+          request.query.min_impressions
+        ),
+      });
+      return reply.send(evaluation);
+    }
+  );
+
+  app.post<{
+    Params: { version: string };
+    Body: {
+      days?: number;
+      baseline_version?: string;
+      min_impressions?: number;
+      force?: boolean;
+      actor?: string;
+      reason?: string | null;
+      source?: string | null;
+    };
+  }>(
+    "/api/internal/feed/configs/:version/promote",
+    { preHandler: ensureInternalAccess },
+    async (request, reply) => {
+      const active = await getActiveRankingConfig();
+      const evaluation = await evaluateRankingPromotion({
+        candidateVersion: request.params.version,
+        baselineVersion:
+          request.body?.baseline_version?.trim() || active.version,
+        days: Math.min(30, Math.max(1, request.body?.days ?? 7)),
+        minimumImpressions: Math.min(
+          5000,
+          Math.max(25, request.body?.min_impressions ?? 200)
+        ),
+      });
+      const audit = buildAuditContext(request, {
+        actor: request.body?.actor,
+        reason: request.body?.reason,
+        source: request.body?.source,
+        metadata: {
+          evaluation,
+          force: Boolean(request.body?.force),
+        },
+      });
+
+      if (evaluation.decision !== "promote" && !request.body?.force) {
+        const candidate = await getRankingConfigByVersion(request.params.version);
+        if (candidate) {
+          await recordRankingConfigAudit({
+            configVersion: candidate.version,
+            action: "promote",
+            outcome: "blocked",
+            previousActiveVersion: active.version,
+            configSnapshot: candidate,
+            audit: {
+              ...audit,
+              metadata: {
+                evaluation,
+                event: "promotion_blocked",
+              },
+              reason:
+                audit.reason ??
+                `Promotion blocked: ${evaluation.reason}`,
+              source: audit.source ?? "board",
+            },
+          });
+        }
+        return reply.send({
+          promoted: false,
+          evaluation,
+        });
+      }
+
+      const snapshot = await activateRankingConfig(request.params.version, {
+        auditAction: "promote",
+        auditOutcome: request.body?.force ? "forced" : "success",
+        audit,
+      });
+      if (!snapshot) {
+        return reply.status(404).send({ error: "config not found" });
+      }
+      return reply.send({
+        promoted: true,
+        evaluation,
+        snapshot,
+      });
     }
   );
 

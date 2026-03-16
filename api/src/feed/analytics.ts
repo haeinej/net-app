@@ -42,6 +42,135 @@ type ScoreAccumulator = {
 
 type GroupMetrics = ReturnType<typeof finalizeCounters>;
 
+export type FeedMetricGroup = GroupMetrics;
+
+export type PromotionCheck = {
+  metric: string;
+  direction: "higher_is_better" | "lower_is_better";
+  baseline: number | null;
+  candidate: number | null;
+  delta: number | null;
+  threshold: number;
+  passed: boolean;
+  blocker: boolean;
+  note: string;
+};
+
+export type PromotionEvaluation = {
+  generated_at: string;
+  window_days: number;
+  candidate_version: string;
+  baseline_version: string;
+  minimum_impressions: number;
+  candidate: FeedMetricGroup | null;
+  baseline: FeedMetricGroup | null;
+  candidate_score: number | null;
+  baseline_score: number | null;
+  score_delta: number | null;
+  checks: PromotionCheck[];
+  blockers: string[];
+  decision: "promote" | "hold";
+  reason: string;
+};
+
+const DEFAULT_PROMOTION_MIN_IMPRESSIONS = 200;
+const MIN_QUALIFIED_REPLY_DELTA = -0.005;
+const MIN_DEPTH10_DELTA = -0.005;
+const MIN_ACCEPT_DELTA = -0.01;
+const MAX_AUTOPOST_DELTA = 0.02;
+const MAX_REPEAT_AUTHOR_DELTA = 0.01;
+
+function numericMetric(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function weightedMetric(value: number | null, weight: number): number {
+  return value == null ? 0 : value * weight;
+}
+
+function missionScore(metrics: FeedMetricGroup | null): number | null {
+  if (!metrics) return null;
+  const scored =
+    weightedMetric(numericMetric(metrics.qualified_reply_rate), 0.32) +
+    weightedMetric(numericMetric(metrics.reply_accept_rate), 0.13) +
+    weightedMetric(numericMetric(metrics.conversation_depth_3_rate), 0.1) +
+    weightedMetric(numericMetric(metrics.conversation_depth_10_rate), 0.24) +
+    weightedMetric(numericMetric(metrics.crossing_approval_rate), 0.13) -
+    weightedMetric(numericMetric(metrics.crossing_autopost_rate), 0.06) -
+    weightedMetric(numericMetric(metrics.repeat_author_exposure_rate), 0.06);
+  return Number.isFinite(scored) ? scored : null;
+}
+
+function buildHigherBetterCheck(
+  metric: string,
+  baseline: number | null,
+  candidate: number | null,
+  threshold: number,
+  blocker: boolean,
+  note: string
+): PromotionCheck {
+  if (baseline == null || candidate == null) {
+    return {
+      metric,
+      direction: "higher_is_better",
+      baseline,
+      candidate,
+      delta: null,
+      threshold,
+      passed: false,
+      blocker,
+      note: `${note}; insufficient data`,
+    };
+  }
+  const delta = candidate - baseline;
+  return {
+    metric,
+    direction: "higher_is_better",
+    baseline,
+    candidate,
+    delta,
+    threshold,
+    passed: delta >= threshold,
+    blocker,
+    note,
+  };
+}
+
+function buildLowerBetterCheck(
+  metric: string,
+  baseline: number | null,
+  candidate: number | null,
+  threshold: number,
+  blocker: boolean,
+  note: string
+): PromotionCheck {
+  if (baseline == null || candidate == null) {
+    return {
+      metric,
+      direction: "lower_is_better",
+      baseline,
+      candidate,
+      delta: null,
+      threshold,
+      passed: false,
+      blocker,
+      note: `${note}; insufficient data`,
+    };
+  }
+  const delta = candidate - baseline;
+  return {
+    metric,
+    direction: "lower_is_better",
+    baseline,
+    candidate,
+    delta,
+    threshold,
+    passed: delta <= threshold,
+    blocker,
+    note,
+  };
+}
+
 function emptyCounters(): CounterBag {
   return {
     impressions: 0,
@@ -539,5 +668,134 @@ export async function getFeedMetrics(days: number = 7) {
         )
       ) as Record<BucketLabel, ReturnType<typeof finalizeScoreAccumulator>>,
     },
+  };
+}
+
+export async function evaluateRankingPromotion(input: {
+  candidateVersion: string;
+  baselineVersion: string;
+  days?: number;
+  minimumImpressions?: number;
+}): Promise<PromotionEvaluation> {
+  const days = Math.min(30, Math.max(1, input.days ?? 7));
+  const minimumImpressions = Math.max(
+    25,
+    Math.min(5000, input.minimumImpressions ?? DEFAULT_PROMOTION_MIN_IMPRESSIONS)
+  );
+  const metrics = await getFeedMetrics(days);
+  const byConfigVersion = metrics.by_config_version ?? {};
+  const candidate = byConfigVersion[input.candidateVersion] ?? null;
+  const baseline = byConfigVersion[input.baselineVersion] ?? null;
+
+  const blockers: string[] = [];
+  const checks: PromotionCheck[] = [];
+
+  if (!candidate) {
+    blockers.push(`Candidate config ${input.candidateVersion} has no recorded serves in the selected window.`);
+  }
+  if (!baseline) {
+    blockers.push(`Baseline config ${input.baselineVersion} has no recorded serves in the selected window.`);
+  }
+
+  if ((candidate?.impressions ?? 0) < minimumImpressions) {
+    blockers.push(
+      `Candidate config needs at least ${minimumImpressions} impressions before promotion.`
+    );
+  }
+  if ((baseline?.impressions ?? 0) < minimumImpressions) {
+    blockers.push(
+      `Baseline config needs at least ${minimumImpressions} impressions for a fair comparison.`
+    );
+  }
+
+  checks.push(
+    buildHigherBetterCheck(
+      "qualified_reply_rate",
+      numericMetric(baseline?.qualified_reply_rate),
+      numericMetric(candidate?.qualified_reply_rate),
+      MIN_QUALIFIED_REPLY_DELTA,
+      true,
+      "Candidate must not materially reduce thoughtful replies."
+    ),
+    buildHigherBetterCheck(
+      "conversation_depth_10_rate",
+      numericMetric(baseline?.conversation_depth_10_rate),
+      numericMetric(candidate?.conversation_depth_10_rate),
+      MIN_DEPTH10_DELTA,
+      true,
+      "Candidate must preserve deep conversation creation."
+    ),
+    buildHigherBetterCheck(
+      "reply_accept_rate",
+      numericMetric(baseline?.reply_accept_rate),
+      numericMetric(candidate?.reply_accept_rate),
+      MIN_ACCEPT_DELTA,
+      false,
+      "Reply acceptance should stay healthy."
+    ),
+    buildHigherBetterCheck(
+      "crossing_approval_rate",
+      numericMetric(baseline?.crossing_approval_rate),
+      numericMetric(candidate?.crossing_approval_rate),
+      MIN_ACCEPT_DELTA,
+      false,
+      "Mutual crossings should not trend down."
+    ),
+    buildLowerBetterCheck(
+      "crossing_autopost_rate",
+      numericMetric(baseline?.crossing_autopost_rate),
+      numericMetric(candidate?.crossing_autopost_rate),
+      MAX_AUTOPOST_DELTA,
+      true,
+      "Autoposted crossings should not rise materially."
+    ),
+    buildLowerBetterCheck(
+      "repeat_author_exposure_rate",
+      numericMetric(baseline?.repeat_author_exposure_rate),
+      numericMetric(candidate?.repeat_author_exposure_rate),
+      MAX_REPEAT_AUTHOR_DELTA,
+      true,
+      "Repeat author exposure should stay controlled."
+    )
+  );
+
+  const candidateScore = missionScore(candidate);
+  const baselineScore = missionScore(baseline);
+  const scoreDelta =
+    candidateScore != null && baselineScore != null ? candidateScore - baselineScore : null;
+
+  if (scoreDelta == null) {
+    blockers.push("Mission score could not be computed from the current metrics window.");
+  } else if (scoreDelta < 0) {
+    blockers.push("Candidate mission score is worse than the active baseline.");
+  }
+
+  for (const check of checks) {
+    if (check.blocker && !check.passed) {
+      blockers.push(`${check.metric} failed: ${check.note}`);
+    }
+  }
+
+  const decision = blockers.length === 0 ? "promote" : "hold";
+  const reason =
+    decision === "promote"
+      ? "Candidate clears the current mission-aligned guardrails."
+      : blockers[0] ?? "Candidate did not pass the promotion guard.";
+
+  return {
+    generated_at: new Date().toISOString(),
+    window_days: days,
+    candidate_version: input.candidateVersion,
+    baseline_version: input.baselineVersion,
+    minimum_impressions: minimumImpressions,
+    candidate,
+    baseline,
+    candidate_score: candidateScore,
+    baseline_score: baselineScore,
+    score_delta: scoreDelta,
+    checks,
+    blockers,
+    decision,
+    reason,
   };
 }
