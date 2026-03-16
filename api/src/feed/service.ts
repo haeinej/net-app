@@ -9,15 +9,10 @@ import {
   thoughts,
   users,
   userRecommendationWeights,
-  replies,
   systemConfig,
-  shifts,
   crossings,
-  crossingReplies,
 } from "../db";
-import { getEmbeddingService } from "../embedding";
-import { getWarmthLevel } from "../lib/warmth";
-import { getCandidates, getBucketedCandidates } from "./retrieve";
+import { getBucketedCandidates } from "./retrieve";
 import { scoreThought } from "./score";
 import {
   rankScorePhase1,
@@ -39,7 +34,6 @@ import type {
   RecommendationWeights,
   FeedItem,
   FeedItemThought,
-  WarmthLevel,
   BucketLabel,
   BucketedCandidate,
 } from "./types";
@@ -56,24 +50,28 @@ const cache = new Map<string, { items: FeedItem[]; expiresAt: number }>();
 const CACHE_MAX_ITEMS = 100;
 const CACHE_MAX_USERS = 1000;
 
-async function getAcceptedReplyCounts(thoughtIds: string[]): Promise<Map<string, number>> {
-  if (thoughtIds.length === 0) return new Map();
-  const rows = await db
-    .select({
-      thoughtId: replies.thoughtId,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(replies)
-    .where(and(inArray(replies.thoughtId, thoughtIds), eq(replies.status, "accepted")))
-    .groupBy(replies.thoughtId);
-  const map = new Map<string, number>();
-  for (const r of rows) map.set(r.thoughtId, r.count);
-  return map;
-}
-
 export function invalidateFeedCache(userId?: string): void {
   if (userId) cache.delete(userId);
   else cache.clear();
+}
+
+let totalEngagementEventsCache: { value: number; expiresAt: number } | null = null;
+
+async function getTotalEngagementEvents(): Promise<number> {
+  const now = Date.now();
+  if (totalEngagementEventsCache && totalEngagementEventsCache.expiresAt > now) {
+    return totalEngagementEventsCache.value;
+  }
+  const [engRow] = await db
+    .select({ value: systemConfig.value })
+    .from(systemConfig)
+    .where(eq(systemConfig.key, "total_engagement_events"));
+  const value = typeof engRow?.value === "number" ? (engRow.value as number) : 0;
+  totalEngagementEventsCache = {
+    value,
+    expiresAt: now + cacheTtlSeconds * 1000,
+  };
+  return value;
 }
 
 async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
@@ -112,15 +110,6 @@ async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
     if (Array.isArray(t.surfaceEmbedding)) surfaceEmbeddings.push(t.surfaceEmbedding as number[]);
   }
 
-  let interestsEmbedding: number[] | null = null;
-  if (resonanceEmbeddings.length === 0 && viewer[0]?.interests) {
-    const interestsText = (viewer[0].interests as string[]).filter(Boolean).join(" ");
-    if (interestsText) {
-      const emb = getEmbeddingService();
-      interestsEmbedding = await emb.embed(interestsText, "query");
-    }
-  }
-
   const weights: RecommendationWeights = weightsRow[0]
     ? {
         qWeight: weightsRow[0].qWeight ?? defaultWeights.qWeight,
@@ -135,7 +124,7 @@ async function loadViewerEmbeddingsAndProfile(viewerId: string): Promise<{
     embeddings: {
       resonanceEmbeddings,
       surfaceEmbeddings,
-      interestsEmbedding,
+      interestsEmbedding: null,
     },
     profile,
     weights,
@@ -208,12 +197,7 @@ export async function getFeed(
   }
 
   // Phase detection: use aggregated total engagement events from system_config when present
-  const [engRow] = await db
-    .select({ value: systemConfig.value })
-    .from(systemConfig)
-    .where(eq(systemConfig.key, "total_engagement_events"));
-  const totalEngagements =
-    typeof engRow?.value === "number" ? (engRow.value as number) : 0;
+  const totalEngagements = await getTotalEngagementEvents();
   const isPhase1 =
     embeddings.resonanceEmbeddings.length < phase1ViewerThoughtThreshold ||
     totalEngagements < phase1SystemEngagementThreshold;
@@ -272,7 +256,6 @@ export async function getFeed(
   // Hydrate FeedItemThought
   const slice = allItems.slice(0, CACHE_MAX_ITEMS);
   const thoughtIds = slice.map((x) => x.thought.id);
-  const replyCounts = await getAcceptedReplyCounts(thoughtIds);
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
   const authorRows =
     authorIds.length > 0
@@ -285,7 +268,6 @@ export async function getFeed(
 
   const thoughtItems: FeedItem[] = slice.map(({ thought }) => {
     const author = authorMap.get(thought.userId);
-    const acceptedCount = replyCounts.get(thought.id) ?? 0;
     return {
       type: "thought",
       thought: {
@@ -301,37 +283,8 @@ export async function getFeed(
         name: author?.name ?? null,
         photo_url: author?.photoUrl ?? null,
       },
-      warmth_level: getWarmthLevel(acceptedCount),
     };
   });
-
-  // Mix in shifts
-  const userShifts = await db
-    .select()
-    .from(shifts)
-    .where(or(eq(shifts.participantA, userId), eq(shifts.participantB, userId)))
-    .orderBy(desc(shifts.createdAt))
-    .limit(CACHE_MAX_ITEMS);
-  const shiftUserIds = [...new Set(userShifts.flatMap((s) => [s.participantA, s.participantB]))];
-  const shiftUsers = shiftUserIds.length > 0
-    ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, shiftUserIds))
-    : [];
-  const shiftUserMap = new Map(shiftUsers.map((u) => [u.id, { id: u.id, name: u.name, photo_url: u.photoUrl }]));
-  const shiftItems: FeedItem[] = userShifts.map((s) => ({
-    type: "shift",
-    id: s.id,
-    created_at: s.createdAt?.toISOString() ?? new Date().toISOString(),
-    participant_a: {
-      ...(shiftUserMap.get(s.participantA) ?? { id: s.participantA, name: null, photo_url: null }),
-      before: s.aBefore,
-      after: s.aAfter,
-    },
-    participant_b: {
-      ...(shiftUserMap.get(s.participantB) ?? { id: s.participantB, name: null, photo_url: null }),
-      before: s.bBefore,
-      after: s.bAfter,
-    },
-  }));
 
   // Mix in crossings
   const userCrossings = await db
@@ -346,17 +299,6 @@ export async function getFeed(
     : [];
   const crossingUserMap = new Map(crossingUsers.map((u) => [u.id, { id: u.id, name: u.name, photo_url: u.photoUrl }]));
 
-  // Count accepted crossing replies for warmth
-  const crossingIds = userCrossings.map((c) => c.id);
-  const crossingReplyCountRows = crossingIds.length > 0
-    ? await db
-        .select({ crossingId: crossingReplies.crossingId, count: sql<number>`count(*)::int` })
-        .from(crossingReplies)
-        .where(and(inArray(crossingReplies.crossingId, crossingIds), eq(crossingReplies.status, "accepted")))
-        .groupBy(crossingReplies.crossingId)
-    : [];
-  const crossingReplyCountMap = new Map(crossingReplyCountRows.map((r) => [r.crossingId, r.count]));
-
   const crossingItems: FeedItem[] = userCrossings.map((c) => ({
     type: "crossing",
     crossing: {
@@ -367,15 +309,14 @@ export async function getFeed(
     },
     participant_a: crossingUserMap.get(c.participantA) ?? { id: c.participantA, name: null, photo_url: null },
     participant_b: crossingUserMap.get(c.participantB) ?? { id: c.participantB, name: null, photo_url: null },
-    warmth_level: getWarmthLevel(crossingReplyCountMap.get(c.id) ?? 0),
   }));
 
   const byDate = (a: FeedItem, b: FeedItem) => {
-    const dateA = a.type === "thought" ? a.thought.created_at : a.type === "crossing" ? a.crossing.created_at : a.created_at;
-    const dateB = b.type === "thought" ? b.thought.created_at : b.type === "crossing" ? b.crossing.created_at : b.created_at;
+    const dateA = a.type === "thought" ? a.thought.created_at : a.crossing.created_at;
+    const dateB = b.type === "thought" ? b.thought.created_at : b.crossing.created_at;
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   };
-  const items = [...thoughtItems, ...shiftItems, ...crossingItems].sort(byDate).slice(0, CACHE_MAX_ITEMS);
+  const items = [...thoughtItems, ...crossingItems].sort(byDate).slice(0, CACHE_MAX_ITEMS);
 
   cache.set(userId, {
     items,
@@ -430,12 +371,7 @@ export async function getFeedWithDebug(
     layer2Scores.set(thought.id, s);
     if (s > layer2Max) layer2Max = s;
   }
-  const [engRow] = await db
-    .select({ value: systemConfig.value })
-    .from(systemConfig)
-    .where(eq(systemConfig.key, "total_engagement_events"));
-  const totalEngagements =
-    typeof engRow?.value === "number" ? (engRow.value as number) : 0;
+  const totalEngagements = await getTotalEngagementEvents();
   const isPhase1 =
     embeddings.resonanceEmbeddings.length < phase1ViewerThoughtThreshold ||
     totalEngagements < phase1SystemEngagementThreshold;
@@ -501,7 +437,6 @@ export async function getFeedWithDebug(
   const slice = allItems.slice(0, CACHE_MAX_ITEMS);
 
   const thoughtIds = slice.map((x) => x.thought.id);
-  const replyCounts = await getAcceptedReplyCounts(thoughtIds);
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
   const authorRows = authorIds.length
     ? await db
@@ -516,7 +451,6 @@ export async function getFeedWithDebug(
     const debug = debugLookup.get(thought.id) ?? { bucket: "wildcard" as const, Q: 0, D: 0, F: 0, R: 0 };
     const { bucket, Q, D, F, R } = debug;
     const author = authorMap.get(thought.userId);
-    const acceptedCount = replyCounts.get(thought.id) ?? 0;
     const sims = getSimilarities(thought, embeddings);
     return {
       type: "thought",
@@ -533,7 +467,6 @@ export async function getFeedWithDebug(
         name: author?.name ?? null,
         photo_url: author?.photoUrl ?? null,
       },
-      warmth_level: getWarmthLevel(acceptedCount),
       _debug: {
         phase_used,
         bucket,

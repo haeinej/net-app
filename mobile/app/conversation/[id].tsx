@@ -12,31 +12,45 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   Alert,
+  AppState,
+  type AppStateStatus,
 } from "react-native";
 import { Image } from "expo-image";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography } from "../../theme";
 import { fontFamily } from "../../theme/typography";
-import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { SwipeConfirm } from "../../components/SwipeConfirm";
 import {
   fetchConversationMessages,
   postConversationMessage,
   fetchConversationDetail,
   getMyUserId,
-  startShift,
-  updateShiftDraft,
-  completeShift,
-  ignoreShift,
+  startCrossing,
+  updateCrossingDraft,
+  completeCrossing,
+  abandonCrossing,
   type ConversationMessage,
   type ConversationDetail,
 } from "../../lib/api";
+
+const CROSSING_MESSAGE_STEP = 10;
 
 function formatMessageTime(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function formatShortDateTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -68,7 +82,7 @@ function getOutgoingPalette(messageCount: number): {
   text: string;
   time: string;
 } {
-  const intensity = clamp(messageCount / 10, 0, 1);
+  const intensity = clamp(messageCount / CROSSING_MESSAGE_STEP, 0, 1);
   return {
     bubble: mixHex("#E8CDBE", colors.VERMILLION, intensity),
     text: mixHex("#FFF8F3", colors.TYPE_WHITE, intensity),
@@ -77,10 +91,11 @@ function getOutgoingPalette(messageCount: number): {
 }
 
 export default function ConversationThreadScreen() {
-  const { id, otherName, otherPhoto, thoughtSentence } = useLocalSearchParams<{
+  const { id, otherName, otherPhoto, otherId, thoughtSentence } = useLocalSearchParams<{
     id: string;
     otherName?: string;
     otherPhoto?: string;
+    otherId?: string;
     thoughtSentence?: string;
   }>();
   const router = useRouter();
@@ -95,11 +110,11 @@ export default function ConversationThreadScreen() {
   const [failedMessageId, setFailedMessageId] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [convDetail, setConvDetail] = useState<ConversationDetail | null>(null);
-  const [shiftOpen, setShiftOpen] = useState(false);
-  const [shiftBefore, setShiftBefore] = useState("");
-  const [shiftAfter, setShiftAfter] = useState("");
-  const [shiftSubmitting, setShiftSubmitting] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [crossingOpen, setCrossingOpen] = useState(false);
+  const [crossingSentence, setCrossingSentence] = useState("");
+  const [crossingContext, setCrossingContext] = useState("");
+  const [crossingSubmitting, setCrossingSubmitting] = useState(false);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
     getMyUserId().then(setMyUserId);
@@ -138,24 +153,36 @@ export default function ConversationThreadScreen() {
     [id]
   );
 
-  useEffect(() => {
-    if (id) {
-      loadMessages();
-      loadDetail();
-    }
-  }, [id, loadMessages, loadDetail]);
+  const refreshThread = useCallback(() => {
+    void loadMessages();
+    void loadDetail();
+  }, [loadDetail, loadMessages]);
 
-  useEffect(() => {
-    if (!id) return;
-    const tick = () => {
-      loadMessages();
-      loadDetail();
-    };
-    pollRef.current = setInterval(tick, 8000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [id, loadMessages, loadDetail]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+
+      const tick = () => {
+        if (appStateRef.current !== "active") return;
+        refreshThread();
+      };
+
+      tick();
+
+      const intervalId = setInterval(tick, 8000);
+      const appStateSubscription = AppState.addEventListener("change", (nextState) => {
+        appStateRef.current = nextState;
+        if (nextState === "active") {
+          tick();
+        }
+      });
+
+      return () => {
+        clearInterval(intervalId);
+        appStateSubscription.remove();
+      };
+    }, [id, refreshThread])
+  );
 
   const loadOlder = useCallback(() => {
     const first = messages[0];
@@ -211,101 +238,141 @@ export default function ConversationThreadScreen() {
     }
   }, [id, loadDetail, myUserId, sending, text]);
 
-  const saveShiftDraft = useCallback(async () => {
-    if (!id || !convDetail || shiftSubmitting) return;
-    const isParticipantA = myUserId === convDetail.participant_a_id;
-    await updateShiftDraft(
-      id,
-      isParticipantA
-        ? { a_before: shiftBefore, a_after: shiftAfter }
-        : { b_before: shiftBefore, b_after: shiftAfter }
-    );
-  }, [convDetail, id, myUserId, shiftAfter, shiftBefore, shiftSubmitting]);
+  const saveCrossingDraft = useCallback(async () => {
+    if (!id || crossingSubmitting) return;
+    await updateCrossingDraft(id, {
+      sentence: crossingSentence,
+      context: crossingContext,
+    });
+  }, [crossingContext, crossingSentence, crossingSubmitting, id]);
 
-  const shiftDraft = convDetail?.shift_draft ?? null;
+  const crossingDraft = convDetail?.crossing_draft ?? null;
   const messageCount = convDetail?.message_count ?? messages.length;
-  const shiftCount = convDetail?.shift_count ?? 0;
-  const nextShiftMessageCount = convDetail?.next_shift_message_count ?? 10;
-  const canCreateCollaborativeCard = Boolean(shiftDraft) || Boolean(convDetail?.shift_available);
-  const isParticipantA = convDetail ? myUserId === convDetail.participant_a_id : false;
-  const viewerReady = shiftDraft
-    ? Boolean(isParticipantA ? shiftDraft.participant_a_ready_at : shiftDraft.participant_b_ready_at)
-    : false;
-  const otherReady = shiftDraft
-    ? Boolean(isParticipantA ? shiftDraft.participant_b_ready_at : shiftDraft.participant_a_ready_at)
-    : false;
-  const bothReady = viewerReady && otherReady;
+  const nextCrossingMessageCount =
+    convDetail?.next_crossing_message_count ?? CROSSING_MESSAGE_STEP;
+  const canCreateCrossing = Boolean(crossingDraft) || Boolean(convDetail?.crossing_available);
   const otherParticipantName =
     otherName ??
-    (shiftDraft?.initiator_id === myUserId ? "the other person" : shiftDraft?.initiator_name ?? "the other person");
+    (crossingDraft?.initiator_id === myUserId
+      ? "the other person"
+      : crossingDraft?.initiator_name ?? "the other person");
+  const isCrossingInitiator = crossingDraft?.initiator_id === myUserId;
+  const isAwaitingOther = crossingDraft?.status === "awaiting_other";
+  const canApproveCrossing = Boolean(crossingDraft && isAwaitingOther && !isCrossingInitiator);
+  const waitingForOtherParticipant = Boolean(crossingDraft && isAwaitingOther && isCrossingInitiator);
+  const crossingAutoPostLabel = formatShortDateTime(crossingDraft?.auto_post_at ?? null);
   const conversationThoughtSentence = convDetail?.thought?.sentence ?? thoughtSentence ?? "";
   const outgoingPalette = useMemo(() => getOutgoingPalette(messageCount), [messageCount]);
 
   useEffect(() => {
-    if (shiftOpen && shiftDraft && convDetail) {
-      setShiftBefore((isParticipantA ? shiftDraft.a_before : shiftDraft.b_before) ?? "");
-      setShiftAfter((isParticipantA ? shiftDraft.a_after : shiftDraft.b_after) ?? "");
+    if (crossingOpen && crossingDraft) {
+      setCrossingSentence(crossingDraft.sentence ?? "");
+      setCrossingContext(crossingDraft.context ?? "");
     }
-  }, [convDetail, isParticipantA, shiftDraft, shiftOpen]);
+  }, [crossingDraft, crossingOpen]);
 
   useEffect(() => {
-    if (bothReady && !shiftOpen) {
-      setShiftOpen(true);
+    if (crossingDraft && crossingDraft.status === "draft" && !crossingOpen) {
+      setCrossingOpen(true);
     }
-  }, [bothReady, shiftOpen]);
+  }, [crossingDraft, crossingOpen]);
 
-  const handleStartCollaborativeCard = useCallback(async () => {
+  const handleStartCrossing = useCallback(async () => {
     if (!id) return;
-    await startShift(id);
-    await loadDetail();
+    try {
+      await startCrossing(id);
+      setCrossingOpen(true);
+      await loadDetail();
+    } catch (error) {
+      Alert.alert(
+        "Could not start crossing",
+        error instanceof Error ? error.message : "Please try again."
+      );
+    }
   }, [id, loadDetail]);
 
-  const handleIgnoreCollaborativeCard = useCallback(() => {
+  const handleAbandonCrossing = useCallback(() => {
     if (!id) return;
     Alert.alert(
-      "Delete this conversation?",
-      "Ignoring the collaborative card invite deletes this conversation and its chat history.",
+      "Discard crossing draft?",
+      "This will close the current crossing draft.",
       [
         { text: "Keep it", style: "cancel" },
         {
-          text: "Delete",
+          text: "Discard",
           style: "destructive",
           onPress: async () => {
             try {
-              await ignoreShift(id);
-              router.replace("/(tabs)/conversations");
-            } catch {
-              // Keep the conversation open if deletion fails.
+              await abandonCrossing(id);
+              setCrossingOpen(false);
+              await loadDetail();
+            } catch (error) {
+              Alert.alert(
+                "Could not discard crossing",
+                error instanceof Error ? error.message : "Please try again."
+              );
             }
           },
         },
       ]
     );
-  }, [id, router]);
+  }, [id, loadDetail]);
 
-  const handleCreateCollaborativeCard = useCallback(async () => {
-    if (!id || shiftSubmitting) return;
-    setShiftSubmitting(true);
+  const handleCreateCrossing = useCallback(async () => {
+    if (!id || crossingSubmitting) return;
+    setCrossingSubmitting(true);
     try {
-      await saveShiftDraft();
-      await completeShift(id);
-      setShiftOpen(false);
+      if (!canApproveCrossing) {
+        await saveCrossingDraft();
+      }
+      const result = await completeCrossing(id, {
+        sentence: canApproveCrossing ? undefined : crossingSentence.trim(),
+        context: canApproveCrossing ? undefined : crossingContext.trim() || undefined,
+      });
+      setCrossingOpen(false);
       await loadDetail();
+      if (result.status === "awaiting_other") {
+        const autoPostLabel = formatShortDateTime(result.auto_post_at);
+        Alert.alert(
+          "Crossing submitted",
+          autoPostLabel
+            ? `If they do not make it shared by ${autoPostLabel}, it will post as your thought.`
+            : "If they do not make it shared in time, it will post as your thought."
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        "Could not create crossing",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
-      setShiftSubmitting(false);
+      setCrossingSubmitting(false);
     }
-  }, [id, loadDetail, saveShiftDraft, shiftSubmitting]);
+  }, [
+    canApproveCrossing,
+    crossingContext,
+    crossingSentence,
+    crossingSubmitting,
+    id,
+    loadDetail,
+    saveCrossingDraft,
+  ]);
 
-  const handleSaveCollaborativeDraft = useCallback(async () => {
-    if (shiftSubmitting) return;
-    setShiftSubmitting(true);
+  const handleSaveCrossingDraft = useCallback(async () => {
+    if (crossingSubmitting) return;
+    setCrossingSubmitting(true);
     try {
-      await saveShiftDraft();
+      await saveCrossingDraft();
       await loadDetail();
+    } catch (error) {
+      Alert.alert(
+        "Could not save crossing",
+        error instanceof Error ? error.message : "Please try again."
+      );
     } finally {
-      setShiftSubmitting(false);
+      setCrossingSubmitting(false);
     }
-  }, [loadDetail, saveShiftDraft, shiftSubmitting]);
+  }, [crossingSubmitting, loadDetail, saveCrossingDraft]);
 
   if (!id) {
     return (
@@ -315,68 +382,56 @@ export default function ConversationThreadScreen() {
     );
   }
 
-  const renderCollaborativeBanner = () => {
-    if (!canCreateCollaborativeCard) {
-      if (shiftCount > 0 && messageCount < nextShiftMessageCount) {
+  const renderCrossingBanner = () => {
+    if (!canCreateCrossing) {
+      if (messageCount < nextCrossingMessageCount) {
         return (
           <Text style={styles.completeLabel}>
-            Next collaborative card unlocks at {nextShiftMessageCount} messages.
+            Next crossing unlocks at {nextCrossingMessageCount} messages.
           </Text>
         );
       }
       return null;
     }
 
-    if (!shiftDraft || !viewerReady) {
-      const label = shiftDraft && otherReady
-        ? `${otherParticipantName} wants to create a collaborative card.`
-        : "Crossing? Do you want to create a collaborative card?";
-      const hint = shiftDraft && otherReady
-        ? "Slide to join. Ignoring deletes this conversation."
-        : "Once both of you slide, you can make the card together.";
+    if (!crossingDraft && !crossingOpen) {
       return (
-        <View style={styles.collaborativeWrap}>
+        <View style={styles.crossingWrap}>
           <SwipeConfirm
-            label={label}
-            hint={hint}
-            completionLabel="Slide to join"
-            loading={shiftSubmitting}
-            onComplete={handleStartCollaborativeCard}
+            label="Crossing?"
+            hint="Slide to make a crossing from this conversation."
+            completionLabel="Start crossing"
+            loading={crossingSubmitting}
+            onComplete={handleStartCrossing}
           />
-          {shiftDraft && otherReady && shiftCount === 0 ? (
-            <TouchableOpacity style={styles.ignoreRow} onPress={handleIgnoreCollaborativeCard}>
-              <Text style={styles.ignoreText}>Ignore and delete conversation</Text>
-            </TouchableOpacity>
-          ) : null}
-          <Text style={styles.historyPolicyText}>
-            Chat history clears itself after 2 weeks without a reply.
-          </Text>
         </View>
       );
     }
 
-    if (viewerReady && !otherReady) {
+    if (crossingDraft && !crossingOpen) {
       return (
-        <View style={styles.waitingCard}>
-          <Text style={styles.waitingTitle}>Collaborative card started.</Text>
+        <TouchableOpacity
+          style={styles.waitingCard}
+          activeOpacity={0.85}
+          onPress={() => setCrossingOpen(true)}
+        >
+          <Text style={styles.waitingTitle}>
+            {waitingForOtherParticipant
+              ? "Crossing submitted."
+              : `${otherParticipantName} started a crossing.`}
+          </Text>
           <Text style={styles.waitingText}>
-            Waiting for {otherParticipantName} to join from this conversation.
+            {waitingForOtherParticipant
+              ? crossingAutoPostLabel
+                ? `Waiting for them. If they do nothing by ${crossingAutoPostLabel}, this becomes your thought.`
+                : "Waiting for them. If they do nothing, this becomes your thought."
+              : "Open it to make it a shared crossing. If you leave it alone, it becomes their thought in 3 days."}
           </Text>
-          <Text style={styles.historyPolicyText}>
-            The invite stays here until they join or ignore it.
-          </Text>
-        </View>
+        </TouchableOpacity>
       );
     }
 
-    return (
-      <View style={styles.waitingCard}>
-        <Text style={styles.waitingTitle}>Both of you are in.</Text>
-        <Text style={styles.waitingText}>
-          Finish the collaborative card below on both terms.
-        </Text>
-      </View>
-    );
+    return null;
   };
 
   return (
@@ -385,17 +440,26 @@ export default function ConversationThreadScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <View style={styles.headerAvatarWrap}>
-          {otherPhoto ? (
-            <Image source={{ uri: otherPhoto }} style={styles.headerAvatar} />
-          ) : (
-            <View style={[styles.headerAvatar, styles.headerAvatarPlc]} />
-          )}
-        </View>
-        <Text style={styles.headerName} numberOfLines={1}>
-          {otherName ? otherName.toUpperCase() : "Conversation"}
-        </Text>
-        <ScreenExitButton onPress={() => router.back()} style={styles.headerExit} />
+        <TouchableOpacity
+          style={styles.headerIdentity}
+          activeOpacity={0.7}
+          disabled={!otherId}
+          onPress={() => {
+            if (!otherId) return;
+            router.push({ pathname: "/user/[id]", params: { id: otherId } });
+          }}
+        >
+          <View style={styles.headerAvatarWrap}>
+            {otherPhoto ? (
+              <Image source={{ uri: otherPhoto }} style={styles.headerAvatar} />
+            ) : (
+              <View style={[styles.headerAvatar, styles.headerAvatarPlc]} />
+            )}
+          </View>
+          <Text style={styles.headerName} numberOfLines={1}>
+            {otherName ? otherName.toUpperCase() : "Conversation"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {loading && messages.length === 0 ? (
@@ -416,14 +480,6 @@ export default function ConversationThreadScreen() {
                   <View style={styles.thoughtCard}>
                     <Text style={styles.thoughtLabel}>Original thought</Text>
                     <Text style={styles.thoughtSentence}>{conversationThoughtSentence}</Text>
-                  </View>
-                ) : null}
-                {convDetail?.history_cleared && messages.length === 0 ? (
-                  <View style={styles.historyNotice}>
-                    <Text style={styles.historyNoticeTitle}>History cleared.</Text>
-                    <Text style={styles.historyNoticeText}>
-                      This conversation sat still for 2 weeks, so the old chat disappeared.
-                    </Text>
                   </View>
                 ) : null}
                 {loadingOlder ? (
@@ -482,60 +538,88 @@ export default function ConversationThreadScreen() {
             }}
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: shiftOpen || canCreateCollaborativeCard ? 180 : 92 },
+              { paddingBottom: crossingOpen || canCreateCrossing ? 180 : 92 },
             ]}
           />
 
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
-            keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
+            keyboardVerticalOffset={0}
             style={styles.inputArea}
           >
-            {renderCollaborativeBanner()}
+            {renderCrossingBanner()}
 
-            {shiftOpen && convDetail ? (
+            {crossingOpen && convDetail ? (
               <View style={styles.flowPanel}>
-                <Text style={styles.flowTitle}>Collaborative card</Text>
-                <Text style={styles.flowLabel}>What you were thinking before this conversation</Text>
+                <Text style={styles.flowTitle}>Crossing</Text>
+                <Text style={styles.flowLabel}>One crossing</Text>
                 <TextInput
                   style={styles.flowInput}
-                  placeholder="Before"
+                  placeholder="what changed between you because of this conversation"
                   placeholderTextColor={colors.TYPE_MUTED}
-                  value={shiftBefore}
-                  onChangeText={setShiftBefore}
+                  value={crossingSentence}
+                  onChangeText={setCrossingSentence}
                   maxLength={500}
-                  editable={!shiftSubmitting}
+                  editable={!crossingSubmitting && !canApproveCrossing}
                 />
-                <Text style={styles.flowLabel}>What you are thinking now</Text>
+                <Text style={styles.flowLabel}>Context</Text>
                 <TextInput
                   style={styles.flowInput}
-                  placeholder="After"
+                  placeholder="Optional context"
                   placeholderTextColor={colors.TYPE_MUTED}
-                  value={shiftAfter}
-                  onChangeText={setShiftAfter}
-                  maxLength={500}
-                  editable={!shiftSubmitting}
+                  value={crossingContext}
+                  onChangeText={setCrossingContext}
+                  maxLength={600}
+                  editable={!crossingSubmitting && !canApproveCrossing}
+                  multiline
                 />
+                {waitingForOtherParticipant ? (
+                  <Text style={styles.flowStatus}>
+                    {crossingAutoPostLabel
+                      ? `Waiting for the other person. If they do nothing by ${crossingAutoPostLabel}, this posts as your thought with your profile photo.`
+                      : "Waiting for the other person. If they do nothing, this posts as your thought with your profile photo."}
+                  </Text>
+                ) : null}
+                {canApproveCrossing ? (
+                  <Text style={styles.flowStatus}>
+                    If you agree, this becomes a shared crossing. If you do nothing, it will post as their thought after 3 days.
+                  </Text>
+                ) : null}
                 <View style={styles.flowRow}>
-                  <TouchableOpacity
-                    style={[styles.flowBtn, styles.flowBtnSecondary]}
-                    onPress={handleSaveCollaborativeDraft}
-                    disabled={shiftSubmitting}
-                  >
-                    <Text style={styles.flowBtnTextSecondary}>Save</Text>
-                  </TouchableOpacity>
+                  {!canApproveCrossing ? (
+                    <TouchableOpacity
+                      style={[styles.flowBtn, styles.flowBtnSecondary]}
+                      onPress={handleSaveCrossingDraft}
+                      disabled={crossingSubmitting}
+                    >
+                      <Text style={styles.flowBtnTextSecondary}>
+                        {waitingForOtherParticipant ? "Save changes" : "Save draft"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <TouchableOpacity
                     style={[styles.flowBtn, styles.flowBtnPrimary]}
-                    onPress={handleCreateCollaborativeCard}
-                    disabled={shiftSubmitting || !shiftBefore.trim() || !shiftAfter.trim()}
+                    onPress={handleCreateCrossing}
+                    disabled={crossingSubmitting || (!canApproveCrossing && !crossingSentence.trim())}
                   >
                     <Text style={styles.flowBtnTextPrimary}>
-                      {shiftSubmitting ? "..." : "Create collaborative card"}
+                      {crossingSubmitting
+                        ? "..."
+                        : canApproveCrossing
+                          ? "Make crossing"
+                          : waitingForOtherParticipant
+                            ? "Update crossing"
+                            : "Create crossing"}
                     </Text>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => setShiftOpen(false)} style={styles.flowClose}>
-                  <Text style={styles.flowBtnTextSecondary}>Close</Text>
+                <TouchableOpacity
+                  onPress={canApproveCrossing ? () => setCrossingOpen(false) : handleAbandonCrossing}
+                  style={styles.flowClose}
+                >
+                  <Text style={styles.flowBtnTextSecondary}>
+                    {canApproveCrossing ? "Close" : "Discard draft"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -559,7 +643,7 @@ export default function ConversationThreadScreen() {
                 <Text style={styles.sendBtnText}>Send</Text>
               </TouchableOpacity>
             </View>
-            <View style={{ height: insets.bottom + 24 }} />
+            <View style={{ height: Math.max(insets.bottom, 10) }} />
           </KeyboardAvoidingView>
         </>
       )}
@@ -583,15 +667,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.WARM_GROUND,
   },
   backBtn: {
-    padding: 8,
+    padding: 10,
     marginRight: 8,
   },
   backArrow: {
-    fontSize: 24,
+    fontSize: 36,
     color: colors.TYPE_DARK,
   },
   headerAvatarWrap: {
     marginRight: 10,
+  },
+  headerIdentity: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
   },
   headerAvatar: {
     width: 32,
@@ -603,12 +692,9 @@ const styles = StyleSheet.create({
   },
   headerName: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11.5,
     color: colors.TYPE_DARK,
     flex: 1,
-  },
-  headerExit: {
-    marginLeft: 8,
   },
   loadingWrap: {
     flex: 1,
@@ -632,15 +718,15 @@ const styles = StyleSheet.create({
   },
   thoughtLabel: {
     ...typography.metadata,
-    fontSize: 7,
+    fontSize: 10,
     color: colors.TYPE_MUTED,
     marginBottom: 6,
   },
   thoughtSentence: {
     ...typography.thoughtDisplay,
     fontFamily: fontFamily.sentientBold,
-    fontSize: 15,
-    lineHeight: 18,
+    fontSize: 21,
+    lineHeight: 27,
     color: colors.TYPE_DARK,
   },
   historyNotice: {
@@ -652,14 +738,14 @@ const styles = StyleSheet.create({
   },
   historyNoticeTitle: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.VERMILLION,
     marginBottom: 4,
   },
   historyNoticeText: {
     ...typography.context,
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 14,
+    lineHeight: 19,
     color: colors.TYPE_MUTED,
   },
   messageWrap: {
@@ -673,7 +759,7 @@ const styles = StyleSheet.create({
   },
   firstMessageLabelText: {
     ...typography.metadata,
-    fontSize: 7,
+    fontSize: 10,
     color: colors.TYPE_MUTED,
   },
   bubbleWrap: {
@@ -687,9 +773,9 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: "84%",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 22,
   },
   bubbleSent: {
     borderBottomRightRadius: 4,
@@ -704,8 +790,8 @@ const styles = StyleSheet.create({
   },
   bubbleText: {
     ...typography.replyInput,
-    fontSize: 11.5,
-    lineHeight: 15,
+    fontSize: 16,
+    lineHeight: 21,
     color: colors.TYPE_DARK,
   },
   bubbleTextSent: {
@@ -714,16 +800,17 @@ const styles = StyleSheet.create({
   bubbleTime: {
     ...typography.metadata,
     marginTop: 4,
+    fontSize: 10,
     color: colors.TYPE_MUTED,
   },
   inputArea: {
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: 12,
+    paddingTop: 8,
     backgroundColor: colors.WARM_GROUND,
     borderTopWidth: 1,
     borderTopColor: "rgba(26,26,22,0.06)",
   },
-  collaborativeWrap: {
+  crossingWrap: {
     marginBottom: 10,
   },
   ignoreRow: {
@@ -732,13 +819,13 @@ const styles = StyleSheet.create({
   },
   ignoreText: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.VERMILLION,
   },
   historyPolicyText: {
     ...typography.context,
-    fontSize: 9.5,
-    lineHeight: 12,
+    fontSize: 13.5,
+    lineHeight: 18,
     color: colors.TYPE_MUTED,
     marginTop: 6,
   },
@@ -751,19 +838,19 @@ const styles = StyleSheet.create({
   },
   waitingTitle: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_DARK,
     marginBottom: 5,
   },
   waitingText: {
     ...typography.context,
-    fontSize: 10.5,
-    lineHeight: 14,
+    fontSize: 15,
+    lineHeight: 20,
     color: colors.TYPE_DARK,
   },
   completeLabel: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.OLIVE,
     marginBottom: 8,
   },
@@ -775,24 +862,32 @@ const styles = StyleSheet.create({
   },
   flowTitle: {
     ...typography.label,
-    fontSize: 10,
+    fontSize: 14,
     color: colors.TYPE_DARK,
     marginBottom: 8,
   },
   flowLabel: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_MUTED,
     marginTop: 6,
     marginBottom: 4,
   },
+  flowStatus: {
+    ...typography.context,
+    fontSize: 14,
+    lineHeight: 19,
+    color: colors.TYPE_DARK,
+    marginTop: 6,
+    marginBottom: 2,
+  },
   flowInput: {
     ...typography.replyInput,
-    fontSize: 11,
+    fontSize: 16,
     color: colors.TYPE_DARK,
     backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 8,
     marginBottom: 6,
   },
@@ -803,8 +898,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   flowBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderRadius: 8,
   },
   flowBtnPrimary: {
@@ -815,12 +910,12 @@ const styles = StyleSheet.create({
   },
   flowBtnTextPrimary: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_WHITE,
   },
   flowBtnTextSecondary: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_MUTED,
   },
   flowClose: {
@@ -831,19 +926,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    paddingTop: 4,
   },
   input: {
     flex: 1,
     ...typography.replyInput,
+    fontSize: 16,
     color: colors.TYPE_DARK,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     backgroundColor: colors.CARD_GROUND,
     borderRadius: 8,
   },
   sendBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: 8,
     backgroundColor: colors.OLIVE,
   },
@@ -852,7 +949,7 @@ const styles = StyleSheet.create({
   },
   sendBtnText: {
     ...typography.label,
-    fontSize: 8,
+    fontSize: 11,
     color: colors.TYPE_WHITE,
   },
   errorText: {

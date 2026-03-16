@@ -11,7 +11,9 @@ import {
   boolean,
   jsonb,
   vector,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const VECTOR_DIMS = 768;
 
@@ -33,13 +35,10 @@ export const engagementEventTypeEnum = pgEnum("engagement_event_type", [
 
 export const crossingDraftStatusEnum = pgEnum("crossing_draft_status", [
   "draft",
+  "awaiting_other",
   "complete",
   "abandoned",
-]);
-export const shiftDraftStatusEnum = pgEnum("shift_draft_status", [
-  "draft",
-  "complete",
-  "abandoned",
+  "auto_posted",
 ]);
 
 // 1. users
@@ -53,8 +52,43 @@ export const users = pgTable("users", {
   interests: text("interests").array(), // internal cold-start strings, max 3
   email: text("email").unique(),
   passwordHash: text("password_hash"),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
+
+export const emailVerificationCodes = pgTable(
+  "email_verification_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("email_verification_codes_user_created_idx").on(
+      table.userId,
+      table.createdAt.desc()
+    ),
+    uniqueIndex("email_verification_codes_active_user_unique")
+      .on(table.userId)
+      .where(sql`${table.consumedAt} is null`),
+  ]
+);
+
+export const waitlistSignups = pgTable(
+  "waitlist_signups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    source: text("source").notNull().default("website"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("waitlist_signups_email_unique").on(table.email)]
+);
 
 // 2. thoughts
 export const thoughts = pgTable(
@@ -138,6 +172,7 @@ export const conversations = pgTable(
     index("conversations_participant_a_idx").on(table.participantA),
     index("conversations_participant_b_idx").on(table.participantB),
     index("conversations_last_message_at_idx").on(table.lastMessageAt.desc()),
+    uniqueIndex("conversations_reply_id_unique").on(table.replyId),
   ]
 );
 
@@ -305,29 +340,40 @@ export const learningJobLock = pgTable("learning_job_lock", {
   lockedBy: text("locked_by").notNull(),
 });
 
-// 16. crossing_drafts (Screen 7 — draft state per conversation)
-export const crossingDrafts = pgTable("crossing_drafts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  conversationId: uuid("conversation_id")
-    .notNull()
-    .references(() => conversations.id),
-  initiatorId: uuid("initiator_id")
-    .notNull()
-    .references(() => users.id),
-  sentenceA: text("sentence_a"),
-  sentenceB: text("sentence_b"),
-  context: text("context"),
-  status: crossingDraftStatusEnum("status").notNull().default("draft"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-});
+// 16. crossing_drafts (the only active crossing draft: one line + optional context)
+export const crossingDrafts = pgTable(
+  "crossing_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    initiatorId: uuid("initiator_id")
+      .notNull()
+      .references(() => users.id),
+    sentence: text("sentence_a"),
+    context: text("context"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    autoPostAt: timestamp("auto_post_at", { withTimezone: true }),
+    autoPostedThoughtId: uuid("auto_posted_thought_id").references(() => thoughts.id),
+    status: crossingDraftStatusEnum("status").notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("crossing_drafts_active_conversation_unique")
+      .on(table.conversationId)
+      .where(sql`${table.status} in ('draft', 'awaiting_other')`),
+  ]
+);
 
-// 17. crossings (completed — on both profiles, never in feed)
+// 17. crossings (completed shared crossings shown in the app)
 export const crossings = pgTable("crossings", {
   id: uuid("id").primaryKey().defaultRandom(),
   conversationId: uuid("conversation_id")
     .notNull()
     .references(() => conversations.id),
+  sourceDraftId: uuid("source_draft_id").references(() => crossingDrafts.id),
   participantA: uuid("participant_a")
     .notNull()
     .references(() => users.id),
@@ -338,7 +384,11 @@ export const crossings = pgTable("crossings", {
   context: text("context"),
   imageUrl: text("image_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("crossings_source_draft_unique")
+    .on(table.sourceDraftId)
+    .where(sql`${table.sourceDraftId} is not null`),
+]);
 
 // 17b. crossing_replies (replies to crossings, tagged to a participant)
 export const crossingReplies = pgTable(
@@ -360,44 +410,8 @@ export const crossingReplies = pgTable(
   },
   (table) => [
     index("crossing_replies_crossing_status_idx").on(table.crossingId, table.status),
+    uniqueIndex("crossing_replies_pending_unique")
+      .on(table.crossingId, table.replierId)
+      .where(sql`${table.status} = 'pending'`),
   ]
 );
-
-// 18. shift_drafts (Screen 7 — before/after per person)
-export const shiftDrafts = pgTable("shift_drafts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  conversationId: uuid("conversation_id")
-    .notNull()
-    .references(() => conversations.id),
-  initiatorId: uuid("initiator_id")
-    .notNull()
-    .references(() => users.id),
-  participantAReadyAt: timestamp("participant_a_ready_at", { withTimezone: true }),
-  participantBReadyAt: timestamp("participant_b_ready_at", { withTimezone: true }),
-  aBefore: text("a_before"),
-  aAfter: text("a_after"),
-  bBefore: text("b_before"),
-  bAfter: text("b_after"),
-  status: shiftDraftStatusEnum("status").notNull().default("draft"),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-});
-
-// 19. shifts (completed — in both participants' feeds)
-export const shifts = pgTable("shifts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  conversationId: uuid("conversation_id")
-    .notNull()
-    .references(() => conversations.id),
-  participantA: uuid("participant_a")
-    .notNull()
-    .references(() => users.id),
-  participantB: uuid("participant_b")
-    .notNull()
-    .references(() => users.id),
-  aBefore: text("a_before").notNull(),
-  aAfter: text("a_after").notNull(),
-  bBefore: text("b_before").notNull(),
-  bAfter: text("b_after").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-});
