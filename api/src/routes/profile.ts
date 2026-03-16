@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and, inArray, desc, sql, isNull, or } from "drizzle-orm";
+import { eq, and, inArray, desc, isNull, or } from "drizzle-orm";
 import {
   db,
   users,
@@ -9,8 +9,7 @@ import {
   conversations,
   messages,
   crossingDrafts,
-  shiftDrafts,
-  shifts,
+  crossingReplies,
   engagementEvents,
   failedProcessingJobs,
   imageGenerations,
@@ -18,7 +17,6 @@ import {
 } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { verifyPassword } from "../lib/password";
-import { getWarmthLevel } from "../lib/warmth";
 const INTERESTS_MAX = 3;
 
 interface UserIdParam {
@@ -42,7 +40,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
     const targetId = request.params.id;
-    const [[user], userThoughts, userCrossings, userShifts] = await Promise.all([
+    const [[user], userThoughts, userCrossings] = await Promise.all([
       db.select().from(users).where(eq(users.id, targetId)).limit(1),
       db
         .select()
@@ -54,50 +52,28 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         .from(crossings)
         .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
         .orderBy(desc(crossings.createdAt)),
-      db
-        .select()
-        .from(shifts)
-        .where(or(eq(shifts.participantA, targetId), eq(shifts.participantB, targetId)))
-        .orderBy(desc(shifts.createdAt)),
     ]);
 
     if (!user) return reply.status(404).send();
 
-    const thoughtIds = userThoughts.map((t) => t.id);
     const participantIds = [
       ...new Set([
         ...userCrossings.flatMap((c) => [c.participantA, c.participantB]),
-        ...userShifts.flatMap((s) => [s.participantA, s.participantB]),
       ]),
     ];
-    const [replyCountRows, participantUsers] = await Promise.all([
-      thoughtIds.length > 0
-        ? db
-            .select({
-              thoughtId: replies.thoughtId,
-              count: sql<number>`count(*)::int`,
-            })
-            .from(replies)
-            .where(and(inArray(replies.thoughtId, thoughtIds), eq(replies.status, "accepted")))
-            .groupBy(replies.thoughtId)
-        : Promise.resolve([] as Array<{ thoughtId: string; count: number }>),
-      participantIds.length > 0
+    const participantUsers = await (participantIds.length > 0
         ? db
             .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
             .from(users)
             .where(inArray(users.id, participantIds))
         : Promise.resolve(
             [] as Array<{ id: string; name: string | null; photoUrl: string | null }>
-          ),
-    ]);
-
-    const replyCounts = new Map(replyCountRows.map((r) => [r.thoughtId, r.count]));
+          ));
     const thoughtsForProfile = userThoughts.map((t) => ({
       id: t.id,
       sentence: t.sentence,
       photo_url: t.photoUrl,
       image_url: t.imageUrl,
-      warmth_level: getWarmthLevel(replyCounts.get(t.id) ?? 0),
       created_at: t.createdAt?.toISOString(),
     }));
     const userInfoMap = new Map(participantUsers.map((p) => [p.id, { id: p.id, name: p.name, photo_url: p.photoUrl }]));
@@ -110,26 +86,11 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       participant_a: userInfoMap.get(c.participantA) ?? null,
       participant_b: userInfoMap.get(c.participantB) ?? null,
     }));
-    const shiftsForProfile = userShifts.map((s) => ({
-      id: s.id,
-      created_at: s.createdAt?.toISOString(),
-      participant_a: {
-        ...(userInfoMap.get(s.participantA) ?? { id: s.participantA, name: null, photo_url: null }),
-        before: s.aBefore,
-        after: s.aAfter,
-      },
-      participant_b: {
-        ...(userInfoMap.get(s.participantB) ?? { id: s.participantB, name: null, photo_url: null }),
-        before: s.bBefore,
-        after: s.bAfter,
-      },
-    }));
     return reply.send({
       id: user.id,
       name: user.name,
       photo_url: user.photoUrl,
       thoughts: thoughtsForProfile,
-      shifts: shiftsForProfile,
       crossings: crossingsForProfile,
     });
   });
@@ -191,7 +152,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       }
 
       await db.transaction(async (tx) => {
-        const [userThoughtRows, conversationRows] = await Promise.all([
+        const [userThoughtRows, conversationRows, userCrossingRows] = await Promise.all([
           tx
             .select({ id: thoughts.id })
             .from(thoughts)
@@ -205,9 +166,22 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
                 eq(conversations.participantB, userId)
               )
             ),
+          tx
+            .select({ id: crossings.id })
+            .from(crossings)
+            .where(
+              or(eq(crossings.participantA, userId), eq(crossings.participantB, userId))
+            ),
         ]);
         const userThoughtIds = userThoughtRows.map((row) => row.id);
         const conversationIds = conversationRows.map((row) => row.id);
+        const userCrossingIds = userCrossingRows.map((row) => row.id);
+
+        if (userCrossingIds.length > 0) {
+          await tx
+            .delete(crossingReplies)
+            .where(inArray(crossingReplies.crossingId, userCrossingIds));
+        }
 
         if (conversationIds.length > 0) {
           await tx
@@ -217,23 +191,24 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
             .delete(crossingDrafts)
             .where(inArray(crossingDrafts.conversationId, conversationIds));
           await tx
-            .delete(shiftDrafts)
-            .where(inArray(shiftDrafts.conversationId, conversationIds));
-          await tx
             .delete(crossings)
             .where(inArray(crossings.conversationId, conversationIds));
-          await tx
-            .delete(shifts)
-            .where(inArray(shifts.conversationId, conversationIds));
           await tx
             .delete(conversations)
             .where(inArray(conversations.id, conversationIds));
         }
 
+        if (userCrossingIds.length > 0) {
+          await tx.delete(crossings).where(inArray(crossings.id, userCrossingIds));
+        }
+
         await tx
           .delete(crossingDrafts)
           .where(eq(crossingDrafts.initiatorId, userId));
-        await tx.delete(shiftDrafts).where(eq(shiftDrafts.initiatorId, userId));
+        await tx.delete(crossingReplies).where(eq(crossingReplies.replierId, userId));
+        await tx
+          .delete(crossingReplies)
+          .where(eq(crossingReplies.targetParticipantId, userId));
 
         await tx
           .delete(userRecommendationWeights)
