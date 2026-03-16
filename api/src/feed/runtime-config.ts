@@ -150,20 +150,33 @@ export async function getActiveRankingConfig(): Promise<RankingConfigSnapshot> {
     return activeConfigCache.snapshot;
   }
 
-  const [row] = await db
-    .select()
-    .from(rankingConfigs)
-    .where(eq(rankingConfigs.isActive, true))
-    .orderBy(desc(rankingConfigs.activatedAt), desc(rankingConfigs.updatedAt))
-    .limit(1);
+  try {
+    const [row] = await db
+      .select()
+      .from(rankingConfigs)
+      .where(eq(rankingConfigs.isActive, true))
+      .orderBy(desc(rankingConfigs.activatedAt), desc(rankingConfigs.updatedAt))
+      .limit(1);
 
-  const snapshot = row ? toSnapshot(row) : defaultSnapshot();
-  activeConfigCache = {
-    snapshot,
-    expiresAt: now + CONFIG_CACHE_TTL_MS,
-  };
-  setVersionCache(snapshot);
-  return snapshot;
+    const snapshot = row ? toSnapshot(row) : defaultSnapshot();
+    activeConfigCache = {
+      snapshot,
+      expiresAt: now + CONFIG_CACHE_TTL_MS,
+    };
+    setVersionCache(snapshot);
+    return snapshot;
+  } catch (error) {
+    console.warn("getActiveRankingConfig falling back to built-in config", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    const snapshot = defaultSnapshot();
+    activeConfigCache = {
+      snapshot,
+      expiresAt: now + CONFIG_CACHE_TTL_MS,
+    };
+    setVersionCache(snapshot);
+    return snapshot;
+  }
 }
 
 export async function getRankingConfigByVersion(
@@ -174,12 +187,29 @@ export async function getRankingConfigByVersion(
     return cached.snapshot;
   }
 
-  const [row] = await db
-    .select()
-    .from(rankingConfigs)
-    .where(eq(rankingConfigs.version, version))
-    .limit(1);
-  if (!row) {
+  try {
+    const [row] = await db
+      .select()
+      .from(rankingConfigs)
+      .where(eq(rankingConfigs.version, version))
+      .limit(1);
+    if (!row) {
+      if (version === feedConfig.version) {
+        const snapshot = defaultSnapshot();
+        setVersionCache(snapshot);
+        return snapshot;
+      }
+      return null;
+    }
+
+    const snapshot = toSnapshot(row);
+    setVersionCache(snapshot);
+    return snapshot;
+  } catch (error) {
+    console.warn("getRankingConfigByVersion falling back", {
+      version,
+      message: error instanceof Error ? error.message : String(error),
+    });
     if (version === feedConfig.version) {
       const snapshot = defaultSnapshot();
       setVersionCache(snapshot);
@@ -187,33 +217,43 @@ export async function getRankingConfigByVersion(
     }
     return null;
   }
-
-  const snapshot = toSnapshot(row);
-  setVersionCache(snapshot);
-  return snapshot;
 }
 
 export async function listRankingConfigs(): Promise<RankingConfigSnapshot[]> {
-  const rows = await db
-    .select()
-    .from(rankingConfigs)
-    .orderBy(desc(rankingConfigs.isActive), desc(rankingConfigs.updatedAt));
-  const snapshots = rows.map(toSnapshot);
-  if (!snapshots.some((snapshot) => snapshot.version === feedConfig.version)) {
-    snapshots.push(defaultSnapshot());
+  try {
+    const rows = await db
+      .select()
+      .from(rankingConfigs)
+      .orderBy(desc(rankingConfigs.isActive), desc(rankingConfigs.updatedAt));
+    const snapshots = rows.map(toSnapshot);
+    if (!snapshots.some((snapshot) => snapshot.version === feedConfig.version)) {
+      snapshots.push(defaultSnapshot());
+    }
+    return snapshots;
+  } catch (error) {
+    console.warn("listRankingConfigs falling back to built-in config", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [defaultSnapshot()];
   }
-  return snapshots;
 }
 
 export async function listRankingConfigAudits(
   limit: number = 50
 ): Promise<RankingConfigAuditSnapshot[]> {
-  const rows = await db
-    .select()
-    .from(rankingConfigAudits)
-    .orderBy(desc(rankingConfigAudits.createdAt))
-    .limit(Math.max(1, Math.min(200, limit)));
-  return rows.map(toAuditSnapshot);
+  try {
+    const rows = await db
+      .select()
+      .from(rankingConfigAudits)
+      .orderBy(desc(rankingConfigAudits.createdAt))
+      .limit(Math.max(1, Math.min(200, limit)));
+    return rows.map(toAuditSnapshot);
+  } catch (error) {
+    console.warn("listRankingConfigAudits returning empty audit list", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
 }
 
 export async function recordRankingConfigAudit(input: {
