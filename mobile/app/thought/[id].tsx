@@ -28,7 +28,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily, shadows, glass } from "../../theme";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
-import { WarmthBar, type WarmthLevel } from "../../components/WarmthBar";
+import { SwipeConfirm } from "../../components/SwipeConfirm";
+import { WarmthBar } from "../../components/WarmthBar";
 import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
 import {
   deleteReply,
@@ -38,10 +39,11 @@ import {
   postReply,
   type ThoughtDetailResponse,
 } from "../../lib/api";
+import { ReportModal } from "../../components/ReportModal";
 import { useEngagementTracking } from "../../hooks/useEngagementTracking";
 import { pickPrompt, REPLY_PROMPTS, REPLY_SAFETY_TEXT } from "../../constants/prompts";
 
-const REPLY_MIN_LENGTH = 50;
+const REPLY_MIN_LENGTH = 30;
 const REPLY_MAX_LENGTH = 300;
 
 export default function ThoughtDetailScreen() {
@@ -56,6 +58,7 @@ export default function ThoughtDetailScreen() {
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [replyPlaceholder] = useState(() => pickPrompt(REPLY_PROMPTS));
+  const [reportVisible, setReportVisible] = useState(false);
   const pulseOpacity = useSharedValue(0);
 
   const translateX = useSharedValue(0);
@@ -224,6 +227,44 @@ export default function ThoughtDetailScreen() {
   const handleOwnerCardMenu = useCallback(() => {
     if (!id || !data?.panel_3.viewer_is_author) return;
 
+    const openContextPrompt = (nextSentence: string) => {
+      Alert.prompt(
+        "Edit context",
+        "Update the context:",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Save",
+            onPress: async (newContext?: string) => {
+              const nextContext = newContext?.trim() ?? "";
+
+              try {
+                await editThought(id, {
+                  sentence: nextSentence,
+                  context: nextContext,
+                });
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        panel_1: { ...prev.panel_1, sentence: nextSentence },
+                        panel_2: {
+                          ...prev.panel_2,
+                          sentence: nextSentence,
+                          context: nextContext,
+                        },
+                      }
+                    : prev
+                );
+              } catch {}
+            },
+          },
+        ],
+        "plain-text",
+        data.panel_2.context ?? ""
+      );
+    };
+
     Alert.alert("Thought", undefined, [
       {
         text: "Edit",
@@ -234,23 +275,11 @@ export default function ThoughtDetailScreen() {
             [
               { text: "Cancel", style: "cancel" },
               {
-                text: "Save",
+                text: "Next",
                 onPress: async (newSentence?: string) => {
                   const nextSentence = newSentence?.trim();
                   if (!nextSentence) return;
-
-                  try {
-                    await editThought(id, { sentence: nextSentence });
-                    setData((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            panel_1: { ...prev.panel_1, sentence: nextSentence },
-                            panel_2: { ...prev.panel_2, sentence: nextSentence },
-                          }
-                        : prev
-                    );
-                  } catch {}
+                  openContextPrompt(nextSentence);
                 },
               },
             ],
@@ -314,7 +343,6 @@ export default function ThoughtDetailScreen() {
   const p1 = data.panel_1;
   const p2 = data.panel_2;
   const p3 = data.panel_3;
-  const warmthForBar: WarmthLevel = isTyping ? "full" : p1.warmth_level;
   const p1HasPhoto = Boolean(p1.photo_url ?? p1.image_url);
 
   return (
@@ -324,7 +352,7 @@ export default function ThoughtDetailScreen() {
           {/* Panel 1 */}
           <View style={[styles.panel, { width: panelWidth, minHeight: fullPanelHeight }]}>
             <View style={styles.panel1Inner}>
-              <WarmthBar warmthLevel={warmthForBar} height={imageHeight + 56} />
+              <WarmthBar height={imageHeight + 56} />
               <View
                 style={[
                   styles.panel1ImageWrap,
@@ -380,7 +408,15 @@ export default function ThoughtDetailScreen() {
                 >
                   <Text style={styles.ownerActionText}>•••</Text>
                 </TouchableOpacity>
-              ) : null}
+              ) : (
+                <TouchableOpacity
+                  style={styles.ownerActionBtn}
+                  onPress={() => setReportVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.ownerActionText}>•••</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -475,13 +511,15 @@ export default function ThoughtDetailScreen() {
                   maxLength={REPLY_MAX_LENGTH}
                 />
                 <Text style={styles.replySafety}>{REPLY_SAFETY_TEXT}</Text>
-                <TouchableOpacity
-                  style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                  onPress={handleSendReply}
+                <SwipeConfirm
+                  label="Reply"
+                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • swipe to send`}
+                  completionLabel="Send"
+                  style={styles.replySwipe}
                   disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
-                >
-                  <Text style={styles.sendBtnText}>Send</Text>
-                </TouchableOpacity>
+                  loading={sending}
+                  onComplete={handleSendReply}
+                />
               </KeyboardAvoidingView>
             )}
           </View>
@@ -504,6 +542,17 @@ export default function ThoughtDetailScreen() {
         style={[styles.exitButton, { top: insets.top + 12 }]}
         variant="dark"
       />
+
+      {id && !p3.viewer_is_author && (
+        <ReportModal
+          visible={reportVisible}
+          onClose={() => setReportVisible(false)}
+          targetType="thought"
+          targetId={id}
+          targetUserId={p1.user?.id}
+          onReported={() => setReportVisible(false)}
+        />
+      )}
     </View>
   );
 }
@@ -553,8 +602,8 @@ const styles = StyleSheet.create({
     left: 18,
     right: 18,
     bottom: 22,
-    fontSize: 24,
-    lineHeight: 27,
+    fontSize: 29,
+    lineHeight: 33,
     letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
   },
@@ -611,16 +660,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   ownerActionBtn: {
-    minWidth: 28,
+    minWidth: 40,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 4,
+    paddingVertical: 6,
     marginLeft: 8,
   },
   ownerActionText: {
     fontFamily: typography.metadata.fontFamily,
-    fontSize: 11,
-    lineHeight: 11,
+    fontSize: 16.5,
+    lineHeight: 16.5,
     letterSpacing: 0.6,
     color: colors.TYPE_MUTED,
   },
@@ -644,13 +693,13 @@ const styles = StyleSheet.create({
   },
   contextP2: {
     ...typography.context,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 14.5,
+    lineHeight: 20,
     color: "rgba(255,255,255,0.7)",
   },
   panelEmpty: {
     ...typography.context,
-    fontSize: 12,
+    fontSize: 14.5,
     color: "rgba(255,255,255,0.4)",
   },
   panel3: {
@@ -698,8 +747,8 @@ const styles = StyleSheet.create({
   },
   replyText: {
     ...typography.context,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 14.5,
+    lineHeight: 20,
     color: colors.TYPE_WHITE,
   },
   replyDeleteBtn: {
@@ -736,18 +785,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: "italic",
   },
-  sendBtn: {
+  replySwipe: {
     marginTop: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderRadius: 10,
-    backgroundColor: colors.OLIVE,
-    ...shadows.raised,
-  },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: {
-    ...typography.label,
-    color: colors.TYPE_WHITE,
   },
   indicator: {
     position: "absolute",

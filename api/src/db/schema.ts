@@ -24,6 +24,32 @@ export const replyStatusEnum = pgEnum("reply_status", [
   "deleted",
 ]);
 
+export const reportReasonEnum = pgEnum("report_reason", [
+  "harassment",
+  "hate_speech",
+  "spam",
+  "sexual_content",
+  "violence",
+  "self_harm",
+  "other",
+]);
+
+export const reportStatusEnum = pgEnum("report_status", [
+  "pending",
+  "reviewed",
+  "actioned",
+  "dismissed",
+]);
+
+export const reportTargetTypeEnum = pgEnum("report_target_type", [
+  "thought",
+  "reply",
+  "crossing",
+  "crossing_reply",
+  "message",
+  "user",
+]);
+
 export const engagementEventTypeEnum = pgEnum("engagement_event_type", [
   "view_p1",
   "swipe_p2",
@@ -223,7 +249,58 @@ export const engagementEvents = pgTable(
   ]
 );
 
-// 7. question_clusters (legacy name; currently used as resonance clusters)
+// 7. feed_serves (internal attribution for ranking evaluation)
+export const feedServes = pgTable(
+  "feed_serves",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestId: text("request_id").notNull(),
+    viewerId: uuid("viewer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemType: text("item_type").notNull(),
+    thoughtId: uuid("thought_id").references(() => thoughts.id, {
+      onDelete: "set null",
+    }),
+    crossingId: uuid("crossing_id"),
+    authorId: uuid("author_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    position: integer("position").notNull(),
+    bucket: text("bucket"),
+    stage: text("stage"),
+    phaseUsed: text("phase_used"),
+    scoreQ: real("score_q"),
+    scoreD: real("score_d"),
+    scoreF: real("score_f"),
+    scoreR: real("score_r"),
+    finalRank: real("final_rank"),
+    resonanceSimilarity: real("resonance_similarity"),
+    surfaceSimilarity: real("surface_similarity"),
+    configVersion: text("config_version").notNull(),
+    servedAt: timestamp("served_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("feed_serves_request_position_unique").on(
+      table.requestId,
+      table.position
+    ),
+    index("feed_serves_viewer_served_idx").on(
+      table.viewerId,
+      table.servedAt.desc()
+    ),
+    index("feed_serves_thought_served_idx").on(
+      table.thoughtId,
+      table.servedAt.desc()
+    ),
+    index("feed_serves_bucket_served_idx").on(
+      table.bucket,
+      table.servedAt.desc()
+    ),
+  ]
+);
+
+// 8. question_clusters (legacy name; currently used as resonance clusters)
 export const questionClusters = pgTable("question_clusters", {
   id: uuid("id").primaryKey().defaultRandom(),
   centroidEmbedding: vector("centroid_embedding", { dimensions: VECTOR_DIMS }),
@@ -233,7 +310,7 @@ export const questionClusters = pgTable("question_clusters", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
-// 8. cross_cluster_affinity (populated later)
+// 9. cross_cluster_affinity (populated later)
 export const crossClusterAffinity = pgTable(
   "cross_cluster_affinity",
   {
@@ -253,7 +330,7 @@ export const crossClusterAffinity = pgTable(
   ]
 );
 
-// 9. user_recommendation_weights (populated by learning loop)
+// 10. user_recommendation_weights (populated by learning loop)
 export const userRecommendationWeights = pgTable(
   "user_recommendation_weights",
   {
@@ -269,7 +346,7 @@ export const userRecommendationWeights = pgTable(
   }
 );
 
-// 10. failed_processing_jobs (Phase 3 + 4 — embedding pipeline or image generation retry)
+// 11. failed_processing_jobs (Phase 3 + 4 — embedding pipeline or image generation retry)
 export const failedProcessingJobs = pgTable(
   "failed_processing_jobs",
   {
@@ -285,7 +362,7 @@ export const failedProcessingJobs = pgTable(
   (table) => [index("failed_processing_jobs_thought_id_idx").on(table.thoughtId)]
 );
 
-// 11. image_generations (Phase 4 — daily cap per user)
+// 12. image_generations (Phase 4 — daily cap per user)
 export const imageGenerations = pgTable(
   "image_generations",
   {
@@ -301,7 +378,7 @@ export const imageGenerations = pgTable(
   ]
 );
 
-// 12. cross_domain_affinity (Phase 7 — concentration pairs, daily job)
+// 13. cross_domain_affinity (Phase 7 — concentration pairs, daily job)
 export const crossDomainAffinity = pgTable(
   "cross_domain_affinity",
   {
@@ -318,14 +395,63 @@ export const crossDomainAffinity = pgTable(
   ]
 );
 
-// 13. system_config (Phase 7 — learned config, e.g. temporal resonance weights)
+// 14. system_config (Phase 7 — learned config, e.g. temporal resonance weights)
 export const systemConfig = pgTable("system_config", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-// 14. learning_log (Phase 7 — job runs and details)
+// 15. ranking_configs (internal control plane for feed tuning)
+export const rankingConfigs = pgTable(
+  "ranking_configs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    version: text("version").notNull().unique(),
+    name: text("name").notNull(),
+    notes: text("notes"),
+    config: jsonb("config").notNull(),
+    isActive: boolean("is_active").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("ranking_configs_active_unique")
+      .on(table.isActive)
+      .where(sql`${table.isActive} = true`),
+    index("ranking_configs_updated_idx").on(table.updatedAt.desc()),
+  ]
+);
+
+// 15b. ranking_config_audits (internal config history + promotion decisions)
+export const rankingConfigAudits = pgTable(
+  "ranking_config_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    configVersion: text("config_version").notNull(),
+    action: text("action").notNull(),
+    outcome: text("outcome").notNull().default("success"),
+    previousActiveVersion: text("previous_active_version"),
+    actor: text("actor"),
+    reason: text("reason"),
+    source: text("source"),
+    requestIp: text("request_ip"),
+    userAgent: text("user_agent"),
+    configSnapshot: jsonb("config_snapshot"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("ranking_config_audits_config_created_idx").on(
+      table.configVersion,
+      table.createdAt.desc()
+    ),
+    index("ranking_config_audits_created_idx").on(table.createdAt.desc()),
+  ]
+);
+
+// 16. learning_log (Phase 7 — job runs and details)
 export const learningLog = pgTable("learning_log", {
   id: uuid("id").primaryKey().defaultRandom(),
   jobType: text("job_type").notNull(), // 'daily' | 'weekly'
@@ -333,14 +459,14 @@ export const learningLog = pgTable("learning_log", {
   details: jsonb("details"),
 });
 
-// 15. learning_job_lock (Phase 7 — prevent concurrent runs)
+// 17. learning_job_lock (Phase 7 — prevent concurrent runs)
 export const learningJobLock = pgTable("learning_job_lock", {
   jobType: text("job_type").primaryKey(),
   lockedAt: timestamp("locked_at", { withTimezone: true }).notNull(),
   lockedBy: text("locked_by").notNull(),
 });
 
-// 16. crossing_drafts (the only active crossing draft: one line + optional context)
+// 18. crossing_drafts (the only active crossing draft: one line + optional context)
 export const crossingDrafts = pgTable(
   "crossing_drafts",
   {
@@ -367,7 +493,7 @@ export const crossingDrafts = pgTable(
   ]
 );
 
-// 17. crossings (completed shared crossings shown in the app)
+// 19. crossings (completed shared crossings shown in the app)
 export const crossings = pgTable("crossings", {
   id: uuid("id").primaryKey().defaultRandom(),
   conversationId: uuid("conversation_id")
@@ -390,7 +516,7 @@ export const crossings = pgTable("crossings", {
     .where(sql`${table.sourceDraftId} is not null`),
 ]);
 
-// 17b. crossing_replies (replies to crossings, tagged to a participant)
+// 19b. crossing_replies (replies to crossings, tagged to a participant)
 export const crossingReplies = pgTable(
   "crossing_replies",
   {
@@ -413,5 +539,49 @@ export const crossingReplies = pgTable(
     uniqueIndex("crossing_replies_pending_unique")
       .on(table.crossingId, table.replierId)
       .where(sql`${table.status} = 'pending'`),
+  ]
+);
+
+// 20. reports (user-flagged objectionable content)
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id),
+    targetType: reportTargetTypeEnum("target_type").notNull(),
+    targetId: uuid("target_id").notNull(),
+    targetUserId: uuid("target_user_id").references(() => users.id),
+    reason: reportReasonEnum("reason").notNull(),
+    description: text("description"),
+    status: reportStatusEnum("status").notNull().default("pending"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("reports_reporter_idx").on(table.reporterId),
+    index("reports_target_idx").on(table.targetType, table.targetId),
+    index("reports_status_idx").on(table.status, table.createdAt.desc()),
+  ]
+);
+
+// 21. blocks (user blocks — hides content and notifies developer)
+export const blocks = pgTable(
+  "blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blockerId: uuid("blocker_id")
+      .notNull()
+      .references(() => users.id),
+    blockedId: uuid("blocked_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("blocks_pair_unique").on(table.blockerId, table.blockedId),
+    index("blocks_blocker_idx").on(table.blockerId),
+    index("blocks_blocked_idx").on(table.blockedId),
   ]
 );

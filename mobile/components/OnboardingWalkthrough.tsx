@@ -101,10 +101,10 @@ const STEPS: WalkthroughStep[] = [
     tooltipPosition: "above",
   },
   {
-    id: "collaborative-card",
+    id: "crossing",
     section: "05",
-    title: "collaborative cards",
-    body: "when a conversation deepens, you can make a shared card together.\nit becomes a visible trace of what changed between two people.",
+    title: "crossings",
+    body: "when a conversation deepens, you can make a crossing together.\nit becomes a visible trace of how the conversation changed you.",
     cta: "begin",
     targetTestID: null,
     tooltipPosition: "center",
@@ -137,6 +137,7 @@ export function OnboardingWalkthrough({
 
   const [currentStep, setCurrentStep] = useState(0);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
+  const [tooltipHeight, setTooltipHeight] = useState(ESTIMATED_TOOLTIP_HEIGHT);
 
   // Animation values
   const overlayOpacity = useSharedValue(0);
@@ -194,7 +195,14 @@ export function OnboardingWalkthrough({
       });
     }, 120);
 
-    return () => clearTimeout(timer);
+    const retryTimer = setTimeout(() => {
+      measureTarget(STEPS[currentStep]?.targetTestID ?? null);
+    }, 420);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(retryTimer);
+    };
   }, [cardOpacity, cardTranslateY, currentStep, measureTarget, visible]);
 
   /* ---- Initial appearance ---- */
@@ -249,8 +257,9 @@ export function OnboardingWalkthrough({
     const minTop = Math.max(insets.top + 72, 96);
     const maxTop = Math.max(
       minTop,
-      screenHeight - ESTIMATED_TOOLTIP_HEIGHT - Math.max(insets.bottom + 28, 110)
+      screenHeight - tooltipHeight - Math.max(insets.bottom + 28, 110)
     );
+    const maxHeight = Math.max(220, screenHeight - minTop - Math.max(insets.bottom + 28, 110));
 
     if (isFullScreen) {
       return {
@@ -258,6 +267,7 @@ export function OnboardingWalkthrough({
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
         top: Math.min(Math.max(screenHeight * 0.38, minTop), maxTop),
+        maxHeight,
       };
     }
 
@@ -270,6 +280,7 @@ export function OnboardingWalkthrough({
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
         top: Math.min(Math.max(desiredTop, minTop), maxTop),
+        maxHeight,
       };
     }
 
@@ -280,6 +291,7 @@ export function OnboardingWalkthrough({
         left: TOOLTIP_H_MARGIN,
         right: TOOLTIP_H_MARGIN,
         top: Math.min(Math.max(desiredTop, minTop), maxTop),
+        maxHeight,
       };
     }
 
@@ -289,27 +301,27 @@ export function OnboardingWalkthrough({
       left: TOOLTIP_H_MARGIN,
       right: TOOLTIP_H_MARGIN,
       top: Math.min(Math.max(screenHeight * 0.38, minTop), maxTop),
+      maxHeight,
     };
   };
 
   /* ---- Render ---- */
   return (
     <Animated.View style={[StyleSheet.absoluteFill, overlayAnimatedStyle]} pointerEvents="box-none">
-      <Pressable style={StyleSheet.absoluteFill} onPress={handleSkip} />
-
       {/* Dim overlay */}
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         {spotlightRect && !isFullScreen ? (
           <>
             {/* Top */}
-            <View
+            <Pressable
               style={[
                 styles.overlayBlock,
                 { top: 0, left: 0, right: 0, height: spotlightRect.y },
               ]}
+              onPress={handleSkip}
             />
             {/* Bottom */}
-            <View
+            <Pressable
               style={[
                 styles.overlayBlock,
                 {
@@ -319,9 +331,10 @@ export function OnboardingWalkthrough({
                   bottom: 0,
                 },
               ]}
+              onPress={handleSkip}
             />
             {/* Left */}
-            <View
+            <Pressable
               style={[
                 styles.overlayBlock,
                 {
@@ -331,9 +344,10 @@ export function OnboardingWalkthrough({
                   height: spotlightRect.height,
                 },
               ]}
+              onPress={handleSkip}
             />
             {/* Right */}
-            <View
+            <Pressable
               style={[
                 styles.overlayBlock,
                 {
@@ -343,6 +357,7 @@ export function OnboardingWalkthrough({
                   height: spotlightRect.height,
                 },
               ]}
+              onPress={handleSkip}
             />
             {/* Spotlight border glow */}
             <View
@@ -359,32 +374,24 @@ export function OnboardingWalkthrough({
             />
           </>
         ) : (
-          <View style={[StyleSheet.absoluteFill, styles.overlayBlock]} />
+          <Pressable
+            style={[StyleSheet.absoluteFill, styles.overlayBlock]}
+            onPress={handleSkip}
+          />
         )}
       </View>
 
-      {step && (
-        <TouchableOpacity
-          onPress={handleSkip}
-          style={[
-            styles.floatingCloseButton,
-            {
-              top: Math.max(insets.top + 10, 18),
-            },
-          ]}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={isLastStep ? "Close walkthrough" : "Skip walkthrough"}
-        >
-          <Text style={styles.floatingCloseText}>
-            {currentStep === 0 ? "skip" : isLastStep ? "close" : "skip"}
-          </Text>
-        </TouchableOpacity>
-      )}
-
       {/* Tooltip card */}
       {step && (
-        <Animated.View style={[styles.tooltipCard, getTooltipStyle(), cardAnimatedStyle]}>
+        <Animated.View
+          style={[styles.tooltipCard, getTooltipStyle(), cardAnimatedStyle]}
+          onLayout={(event) => {
+            const nextHeight = event.nativeEvent.layout.height;
+            if (Math.abs(nextHeight - tooltipHeight) > 4) {
+              setTooltipHeight(nextHeight);
+            }
+          }}
+        >
           {/* Skip link — shown from step 2 onward */}
           {currentStep > 0 && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
@@ -460,28 +467,6 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 12,
     zIndex: 20,
-  },
-
-  floatingCloseButton: {
-    position: "absolute",
-    right: 18,
-    zIndex: 30,
-    backgroundColor: "rgba(245, 240, 232, 0.96)",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    shadowColor: colors.PANEL_DEEP,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 8,
-  },
-  floatingCloseText: {
-    fontFamily: fontFamily.comico,
-    fontSize: 13,
-    lineHeight: 16,
-    color: colors.TYPE_DARK,
-    letterSpacing: 0.1,
   },
 
   welcomeLogo: {

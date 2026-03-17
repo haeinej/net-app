@@ -8,6 +8,7 @@ import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { db, conversations, users, crossingDrafts, crossings, crossingReplies } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { invalidateFeedCache } from "../feed";
+import { filterContent } from "../lib/content-filter";
 
 const CROSSING_CONTEXT_MAX = 600;
 const CROSSING_MESSAGE_STEP = 10;
@@ -542,6 +543,13 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: `text must be ${REPLY_TEXT_MIN}-${REPLY_TEXT_MAX} chars` });
     }
     if (!targetId) return reply.status(400).send({ error: "target_participant_id required" });
+
+    const textFilter = filterContent(text);
+    if (textFilter.flagged) {
+      return reply.status(400).send({
+        error: "Your reply was flagged for potentially objectionable content. Please revise and try again.",
+      });
+    }
 
     const [crossing] = await db.select().from(crossings).where(eq(crossings.id, crossingId)).limit(1);
     if (!crossing) return reply.status(404).send();

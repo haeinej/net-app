@@ -6,7 +6,7 @@ import cron from "node-cron";
 import type { FastifyInstance } from "fastify";
 import { runDailyLearning, runWeeklyLearning } from "../learning/service";
 import { reprocessFailedJobs } from "../thought-processing/service";
-import { clearExpiredConversationHistories } from "../conversations/history";
+import { autoPostExpiredCrossings } from "../crossings/autopost";
 
 export async function cronPlugin(app: FastifyInstance): Promise<void> {
   // Daily learning: 3am UTC
@@ -54,20 +54,19 @@ export async function cronPlugin(app: FastifyInstance): Promise<void> {
     { timezone: "UTC" }
   );
 
-  // Clear expired conversation histories: every hour at :10
+  // Auto-post expired crossings: every 15 minutes
   cron.schedule(
-    "10 * * * *",
+    "*/15 * * * *",
     async () => {
-      app.log.info("Cron: clearing expired conversation histories");
+      app.log.info("Cron: auto-posting expired crossings");
       try {
-        const clearedCount = await clearExpiredConversationHistories();
-        app.log.info({ clearedCount }, "Cron: expired conversation history cleanup complete");
+        const result = await autoPostExpiredCrossings();
+        app.log.info({ result }, "Cron: crossing auto-post complete");
       } catch (err) {
-        app.log.error({ err }, "Cron: expired conversation history cleanup failed");
+        app.log.error({ err }, "Cron: crossing auto-post failed");
       }
     },
     { timezone: "UTC" }
   );
-
-  app.log.info("Cron jobs registered: daily@3am, weekly@Sun4am, retry@:30, history@:10");
+  app.log.info("Cron jobs registered: daily@3am, weekly@Sun4am, retry@:30, crossing@15m");
 }

@@ -1,13 +1,13 @@
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { StyleSheet, View, ActivityIndicator } from "react-native";
+import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../theme";
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    "Sentient-Light": require("../assets/fonts/Sentient-Light.otf"),
+    "Sentient-Medium": require("../assets/fonts/Sentient-Light.otf"),
     "Sentient-Bold": require("../assets/fonts/Sentient-Bold.otf"),
     "Comico-Regular": require("../assets/fonts/Comico-Regular.otf"),
   });
@@ -23,15 +23,30 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.root}>
-        <Stack screenOptions={{ headerShown: false }} initialRouteName="index">
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.WARM_GROUND },
+            animation: Platform.OS === "ios" ? "default" : "fade_from_bottom",
+          }}
+          initialRouteName="index"
+        >
           <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="onboarding" />
-          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="intro" />
+          <Stack.Screen name="login" options={{ animation: "fade" }} />
+          <Stack.Screen name="verify-email" />
+          <Stack.Screen name="onboarding" options={{ animation: "fade" }} />
+          <Stack.Screen name="(tabs)" options={{ animation: "fade" }} />
           <Stack.Screen name="thought/[id]" />
           <Stack.Screen name="conversation/[id]" />
           <Stack.Screen name="user/[id]" />
-          <Stack.Screen name="post" options={{ presentation: "modal" }} />
+          <Stack.Screen
+            name="post"
+            options={{
+              presentation: "modal",
+              animation: "slide_from_bottom",
+            }}
+          />
           <Stack.Screen name="settings" />
           <Stack.Screen name="support" />
           <Stack.Screen name="privacy" />

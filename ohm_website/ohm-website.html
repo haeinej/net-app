@@ -688,6 +688,22 @@ nav.scrolled {
   white-space: nowrap;
 }
 .subscribe-form button:hover { background: #d63a01; transform: translateY(-2px); }
+.subscribe-form button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+.subscribe-status {
+  min-height: 24px;
+  margin-top: 16px;
+  font-family: 'Sentient', serif;
+  font-weight: 300;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--type-muted);
+}
+.subscribe-status[data-tone="success"] { color: var(--type-dark); }
+.subscribe-status[data-tone="error"] { color: var(--vermillion); }
 
 /* ========== FOOTER ========== */
 footer { background: var(--deep); padding: 80px 60px 0; }
@@ -1003,10 +1019,11 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   <div class="subscribe-inner">
     <p class="subscribe-heading reveal">Be the first to know.</p>
     <p class="subscribe-text reveal" data-delay="100">ohm. is coming. Leave your email and we'll let you know when it launches.</p>
-    <form class="subscribe-form reveal" data-delay="200" onsubmit="return false;">
-      <input type="email" placeholder="your@email.com" required>
+    <form class="subscribe-form reveal" data-delay="200" id="subscribeForm">
+      <input id="subscribeEmail" type="email" name="email" placeholder="your@email.com" autocomplete="email" required>
       <button type="submit">Join</button>
     </form>
+    <p class="subscribe-status" id="subscribeStatus" aria-live="polite"></p>
   </div>
 </section>
 
@@ -1094,6 +1111,75 @@ if (track && dots.length) {
     });
     dots.forEach((d, i) => d.classList.toggle('active', i === closest));
   }, { passive: true });
+}
+
+const subscribeForm = document.getElementById('subscribeForm');
+const subscribeEmail = document.getElementById('subscribeEmail');
+const subscribeStatus = document.getElementById('subscribeStatus');
+const subscribeButton = subscribeForm ? subscribeForm.querySelector('button[type="submit"]') : null;
+const subscribeEndpoint = window.location.hostname.endsWith('ohmmmm.com')
+  ? 'https://api.ohmmmm.com/api/waitlist'
+  : 'https://ohm-api.onrender.com/api/waitlist';
+
+function setSubscribeStatus(message, tone) {
+  if (!subscribeStatus) return;
+  subscribeStatus.textContent = message;
+  if (tone) {
+    subscribeStatus.setAttribute('data-tone', tone);
+  } else {
+    subscribeStatus.removeAttribute('data-tone');
+  }
+}
+
+if (subscribeForm && subscribeEmail && subscribeStatus) {
+  subscribeForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const email = subscribeEmail.value.trim();
+    if (!email) {
+      setSubscribeStatus('Enter an email address first.', 'error');
+      return;
+    }
+
+    subscribeForm.classList.add('is-submitting');
+    if (subscribeButton) subscribeButton.disabled = true;
+    setSubscribeStatus('Saving your email...', null);
+
+    try {
+      const response = await fetch(subscribeEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          source: window.location.hostname || 'website',
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload && payload.error ? payload.error : 'Could not save your email right now.');
+      }
+
+      setSubscribeStatus(
+        payload && payload.already_subscribed
+          ? 'You are already on the list.'
+          : 'You are in. Your email is saved.',
+        'success'
+      );
+
+      if (!(payload && payload.already_subscribed)) {
+        subscribeForm.reset();
+      }
+    } catch (error) {
+      setSubscribeStatus(
+        error instanceof Error ? error.message : 'Could not save your email right now.',
+        'error'
+      );
+    } finally {
+      subscribeForm.classList.remove('is-submitting');
+      if (subscribeButton) subscribeButton.disabled = false;
+    }
+  });
 }
 </script>
 </body>

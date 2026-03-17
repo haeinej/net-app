@@ -1,9 +1,13 @@
 /**
  * Two runtime type families only: Comico for display and Sentient for reading.
+ *
+ * Semantic scale — every text style in the app derives from one of these.
+ * Font sizes follow a deliberate progression:
+ *   8.5 → 9.5 → 10.5 → 12 → 13 → 14 → 16 → 22 → 24 → 28 → 32
  */
 export const fontFamily = {
   /** Reading text: thought sentence, context, replies. */
-  sentient: "Sentient-Light",
+  sentient: "Sentient-Medium",
   /** Bold reading text: sentence overlay on cards. */
   sentientBold: "Sentient-Bold",
   /** Display / structural face. */
@@ -12,49 +16,132 @@ export const fontFamily = {
   fallback: "System",
 } as const;
 
+// ─── Semantic typography tokens ─────────────────────────────
+
 export const typography = {
-  /** Thought sentence on image surfaces — Comico */
-  thoughtDisplay: {
+  // ── Display / headings (Comico) ──
+
+  /** Screen titles — Conversations, profile name. */
+  heading: {
     fontFamily: fontFamily.comico,
-    fontSize: 12.5,
-    letterSpacing: 0.2,
-    lineHeight: 15,
+    fontSize: 28,
+    letterSpacing: -0.5,
+    lineHeight: 34,
   },
-  /** Thought sentence in reading contexts — Sentient Light 12–13px */
-  thoughtSentence: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 12.5,
+  /** Profile name on Me screen. */
+  headingLg: {
+    fontFamily: fontFamily.comico,
+    fontSize: 32,
+    letterSpacing: -0.5,
+    lineHeight: 38,
   },
-  /** Thought sentence bold — Sentient Bold */
-  thoughtSentenceBold: {
+
+  // ── Thought display ──
+
+  /** Thought sentence on image surfaces — Sentient Bold */
+  thoughtDisplay: {
     fontFamily: fontFamily.sentientBold,
-    fontSize: 12.5,
+    fontSize: 24,
+    lineHeight: 29,
+    letterSpacing: -0.3,
   },
-  /** Context on Panel 2 — Sentient Light 9–10px, muted */
+  /** Compact card sentence overlay — Sentient Bold, smaller */
+  thoughtDisplayCompact: {
+    fontFamily: fontFamily.sentientBold,
+    fontSize: 16,
+    lineHeight: 19,
+    letterSpacing: -0.25,
+  },
+
+  // ── Body text (Sentient) ──
+
+  /** Primary body — replies, context reading, interest inputs. */
+  body: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  /** Secondary body — smaller reading text, guides. */
+  bodySmall: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  /** Context on Panel 2 — Sentient Medium. */
   context: {
     fontFamily: fontFamily.sentient,
-    fontSize: 9.5,
+    fontSize: 13,
+    lineHeight: 18,
   },
-  /** Reply input on Panel 3 — Sentient Light 11–12px */
-  replyInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 11.5,
-  },
-  /** Names, labels — Comico */
+
+  // ── UI labels (Comico) ──
+
+  /** Primary labels — names, button text, section headers. */
   label: {
     fontFamily: fontFamily.comico,
-    fontSize: 7.5,
+    fontSize: 10.5,
     letterSpacing: 1.2,
+    lineHeight: 13,
   },
-  /** Card metadata — Comico */
+  /** Larger label — field labels, button text. */
+  labelLg: {
+    fontFamily: fontFamily.comico,
+    fontSize: 12,
+    letterSpacing: 1.0,
+    lineHeight: 15,
+  },
+  /** Button text — primary actions. */
+  buttonText: {
+    fontFamily: fontFamily.comico,
+    fontSize: 14,
+    letterSpacing: 1.2,
+    lineHeight: 17,
+  },
+
+  // ── Metadata (Comico, smallest) ──
+
+  /** Card metadata — timestamps, captions. */
   metadata: {
     fontFamily: fontFamily.comico,
-    fontSize: 7,
+    fontSize: 9.5,
     letterSpacing: 0.8,
+    lineHeight: 12,
   },
+  /** Tiny metadata — compact card dates, notification previews. */
+  metadataSmall: {
+    fontFamily: fontFamily.comico,
+    fontSize: 8.5,
+    letterSpacing: 0.6,
+    lineHeight: 10.5,
+  },
+
+  // ── Special ──
+
   /** Logo — Comico */
   logo: {
     fontFamily: fontFamily.comico,
-    fontSize: 18,
+    fontSize: 22,
+    letterSpacing: -0.6,
+  },
+
+  // ── Legacy aliases (keep imports working) ──
+
+  /** @deprecated use body */
+  thoughtSentence: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  /** @deprecated use thoughtDisplay */
+  thoughtSentenceBold: {
+    fontFamily: fontFamily.sentientBold,
+    fontSize: 16,
+    lineHeight: 19,
+  },
+  /** @deprecated use body */
+  replyInput: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 16,
+    lineHeight: 22,
   },
 } as const;

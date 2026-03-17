@@ -4,6 +4,7 @@ import { db, thoughts, users, replies } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { processNewThought } from "../thought-processing";
 import { invalidateFeedCache } from "../feed";
+import { filterContent } from "../lib/content-filter";
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -36,6 +37,21 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ error: `sentence max ${SENTENCE_MAX} chars` });
     if (context.length > CONTEXT_MAX)
       return reply.status(400).send({ error: `context max ${CONTEXT_MAX} chars` });
+
+    const sentenceFilter = filterContent(sentence);
+    if (sentenceFilter.flagged) {
+      return reply.status(400).send({
+        error: "Your thought was flagged for potentially objectionable content. Please revise and try again.",
+      });
+    }
+    if (context) {
+      const contextFilter = filterContent(context);
+      if (contextFilter.flagged) {
+        return reply.status(400).send({
+          error: "Your context was flagged for potentially objectionable content. Please revise and try again.",
+        });
+      }
+    }
 
     const [row] = await db
       .insert(thoughts)
@@ -155,8 +171,6 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       ? await db.select().from(users).where(inArray(users.id, replierIds))
       : [];
     const replierMap = new Map(repliers.map((u) => [u.id, u]));
-    const warmth =
-      visibleReplies.length === 0 ? "none" : visibleReplies.length <= 2 ? "low" : "medium";
     const pending = await db
       .select()
       .from(replies)
@@ -173,7 +187,6 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         user: author
           ? { id: author.id, name: author.name, photo_url: author.photoUrl }
           : null,
-        warmth_level: warmth,
         created_at: t.createdAt?.toISOString(),
       },
       panel_2: { sentence: t.sentence, context: t.context ?? "" },

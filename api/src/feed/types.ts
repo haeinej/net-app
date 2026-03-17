@@ -1,8 +1,6 @@
 /**
- * Feed types (Phase 5). No counts exposed to clients.
+ * Feed types (Phase 5).
  */
-
-export type WarmthLevel = "none" | "low" | "medium" | "full";
 
 export interface FeedItemUser {
   id: string;
@@ -21,15 +19,6 @@ export interface FeedItemThought {
     has_context: boolean;
   };
   user: FeedItemUser;
-  warmth_level: WarmthLevel;
-}
-
-export interface FeedItemShift {
-  type: "shift";
-  id: string;
-  created_at: string;
-  participant_a: FeedItemUser & { before: string; after: string };
-  participant_b: FeedItemUser & { before: string; after: string };
 }
 
 export interface FeedItemCrossing {
@@ -42,10 +31,9 @@ export interface FeedItemCrossing {
   };
   participant_a: FeedItemUser;
   participant_b: FeedItemUser;
-  warmth_level: WarmthLevel;
 }
 
-export type FeedItem = FeedItemThought | FeedItemShift | FeedItemCrossing;
+export type FeedItem = FeedItemThought | FeedItemCrossing;
 
 /** Thought with embeddings and author for scoring. */
 export interface ThoughtCandidate {
@@ -92,6 +80,10 @@ export type BucketLabel = "resonance" | "adjacent" | "wildcard";
 
 export type UserStage = "new" | "building" | "established" | "wanderer";
 
+export type FeedPhaseUsed = "pre-data" | "learning";
+
+export type FeedServeItemType = "thought" | "crossing";
+
 export interface BucketRatios {
   resonance: number;
   adjacent: number;
@@ -101,4 +93,26 @@ export interface BucketRatios {
 export interface BucketedCandidate {
   thought: ThoughtCandidate;
   bucket: BucketLabel;
+}
+
+export interface FeedScoreSnapshot {
+  Q: number | null;
+  D: number | null;
+  F: number | null;
+  R: number | null;
+  final_rank: number | null;
+}
+
+export interface FeedServeTrace {
+  item_type: FeedServeItemType;
+  thought_id: string | null;
+  crossing_id: string | null;
+  author_id: string | null;
+  position: number;
+  bucket: BucketLabel | null;
+  stage: UserStage | null;
+  phase_used: FeedPhaseUsed | null;
+  scores: FeedScoreSnapshot;
+  resonance_similarity: number | null;
+  surface_similarity: number | null;
 }

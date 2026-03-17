@@ -5,10 +5,8 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db, replies, conversations, users, crossDomainAffinity, systemConfig, crossClusterAffinity } from "../db";
-import { feedConfig } from "./config";
+import { feedConfig, type FeedRuntimeConfig } from "./config";
 import type { ThoughtCandidate, ViewerProfile, RecommendationWeights } from "./types";
-
-const { freshnessFullBoostHours, freshnessDecayEndHours, freshnessResidual, cohortMaxFraction, windowSize, cohortDemotePositions, concentrationDemotePositions } = feedConfig;
 
 // ——— Learning Data Maps (preloaded per feed request) ———
 
@@ -82,7 +80,15 @@ export async function loadClusterAffinityMap(): Promise<Map<string, number>> {
 /**
  * Piecewise freshness: full boost first 6h, linear decay 6-48h, residual after.
  */
-function freshnessScore(createdAt: Date): number {
+function freshnessScore(
+  createdAt: Date,
+  config: FeedRuntimeConfig = feedConfig
+): number {
+  const {
+    freshnessFullBoostHours,
+    freshnessDecayEndHours,
+    freshnessResidual,
+  } = config;
   const hours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
   if (hours <= freshnessFullBoostHours) return 1.0;
   if (hours <= freshnessDecayEndHours) {
@@ -243,9 +249,10 @@ export async function buildReplyQualityMap(
 export function rankScorePhase1(
   thought: ThoughtCandidate,
   viewer: ViewerProfile,
-  layer2Score: number
+  layer2Score: number,
+  config: FeedRuntimeConfig = feedConfig
 ): number {
-  const f = freshnessScore(thought.createdAt);
+  const f = freshnessScore(thought.createdAt, config);
   const q = Math.min(1, thought.qualityScore ?? 0.5);
   const d = cohortDiversityBonus(thought, viewer);
   return f * 0.5 + q * 0.3 + d * 0.2;
@@ -260,14 +267,15 @@ export function rankScorePhase2(
   layer2Max: number,
   maps?: LearningMaps,
   viewerClusterIds?: string[],
-  replyQuality?: number
+  replyQuality?: number,
+  config: FeedRuntimeConfig = feedConfig
 ): number {
   const Q = layer2Max > 0 ? Math.min(1, layer2Score / layer2Max) : 0.5;
   const cohortDist = cohortDistance(thought, viewer, maps?.resonanceMap ?? null);
   const concDiff = concentrationDiff(thought, viewer, maps?.affinityMap ?? null);
   const clusterNov = clusterNoveltyScore(thought, viewerClusterIds ?? [], maps?.clusterAffinityMap ?? null);
   const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNov * 0.3;
-  const F = freshnessScore(thought.createdAt);
+  const F = freshnessScore(thought.createdAt, config);
   const R = typeof replyQuality === "number" ? replyQuality : 0.5;
   return Q * weights.qWeight + D * weights.dWeight + F * weights.fWeight + R * weights.rWeight;
 }
@@ -281,14 +289,15 @@ export function rankScorePhase2WithDebug(
   layer2Max: number,
   maps?: LearningMaps,
   viewerClusterIds?: string[],
-  replyQuality?: number
+  replyQuality?: number,
+  config: FeedRuntimeConfig = feedConfig
 ): { score: number; Q: number; D: number; F: number; R: number } {
   const Q = layer2Max > 0 ? Math.min(1, layer2Score / layer2Max) : 0.5;
   const cohortDist = cohortDistance(thought, viewer, maps?.resonanceMap ?? null);
   const concDiff = concentrationDiff(thought, viewer, maps?.affinityMap ?? null);
   const clusterNov = clusterNoveltyScore(thought, viewerClusterIds ?? [], maps?.clusterAffinityMap ?? null);
   const D = cohortDist * 0.4 + concDiff * 0.3 + clusterNov * 0.3;
-  const F = freshnessScore(thought.createdAt);
+  const F = freshnessScore(thought.createdAt, config);
   const R = typeof replyQuality === "number" ? replyQuality : 0.5;
   const score = Q * weights.qWeight + D * weights.dWeight + F * weights.fWeight + R * weights.rWeight;
   return { score, Q, D, F, R };
@@ -296,8 +305,15 @@ export function rankScorePhase2WithDebug(
 
 /** Sliding window: max 40% single cohort; demote 3rd consecutive same concentration. */
 export function applyDiversityEnforcement(
-  items: Array<{ thought: ThoughtCandidate; rankScore: number }>
+  items: Array<{ thought: ThoughtCandidate; rankScore: number }>,
+  config: FeedRuntimeConfig = feedConfig
 ): Array<{ thought: ThoughtCandidate; rankScore: number }> {
+  const {
+    cohortMaxFraction,
+    windowSize,
+    cohortDemotePositions,
+    concentrationDemotePositions,
+  } = config;
   const result = [...items].sort((a, b) => b.rankScore - a.rankScore);
   const n = result.length;
   for (let i = 0; i < n; i++) {

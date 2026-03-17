@@ -6,11 +6,9 @@
 import { and, desc, eq, ne, sql, isNull, or, notInArray } from "drizzle-orm";
 import { cosineDistance } from "drizzle-orm";
 import { db, thoughts, users, conversations } from "../db";
-import { feedConfig } from "./config";
+import { feedConfig, type FeedRuntimeConfig } from "./config";
 import { getSimilarities } from "./score";
 import type { ThoughtCandidate, ViewerEmbeddings, BucketedCandidate, UserStage } from "./types";
-
-const { candidateLimit, recentLimit } = feedConfig;
 
 /** Map DB row to ThoughtCandidate (embeddings as number[] from driver). */
 function toCandidate(row: {
@@ -49,7 +47,10 @@ function stableShuffleScore(viewerId: string, thoughtId: string, dayKey: number)
 }
 
 /** 50 most recent thoughts (excluding viewer). */
-async function getRecentCandidates(viewerId: string): Promise<ThoughtCandidate[]> {
+async function getRecentCandidates(
+  viewerId: string,
+  config: FeedRuntimeConfig = feedConfig
+): Promise<ThoughtCandidate[]> {
   const rows = await db
     .select({
       thought: thoughts,
@@ -60,7 +61,7 @@ async function getRecentCandidates(viewerId: string): Promise<ThoughtCandidate[]
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(and(ne(thoughts.userId, viewerId), isNull(thoughts.deletedAt)))
     .orderBy(desc(thoughts.createdAt))
-    .limit(recentLimit);
+    .limit(config.recentLimit);
   return rows.map(toCandidate);
 }
 
@@ -120,9 +121,10 @@ async function getNearestBySurface(
 async function getRandomCandidates(
   viewerId: string,
   excludeIds: Set<string>,
-  limit: number
+  limit: number,
+  config: FeedRuntimeConfig = feedConfig
 ): Promise<ThoughtCandidate[]> {
-  const { thoughtActiveDays, thoughtSleepTransitionDays, wildcardMinQuality } = feedConfig;
+  const { thoughtActiveDays, thoughtSleepTransitionDays, wildcardMinQuality } = config;
   const maxAgeDays = thoughtActiveDays + thoughtSleepTransitionDays;
   const excludeArr = [...excludeIds];
   const poolLimit = Math.max(limit * 6, 120);
@@ -162,8 +164,11 @@ async function getRandomCandidates(
 }
 
 /** Determine user stage from accepted conversation count. */
-async function getUserStage(viewerId: string): Promise<UserStage> {
-  const { stageThresholds } = feedConfig;
+async function getUserStage(
+  viewerId: string,
+  config: FeedRuntimeConfig = feedConfig
+): Promise<UserStage> {
+  const { stageThresholds } = config;
   const [result] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(conversations)
@@ -211,9 +216,10 @@ async function getActiveConversationUserIds(viewerId: string): Promise<Set<strin
  */
 export async function getCandidates(
   viewerId: string,
-  limit: number = candidateLimit
+  limit: number = feedConfig.candidateLimit,
+  config: FeedRuntimeConfig = feedConfig
 ): Promise<ThoughtCandidate[]> {
-  const recent = await getRecentCandidates(viewerId);
+  const recent = await getRecentCandidates(viewerId, config);
 
   const viewerThoughts = await db
     .select({
@@ -265,13 +271,14 @@ export async function getCandidates(
 export async function getBucketedCandidates(
   viewerId: string,
   viewerEmbeddings: ViewerEmbeddings,
-  limit: number = candidateLimit
+  limit: number = feedConfig.candidateLimit,
+  config: FeedRuntimeConfig = feedConfig
 ): Promise<{ candidates: BucketedCandidate[]; stage: UserStage }> {
-  const stage = await getUserStage(viewerId);
+  const stage = await getUserStage(viewerId, config);
   const activeConvUserIds = await getActiveConversationUserIds(viewerId);
 
   // Retrieve flat candidate pool (reuse existing logic)
-  const recent = await getRecentCandidates(viewerId);
+  const recent = await getRecentCandidates(viewerId, config);
   const bySimilarity: ThoughtCandidate[] = [];
   const viewerThoughts = await db
     .select({
@@ -311,7 +318,7 @@ export async function getBucketedCandidates(
   }
 
   // Pre-filter: remove thoughts from users with active conversations
-  const { thoughtActiveDays, thoughtSleepTransitionDays } = feedConfig;
+  const { thoughtActiveDays, thoughtSleepTransitionDays } = config;
   const maxAgeMs = (thoughtActiveDays + thoughtSleepTransitionDays) * 24 * 60 * 60 * 1000;
   const pool = bySimilarity.filter((c) => {
     if (activeConvUserIds.has(c.userId)) return false;
@@ -322,7 +329,12 @@ export async function getBucketedCandidates(
   });
 
   // Compute similarities for bucket assignment
-  const { resonanceTopFraction, adjacentMinResonance, adjacentMinSurfaceDistance, wildcardMinQuality } = feedConfig;
+  const {
+    resonanceTopFraction,
+    adjacentMinResonance,
+    adjacentMinSurfaceDistance,
+    wildcardMinQuality,
+  } = config;
 
   const scored = pool.map((thought) => {
     const { resonance_similarity, surface_similarity } = getSimilarities(thought, viewerEmbeddings);
@@ -356,7 +368,7 @@ export async function getBucketedCandidates(
   }
 
   // Bucket 3: wild cards from remaining + random DB query
-  const ratios = feedConfig.bucketRatios[stage];
+  const ratios = config.bucketRatios[stage];
   const wildcardTarget = Math.max(1, Math.ceil(limit * ratios.wildcard));
   const bucket1And2Ids = new Set([
     ...bucket1.map((c) => c.thought.id),
@@ -376,7 +388,7 @@ export async function getBucketedCandidates(
   if (bucket3.length < wildcardTarget) {
     const needed = wildcardTarget - bucket3.length;
     const allExclude = new Set([...bucket1And2Ids, ...bucket3.map((c) => c.thought.id)]);
-    const random = await getRandomCandidates(viewerId, allExclude, needed);
+    const random = await getRandomCandidates(viewerId, allExclude, needed, config);
     for (const t of random) {
       if (!activeConvUserIds.has(t.userId)) {
         bucket3.push({ thought: t, bucket: "wildcard" });

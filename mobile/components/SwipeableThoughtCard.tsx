@@ -30,7 +30,9 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
+import { SwipeConfirm } from "./SwipeConfirm";
 import {
   deleteReply,
   fetchThought,
@@ -40,25 +42,14 @@ import {
 } from "../lib/api";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getSavedCardPanel, setSavedCardPanel } from "../lib/card-panel-memory";
+import { formatRelativeTime } from "../lib/format";
 
-const REPLY_MIN_LENGTH = 50;
+const REPLY_MIN_LENGTH = 30;
 const REPLY_MAX_LENGTH = 300;
 const IMAGE_HEIGHT = 150;
 const CARD_HEIGHT = spacing.compactCardHeight;
 const FOOTER_HEIGHT = spacing.compactFooterHeight;
 const EXPANDED_HEIGHT = 340;
-
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  const hours = Math.floor(diffMs / 3600000);
-  const days = Math.floor(diffMs / 86400000);
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  return `${days}d`;
-}
 
 interface SwipeableThoughtCardProps {
   item: FeedItemThought;
@@ -70,10 +61,10 @@ interface SwipeableThoughtCardProps {
 
 export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit }: SwipeableThoughtCardProps) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const cardWidth = width - spacing.screenPadding * 2;
+  const { contentWidth } = useResponsiveLayout();
+  const cardWidth = contentWidth - spacing.screenPadding * 2;
 
-  const { thought, user, warmth_level } = item;
+  const { thought, user } = item;
   const cardKey = `thought-${thought.id}`;
   const initialPanel = getSavedCardPanel(cardKey);
 
@@ -99,17 +90,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const pulseOpacity = useSharedValue(0);
-
-  // Warmth escalates as user swipes deeper into panels
-  const effectiveWarmth = (() => {
-    if (isTyping) return "full" as const;
-    const levels: Array<typeof warmth_level> = ["none", "low", "medium", "full"];
-    if (displayPanel >= 2) return "full" as const;
-    if (displayPanel === 1) return "medium" as const;
-    // Panel 0: show at least "low" so the bar is always visible
-    const baseIdx = levels.indexOf(warmth_level);
-    return levels[Math.max(baseIdx, 1)];
-  })();
 
   // Card height animation for reply expansion
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
@@ -453,6 +433,10 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     [router]
   );
 
+  const openThoughtDetail = useCallback(() => {
+    router.push({ pathname: "/thought/[id]", params: { id: thought.id } });
+  }, [router, thought.id]);
+
   const handleProfilePress = useCallback(
     (event: GestureResponderEvent) => {
       event.stopPropagation();
@@ -469,33 +453,40 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           <View style={styles.panel1Inner}>
             <View style={{ width: spacing.warmthBarWidth }} />
             <View style={[styles.imageWrap, { width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT }]}>
-              <ThoughtImageFrame
-                imageUrl={thought.photo_url ?? thought.image_url}
-                aspectRatio={4 / 3}
-                borderRadius={0}
-                style={StyleSheet.absoluteFillObject}
-              />
-              <View style={styles.imageOverlay} pointerEvents="none">
-                <Text
-                  style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
-                  numberOfLines={4}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
-                >
-                  {thought.sentence}
-                </Text>
-                <View style={[styles.dotsHint, !hasPhoto && styles.dotsHintNoPhoto]}>
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
+              <TouchableOpacity
+                style={styles.panel1OpenHitArea}
+                activeOpacity={0.92}
+                onPress={openThoughtDetail}
+              >
+                <ThoughtImageFrame
+                  imageUrl={thought.photo_url ?? thought.image_url}
+                  aspectRatio={4 / 3}
+                  borderRadius={0}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <View style={styles.imageOverlay} pointerEvents="none">
+                  <Text
+                    style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
+                    numberOfLines={4}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                  >
+                    {thought.sentence}
+                  </Text>
+                  <View style={[styles.dotsHint, !hasPhoto && styles.dotsHintNoPhoto]}>
+                    <View style={styles.dot} />
+                    <View style={styles.dot} />
+                    <View style={styles.dot} />
+                  </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
           <TouchableOpacity
             style={styles.footer}
+            onPress={openThoughtDetail}
             onLongPress={handleLongPress}
-            activeOpacity={isOwn ? 0.7 : 1}
+            activeOpacity={0.92}
             delayLongPress={400}
           >
             <TouchableOpacity
@@ -634,16 +625,15 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 maxLength={REPLY_MAX_LENGTH}
               />
               <View style={styles.inputRow}>
-                <Text style={styles.replyHint}>
-                  {replyText.trim().length}/{REPLY_MIN_LENGTH} min
-                </Text>
-                <TouchableOpacity
-                  style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                  onPress={handleSendReply}
+                <SwipeConfirm
+                  label="Reply"
+                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • swipe to send`}
+                  completionLabel="Send"
+                  style={styles.replySwipe}
                   disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
-                >
-                  <Text style={styles.sendBtnText}>Send</Text>
-                </TouchableOpacity>
+                  loading={sending}
+                  onComplete={handleSendReply}
+                />
               </View>
             </KeyboardAvoidingView>
           )}
@@ -657,7 +647,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
 
         {/* Warmth bar — always visible across all panels, follows card height */}
         <Animated.View style={[styles.warmthBarOverlay, warmthBarHeightStyle]} pointerEvents="none">
-          <View style={[styles.warmthBarFill, { backgroundColor: effectiveWarmth === "none" ? "transparent" : effectiveWarmth === "low" ? colors.CHARTREUSE : effectiveWarmth === "medium" ? colors.OLIVE : colors.VERMILLION }]} />
+          <View style={[styles.warmthBarFill, { backgroundColor: colors.VERMILLION }]} />
         </Animated.View>
 
         {/* Panel indicator dots — animated Apple-style */}
@@ -700,6 +690,9 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
   },
+  panel1OpenHitArea: {
+    flex: 1,
+  },
   imageOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,
@@ -710,7 +703,7 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 20,
-    fontSize: 19,
+    fontSize: 18.5,
     lineHeight: 22,
     letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
@@ -762,8 +755,8 @@ const styles = StyleSheet.create({
   },
   name: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 8,
-    lineHeight: 10,
+    fontSize: 9.5,
+    lineHeight: 12,
     letterSpacing: 1,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
@@ -771,8 +764,8 @@ const styles = StyleSheet.create({
   },
   timestamp: {
     fontFamily: typography.metadata.fontFamily,
-    fontSize: 7,
-    lineHeight: 9,
+    fontSize: 8.5,
+    lineHeight: 10.5,
     letterSpacing: 0.8,
     color: colors.TYPE_MUTED,
   },
@@ -783,15 +776,15 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   ownerActionBtn: {
-    minWidth: 24,
+    minWidth: 36,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
   ownerActionText: {
     fontFamily: typography.metadata.fontFamily,
-    fontSize: 10,
-    lineHeight: 10,
+    fontSize: 15,
+    lineHeight: 15,
     letterSpacing: 0.6,
     color: colors.TYPE_MUTED,
   },
@@ -808,19 +801,19 @@ const styles = StyleSheet.create({
   },
   panelLabel: {
     ...typography.label,
-    fontSize: 7,
+    fontSize: 8.5,
     color: "rgba(255,255,255,0.48)",
     marginBottom: 10,
   },
   contextP2: {
     ...typography.context,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 13.5,
+    lineHeight: 19,
     color: "rgba(255,255,255,0.7)",
   },
   panelEmpty: {
     ...typography.context,
-    fontSize: 11,
+    fontSize: 13.5,
     color: "rgba(255,255,255,0.4)",
   },
   panelCentered: {
@@ -862,20 +855,20 @@ const styles = StyleSheet.create({
   },
   replyName: {
     ...typography.metadata,
-    fontSize: 6,
+    fontSize: 7.5,
     color: colors.TYPE_MUTED,
     marginBottom: 2,
   },
   replyStatus: {
     ...typography.metadata,
-    fontSize: 5.5,
+    fontSize: 6.5,
     color: colors.OLIVE,
     letterSpacing: 0.6,
   },
   replyText: {
     ...typography.context,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 13.5,
+    lineHeight: 19,
     color: colors.TYPE_WHITE,
   },
   replyDeleteBtn: {
@@ -884,7 +877,7 @@ const styles = StyleSheet.create({
   },
   replyDeleteText: {
     ...typography.metadata,
-    fontSize: 6,
+    fontSize: 7.5,
     color: colors.VERMILLION,
   },
   inputWrap: {
@@ -895,13 +888,13 @@ const styles = StyleSheet.create({
   },
   replyInputLabel: {
     ...typography.replyInput,
-    fontSize: 8,
+    fontSize: 9.5,
     color: colors.VERMILLION,
     marginBottom: 4,
   },
   replyInput: {
     ...typography.replyInput,
-    fontSize: 10,
+    fontSize: 12.5,
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.2)",
@@ -913,24 +906,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 6,
   },
-  replyHint: {
-    ...typography.metadata,
-    fontSize: 6,
-    color: colors.TYPE_MUTED,
-  },
-  sendBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: colors.VERMILLION,
-    // Soft organic lift
-    ...shadows.raised,
-  },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: {
-    ...typography.label,
-    fontSize: 7,
-    color: colors.TYPE_WHITE,
+  replySwipe: {
+    flex: 1,
   },
 
   // Pulse overlay

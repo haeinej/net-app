@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { eq, and, desc, inArray, isNull } from "drizzle-orm";
 import { db, thoughts, replies, users } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
+import { getBlockedUserIds } from "../lib/blocked-users";
 
 export async function notificationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
@@ -42,7 +43,12 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
         : [];
     const thoughtMap = new Map(thoughtRows.map((t) => [t.id, t]));
     const replierMap = new Map(replierRows.map((u) => [u.id, u]));
-    const body = pendingReplies.map((r) => {
+    // Filter out replies from blocked users
+    const blockedIds = await getBlockedUserIds(userId);
+    const filteredReplies = blockedIds.size > 0
+      ? pendingReplies.filter((r) => !blockedIds.has(r.replierId))
+      : pendingReplies;
+    const body = filteredReplies.map((r) => {
       const t = thoughtMap.get(r.thoughtId);
       const u = replierMap.get(r.replierId);
       return {

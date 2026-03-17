@@ -127,8 +127,6 @@ async function requestVoid(
   }
 }
 
-export type WarmthLevel = "none" | "low" | "medium" | "full";
-
 export interface FeedItemUser {
   id: string;
   name: string | null;
@@ -146,7 +144,6 @@ export interface FeedItemThought {
     has_context: boolean;
   };
   user: FeedItemUser;
-  warmth_level: WarmthLevel;
 }
 
 export interface FeedItemCrossing {
@@ -159,12 +156,7 @@ export interface FeedItemCrossing {
   };
   participant_a: FeedItemUser;
   participant_b: FeedItemUser;
-  warmth_level: WarmthLevel;
 }
-
-type HiddenFeedItemShift = {
-  type: "shift";
-};
 
 export type FeedItem = FeedItemThought | FeedItemCrossing;
 
@@ -200,13 +192,11 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 export async function fetchFeed(limit: number, offset: number): Promise<FeedItem[]> {
-  const items = await requestJson<Array<FeedItem | HiddenFeedItemShift>>(
+  return requestJson<FeedItem[]>(
     `/api/feed?limit=${limit}&offset=${offset}`,
     "Feed failed",
     { auth: true }
   );
-
-  return items.filter((item): item is FeedItem => item.type !== "shift");
 }
 
 export async function fetchNotifications(): Promise<NotificationItem[]> {
@@ -238,7 +228,6 @@ export interface ThoughtPanel1 {
   photo_url: string | null;
   image_url: string | null;
   user: { id: string; name: string | null; photo_url: string | null } | null;
-  warmth_level: WarmthLevel;
   created_at: string | null;
 }
 
@@ -295,7 +284,6 @@ export interface CrossingDetailResponse {
     sentence: string;
     participant_a: FeedItemUser;
     participant_b: FeedItemUser;
-    warmth_level: WarmthLevel;
     created_at: string;
   };
   panel_2: { sentence: string; context: string | null };
@@ -331,7 +319,6 @@ export interface ConversationListItem {
   other_user: { id: string; name: string | null; photo_url: string | null } | null;
   last_message_preview: string;
   last_message_at: string | null;
-  history_expires_at: string | null;
   is_dormant: boolean;
   unread: boolean;
 }
@@ -379,26 +366,17 @@ export async function postConversationMessage(
   );
 }
 
-// Conversation detail (message_count, crossing/shift state)
+// Conversation detail (message_count + crossing state)
 export interface CrossingDraft {
   id: string;
   initiator_id: string;
   initiator_name: string | null;
-  sentence_a: string | null;
-  sentence_b: string | null;
+  sentence: string | null;
   context: string | null;
-}
-
-export interface ShiftDraft {
-  id: string;
-  initiator_id: string;
-  initiator_name: string | null;
-  participant_a_ready_at: string | null;
-  participant_b_ready_at: string | null;
-  a_before: string | null;
-  a_after: string | null;
-  b_before: string | null;
-  b_after: string | null;
+  status: "draft" | "awaiting_other" | "complete" | "abandoned" | "auto_posted";
+  submitted_at: string | null;
+  auto_post_at: string | null;
+  auto_posted_thought_id: string | null;
 }
 
 export interface ConversationDetail {
@@ -413,14 +391,9 @@ export interface ConversationDetail {
     image_url: string | null;
   } | null;
   crossing_draft: CrossingDraft | null;
-  shift_draft: ShiftDraft | null;
   crossing_complete: boolean;
-  shift_complete: boolean;
-  shift_count: number;
-  shift_available: boolean;
-  next_shift_message_count: number;
-  history_cleared: boolean;
-  history_expires_at: string | null;
+  crossing_available: boolean;
+  next_crossing_message_count: number;
 }
 
 export async function fetchConversationDetail(conversationId: string): Promise<ConversationDetail> {
@@ -450,7 +423,7 @@ export async function getCrossingDraft(conversationId: string): Promise<(Crossin
 
 export async function updateCrossingDraft(
   conversationId: string,
-  body: { sentence_a?: string; sentence_b?: string; context?: string }
+  body: { sentence?: string; context?: string }
 ): Promise<void> {
   await requestVoid(
     `/api/conversations/${conversationId}/crossing`,
@@ -466,9 +439,15 @@ export async function updateCrossingDraft(
 
 export async function completeCrossing(
   conversationId: string,
-  body: { sentence: string; context?: string }
-): Promise<{ id: string; sentence: string; context: string | null; image_url: string | null }> {
-  return requestJson<{ id: string; sentence: string; context: string | null; image_url: string | null }>(
+  body: { sentence?: string; context?: string }
+): Promise<
+  | { status: "awaiting_other"; auto_post_at: string }
+  | { status: "complete"; id: string; sentence: string; context: string | null; image_url: string | null }
+> {
+  return requestJson<
+    | { status: "awaiting_other"; auto_post_at: string }
+    | { status: "complete"; id: string; sentence: string; context: string | null; image_url: string | null }
+  >(
     `/api/conversations/${conversationId}/crossing/complete`,
     "Complete crossing failed",
     {
@@ -488,68 +467,12 @@ export async function abandonCrossing(conversationId: string): Promise<void> {
   );
 }
 
-// Shift
-export async function startShift(conversationId: string): Promise<ShiftDraft & { id: string }> {
-  return requestJson<ShiftDraft & { id: string }>(
-    `/api/conversations/${conversationId}/shift/start`,
-    "Start shift failed",
-    { method: "POST", auth: true }
-  );
-}
-
-export async function getShiftDraft(conversationId: string): Promise<(ShiftDraft & { id: string }) | null> {
-  return requestJson<ShiftDraft & { id: string }>(
-    `/api/conversations/${conversationId}/shift`,
-    "Get shift failed",
-    { auth: true, allow404: true }
-  );
-}
-
-export async function updateShiftDraft(
-  conversationId: string,
-  body: { a_before?: string; a_after?: string; b_before?: string; b_after?: string }
-): Promise<void> {
-  await requestVoid(`/api/conversations/${conversationId}/shift`, "Update shift failed", {
-    method: "PUT",
-    auth: true,
-    headers: JSON_HEADERS,
-    body: JSON.stringify(body),
-  });
-}
-
-export async function completeShift(conversationId: string): Promise<{ id: string }> {
-  return requestJson<{ id: string }>(
-    `/api/conversations/${conversationId}/shift/complete`,
-    "Complete shift failed",
-    { method: "POST", auth: true }
-  );
-}
-
-export async function abandonShift(conversationId: string): Promise<void> {
-  await requestVoid(`/api/conversations/${conversationId}/shift/abandon`, "Abandon failed", {
-    method: "POST",
-    auth: true,
-  });
-}
-
-export async function ignoreShift(conversationId: string): Promise<{ deleted: boolean }> {
-  return requestJson<{ deleted: boolean }>(
-    `/api/conversations/${conversationId}/shift/ignore`,
-    "Ignore failed",
-    {
-      method: "POST",
-      auth: true,
-    }
-  );
-}
-
 // Profile
 export interface ProfileThought {
   id: string;
   sentence: string;
   photo_url: string | null;
   image_url: string | null;
-  warmth_level: WarmthLevel;
   created_at: string | null;
 }
 
@@ -656,6 +579,11 @@ export interface RegisterBody {
   password: string;
 }
 
+export interface RegisterResponse {
+  verification_required: true;
+  verification_email: string;
+}
+
 export interface AuthResponse {
   token: string;
   user_id: string;
@@ -663,8 +591,8 @@ export interface AuthResponse {
   onboarding_complete: boolean;
 }
 
-export async function register(body: RegisterBody): Promise<AuthResponse> {
-  return requestJson<AuthResponse>("/api/auth/register", "Registration failed", {
+export async function register(body: RegisterBody): Promise<RegisterResponse> {
+  return requestJson<RegisterResponse>("/api/auth/register", "Registration failed", {
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify(body),
@@ -681,6 +609,39 @@ export async function login(email: string, password: string): Promise<AuthRespon
   });
 }
 
+export async function verifyEmail(email: string, code: string): Promise<AuthResponse> {
+  return requestJson<AuthResponse>("/api/auth/verify-email", "Email verification failed", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ email, code }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export async function verifyEmailLink(
+  tokenHash: string,
+  type?: string
+): Promise<AuthResponse> {
+  return requestJson<AuthResponse>("/api/auth/verify-email", "Email verification failed", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      token_hash: tokenHash,
+      type,
+    }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export async function resendVerificationEmail(email: string): Promise<void> {
+  await requestVoid("/api/auth/resend-verification", "Could not resend verification email", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ email }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
 export async function deleteAccount(password: string): Promise<void> {
   await requestVoid("/api/me/account", "Account deletion failed", {
     method: "DELETE",
@@ -688,4 +649,84 @@ export async function deleteAccount(password: string): Promise<void> {
     headers: JSON_HEADERS,
     body: JSON.stringify({ password }),
   });
+}
+
+// Moderation — Report & Block
+
+export type ReportReason =
+  | "harassment"
+  | "hate_speech"
+  | "spam"
+  | "sexual_content"
+  | "violence"
+  | "self_harm"
+  | "other";
+
+export type ReportTargetType =
+  | "thought"
+  | "reply"
+  | "crossing"
+  | "crossing_reply"
+  | "message"
+  | "user";
+
+export async function reportContent(
+  targetType: ReportTargetType,
+  targetId: string,
+  reason: ReportReason,
+  description?: string
+): Promise<{ id: string; created_at: string }> {
+  return requestJson<{ id: string; created_at: string }>(
+    "/api/reports",
+    "Report failed",
+    {
+      method: "POST",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        target_type: targetType,
+        target_id: targetId,
+        reason,
+        description: description?.trim() || undefined,
+      }),
+    }
+  );
+}
+
+export async function blockUser(userId: string): Promise<void> {
+  await requestVoid("/api/blocks", "Block failed", {
+    method: "POST",
+    auth: true,
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  await requestVoid(`/api/blocks/${userId}`, "Unblock failed", {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
+export interface BlockedUser {
+  user_id: string;
+  name: string | null;
+  photo_url: string | null;
+  blocked_at: string;
+}
+
+export async function fetchBlockedUsers(): Promise<BlockedUser[]> {
+  return requestJson<BlockedUser[]>("/api/blocks", "Failed to load blocked users", {
+    auth: true,
+  });
+}
+
+export async function checkBlockStatus(userId: string): Promise<boolean> {
+  const result = await requestJson<{ blocked: boolean }>(
+    `/api/blocks/${userId}/status`,
+    "Block status check failed",
+    { auth: true }
+  );
+  return result.blocked;
 }

@@ -8,14 +8,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
   Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography } from "../theme";
-import { login } from "../lib/api";
+import { colors, spacing, typography, primitives, radii, opacity } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
+import { ApiError, login } from "../lib/api";
 import {
   setAuth,
   setOnboardingComplete,
@@ -29,6 +29,7 @@ const ohmLogo = require("../assets/images/ohm-logo.png");
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { containerStyle } = useResponsiveLayout();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +67,10 @@ export default function LoginScreen() {
       setCachedUserId(user_id);
       router.replace(onboarding_complete ? "/(tabs)" : "/onboarding");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        router.replace({ pathname: "/verify-email", params: { email: e } });
+        return;
+      }
       setError(err instanceof Error ? err.message : "Incorrect email or password");
     } finally {
       setLoading(false);
@@ -78,7 +83,7 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={0}
     >
-      <View style={styles.content}>
+      <View style={[styles.content, containerStyle]}>
         <Animated.View style={[styles.logoWrap, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
           <Image source={ohmLogo} style={styles.logoImage} contentFit="contain" />
         </Animated.View>
@@ -132,9 +137,8 @@ export default function LoginScreen() {
           >
             <Text style={styles.linkText}>Create account</Text>
           </TouchableOpacity>
-
           <TouchableOpacity
-            style={styles.secondaryLink}
+            style={styles.tertiaryLink}
             onPress={() => router.push("/privacy" as Href)}
             disabled={loading}
           >
@@ -161,7 +165,7 @@ const styles = StyleSheet.create({
   logoWrap: {
     alignSelf: "center",
     alignItems: "center",
-    marginBottom: 28,
+    marginBottom: 32,
   },
   logoImage: {
     width: 96,
@@ -171,54 +175,35 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   input: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 14,
-    color: colors.TYPE_DARK,
-    backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    ...primitives.input,
     marginBottom: 12,
   },
   error: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
-  color: colors.OLIVE,
-    marginBottom: 12,
+    ...primitives.errorText,
   },
   button: {
+    ...primitives.buttonPrimary,
     backgroundColor: colors.OLIVE,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderRadius: 8,
     marginTop: 8,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: opacity.disabled,
   },
   buttonText: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
-    color: colors.TYPE_WHITE,
-    letterSpacing: 1.2,
+    ...primitives.buttonPrimaryText,
   },
   link: {
-    marginTop: 24,
+    marginTop: 28,
     alignItems: "center",
   },
   linkText: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
-    color: colors.TYPE_MUTED,
-    textDecorationLine: "underline",
+    ...primitives.link,
   },
-  secondaryLink: {
-    marginTop: 12,
+  tertiaryLink: {
+    marginTop: 14,
     alignItems: "center",
   },
   secondaryLinkText: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 11,
-    color: colors.TYPE_MUTED,
+    ...primitives.linkSubtle,
   },
 });

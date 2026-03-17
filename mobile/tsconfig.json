@@ -20,9 +20,7 @@
     "lib/**/*.ts",
     "lib/**/*.tsx",
     "theme/**/*.ts",
-    "theme/**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "theme/**/*.tsx"
   ],
   "exclude": [
     "node_modules",

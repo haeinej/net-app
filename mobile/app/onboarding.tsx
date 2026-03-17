@@ -18,7 +18,8 @@ import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
+import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO, primitives, radii, opacity } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import {
   register,
   updateProfile,
@@ -43,10 +44,20 @@ const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
 const PHOTO_SIZE = 80;
 
+function validateStrongPassword(password: string): string | null {
+  if (password.length < 10) return "Password must be at least 10 characters";
+  if (!/[a-z]/.test(password)) return "Password must include a lowercase letter";
+  if (!/[A-Z]/.test(password)) return "Password must include an uppercase letter";
+  if (!/\d/.test(password)) return "Password must include a number";
+  if (!/[^A-Za-z0-9]/.test(password)) return "Password must include a symbol";
+  return null;
+}
+
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const { containerStyle, contentWidth } = useResponsiveLayout();
   const [step, setStepState] = useState<1 | 2 | 3>(1);
 
   // Step 1
@@ -55,6 +66,7 @@ export default function OnboardingScreen() {
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [regError, setRegError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [sendingStep1, setSendingStep1] = useState(false);
@@ -163,10 +175,20 @@ export default function OnboardingScreen() {
   const canContinueStep1 =
     name.trim().length > 0 &&
     email.trim().length > 0 &&
-    password.length >= 8;
+    password.length >= 10 &&
+    confirmPassword.length > 0;
 
   const handleStep1Continue = useCallback(async () => {
     if (!canContinueStep1 || sendingStep1) return;
+    const passwordError = validateStrongPassword(password);
+    if (passwordError) {
+      setRegError(passwordError);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setRegError("Passwords do not match");
+      return;
+    }
     setRegError(null);
     setSendingStep1(true);
     try {
@@ -176,13 +198,11 @@ export default function OnboardingScreen() {
         email: email.trim(),
         password,
       };
-      const { token, user_id, onboarding_complete, onboarding_step } =
-        await register(body);
-      await setAuth(token, user_id);
-      await setOnboardingComplete(onboarding_complete);
-      await setOnboardingStep(onboarding_step);
-      setCachedUserId(user_id);
-      setStepState(onboarding_step);
+      const { verification_email } = await register(body);
+      router.replace({
+        pathname: "/verify-email",
+        params: { email: verification_email },
+      });
     } catch (err) {
       setRegError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -195,6 +215,8 @@ export default function OnboardingScreen() {
     selectedProfilePhoto,
     email,
     password,
+    confirmPassword,
+    router,
   ]);
 
   const handleStep2Continue = useCallback(async () => {
@@ -307,7 +329,7 @@ export default function OnboardingScreen() {
             )}
           </TouchableOpacity>
           <Text style={styles.photoGuide}>
-            Optional. If you add one, make sure your full face is visible and clear.
+            Make sure your full face is visible and clear.
           </Text>
           <TextInput
             style={styles.input}
@@ -321,13 +343,25 @@ export default function OnboardingScreen() {
           />
           <TextInput
             style={styles.input}
-            placeholder="Password (min 8 characters)"
+            placeholder="Password"
             placeholderTextColor={colors.TYPE_MUTED}
             value={password}
             onChangeText={(t) => { setPassword(t); setRegError(null); }}
             secureTextEntry
             editable={!sendingStep1}
           />
+          <TextInput
+            style={styles.input}
+            placeholder="Confirm password"
+            placeholderTextColor={colors.TYPE_MUTED}
+            value={confirmPassword}
+            onChangeText={(t) => { setConfirmPassword(t); setRegError(null); }}
+            secureTextEntry
+            editable={!sendingStep1}
+          />
+          <Text style={styles.passwordGuide}>
+            Use 10+ characters with uppercase, lowercase, a number, and a symbol.
+          </Text>
 
           {regError ? <Text style={styles.error}>{regError}</Text> : null}
 
@@ -379,7 +413,7 @@ export default function OnboardingScreen() {
 
           <TextInput
             style={styles.interestInput}
-            placeholder="what you are into right now"
+            placeholder="what you keep returning to"
             placeholderTextColor={colors.TYPE_MUTED}
             value={interest1}
             onChangeText={setInterest1}
@@ -387,7 +421,7 @@ export default function OnboardingScreen() {
           />
           <TextInput
             style={styles.interestInput}
-            placeholder="what you are into right now"
+            placeholder="what is taking your attention"
             placeholderTextColor={colors.TYPE_MUTED}
             value={interest2}
             onChangeText={setInterest2}
@@ -395,18 +429,12 @@ export default function OnboardingScreen() {
           />
           <TextInput
             style={styles.interestInput}
-            placeholder="what you are into right now"
+            placeholder="what feels quietly important"
             placeholderTextColor={colors.TYPE_MUTED}
             value={interest3}
             onChangeText={setInterest3}
             editable={!sendingStep2}
           />
-
-          {allInterestsEmpty && (
-            <Text style={styles.nudge}>
-              These only help with cold start. Your thoughts and replies matter more.
-            </Text>
-          )}
 
           <TouchableOpacity
             style={[styles.continueBtn, sendingStep2 && styles.continueBtnDisabled]}
@@ -434,7 +462,6 @@ export default function OnboardingScreen() {
       <View style={styles.header}>
         <View style={styles.headerLead}>
           <Image source={ohmLogo} style={styles.logoHeaderIcon} contentFit="contain" />
-          <Text style={styles.firstThoughtTitle}>Your first thought</Text>
         </View>
         <ScreenExitButton onPress={handleExit} disabled={onboardingBusy} />
       </View>
@@ -474,31 +501,15 @@ export default function OnboardingScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Photo</Text>
-          <Text style={styles.fieldHint}>
-            Optional. Your profile photo is used by default and you can swap it here.
-          </Text>
           <View style={styles.photoActionRow}>
             <TouchableOpacity style={styles.photoActionBtn} onPress={pickThoughtPhoto} disabled={posting}>
-              <Text style={styles.photoActionText}>
-                {thoughtPhotoUrl ? "Change photo" : "Add photo"}
-              </Text>
+              <Text style={styles.photoActionText}>Change photo</Text>
             </TouchableOpacity>
-            {thoughtPhotoUrl ? (
-              <TouchableOpacity style={styles.photoActionBtn} onPress={() => setThoughtPhotoUrl(null)} disabled={posting}>
-                <Text style={styles.photoActionText}>Remove</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
-          {!thoughtPhotoUrl ? (
-            <Text style={styles.photoFallbackText}>
-              No photo selected. The preview will stay plain until you add one.
-            </Text>
-          ) : null}
         </View>
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>One big thought</Text>
-          <Text style={styles.fieldHint}>This becomes the line on your image.</Text>
           <TextInput
             style={[styles.textArea, styles.sentenceInput]}
             placeholder="The one thought you cannot stop turning over."
@@ -514,7 +525,6 @@ export default function OnboardingScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Context</Text>
-          <Text style={styles.fieldHint}>Three lines that place the thought.</Text>
           <TextInput
             style={[styles.textArea, styles.contextInput]}
             placeholder="Where it came from, what triggered it, what is underneath it."
@@ -556,25 +566,25 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 24,
+    maxWidth: 540,
+    alignSelf: "center" as const,
+    width: "100%" as const,
   },
   stepTitle: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 14,
+    ...typography.buttonText,
     color: colors.TYPE_DARK,
     marginBottom: 8,
-    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   stepSubtitle: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 11,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     marginBottom: 20,
   },
   firstThoughtTitle: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 8.5,
+    ...typography.metadataSmall,
     color: colors.TYPE_MUTED,
-    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
   header: {
     flexDirection: "row",
@@ -585,7 +595,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(26,26,22,0.06)",
+    borderBottomColor: colors.CARD_BORDER,
   },
   headerLead: {
     flex: 1,
@@ -611,13 +621,13 @@ const styles = StyleSheet.create({
     height: 22,
   },
   input: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 14,
-    color: colors.TYPE_DARK,
-    backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    ...primitives.input,
+    marginBottom: 12,
+  },
+  passwordGuide: {
+    ...typography.context,
+    color: colors.TYPE_MUTED,
+    marginTop: -2,
     marginBottom: 12,
   },
   photoWrap: {
@@ -651,48 +661,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   photoGuide: {
-    fontFamily: typography.context.fontFamily,
-    fontSize: 11,
-    lineHeight: 15,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     textAlign: "center",
     marginBottom: 12,
   },
   error: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
-    color: colors.OLIVE,
-    marginBottom: 12,
+    ...primitives.errorText,
   },
   continueBtn: {
+    ...primitives.buttonPrimary,
     backgroundColor: colors.OLIVE,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderRadius: 8,
     marginTop: 24,
   },
   continueBtnDisabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   continueBtnText: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
-    color: colors.TYPE_WHITE,
-    letterSpacing: 1.2,
+    ...primitives.buttonPrimaryText,
   },
   interestInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 11.5,
-    color: colors.TYPE_DARK,
-    backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    ...primitives.inputReading,
     marginBottom: 12,
   },
   nudge: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 8,
+    ...typography.label,
     color: colors.TYPE_MUTED,
     marginTop: 4,
   },
@@ -705,14 +698,11 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   previewSentence: {
-    fontFamily: fontFamily.sentientBold,
+    ...typography.thoughtDisplay,
     position: "absolute",
     left: 16,
     right: 16,
     bottom: 14,
-    fontSize: 22,
-    lineHeight: 26,
-    letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
   },
   previewHint: {
@@ -724,18 +714,13 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
   },
   fieldBlock: {
-    marginBottom: 16,
+    ...primitives.fieldBlock,
   },
   fieldLabel: {
-    ...typography.label,
-    fontSize: 8.5,
-    color: colors.TYPE_MUTED,
-    marginBottom: 6,
+    ...primitives.fieldLabel,
   },
   fieldHint: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 11,
-    lineHeight: 16,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     marginBottom: 10,
   },
@@ -745,57 +730,41 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   photoActionBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: colors.CARD_GROUND,
+    ...primitives.buttonPill,
   },
   photoActionText: {
-    ...typography.label,
-    fontSize: 7.5,
-    color: colors.TYPE_DARK,
+    ...primitives.buttonPillText,
   },
   photoFallbackText: {
     ...typography.context,
     color: colors.TYPE_MUTED,
   },
   textArea: {
-    backgroundColor: colors.CARD_GROUND,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    ...primitives.textArea,
   },
   sentenceInput: {
-    fontFamily: fontFamily.comico,
-    fontSize: 18,
-    lineHeight: 24,
+    fontFamily: fontFamily.sentientBold,
+    fontSize: 22,
+    lineHeight: 29,
     color: colors.TYPE_DARK,
     minHeight: 148,
     textAlignVertical: "top",
   },
   contextInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 11.5,
-    lineHeight: 17,
+    ...typography.body,
     color: colors.TYPE_DARK,
     minHeight: 88,
     textAlignVertical: "top",
   },
   postBtn: {
-    marginTop: 16,
-    paddingVertical: 14,
-    borderRadius: 8,
+    ...primitives.buttonPrimary,
     backgroundColor: colors.VERMILLION,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
+    marginTop: 16,
   },
   postBtnDisabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   postBtnText: {
-    ...typography.label,
-    fontSize: 10,
-    color: colors.TYPE_WHITE,
+    ...primitives.buttonPrimaryText,
   },
 });

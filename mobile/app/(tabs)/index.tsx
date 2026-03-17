@@ -21,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing, typography } from "../../theme";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { pickPrompt, EMPTY_STATE_PROMPTS } from "../../constants/prompts";
 import { Header } from "../../components/Header";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
@@ -40,13 +41,13 @@ import {
   type NotificationItem,
 } from "../../lib/api";
 
-const WALKTHROUGH_SEEN_KEY = "ohm_walkthrough_seen";
-
+const WALKTHROUGH_SEEN_KEY = "ohm_walkthrough_seen_v2";
 const PAGE_SIZE = 20;
 const FOCUS_REFRESH_INTERVAL_MS = 60_000;
 
 export default function WorldsScreen() {
   const router = useRouter();
+  const { containerStyle } = useResponsiveLayout();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
@@ -71,9 +72,31 @@ export default function WorldsScreen() {
 
   const inFlightFeed = useRef<Promise<void> | null>(null);
   const lastFocusRefreshAt = useRef(0);
+  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
+  const postButtonRef = useRef<View>(null);
+  const feedCardRef = useRef<View>(null);
+  const conversationsTabRef = useRef<View>(null);
+  const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
+    "walkthrough-post-button": postButtonRef,
+    "walkthrough-feed-card": feedCardRef,
+    "walkthrough-conversations-tab": conversationsTabRef,
+  }).current;
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(WALKTHROUGH_SEEN_KEY).then((val) => {
+      if (val !== "true") {
+        setTimeout(() => setWalkthroughVisible(true), 800);
+      }
+    });
+  }, []);
+
+  const handleWalkthroughComplete = useCallback(() => {
+    setWalkthroughVisible(false);
+    AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -122,33 +145,6 @@ export default function WorldsScreen() {
     },
     [feed]
   );
-
-  // Walkthrough state
-  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
-  const postButtonRef = useRef<View>(null);
-  const feedCardRef = useRef<View>(null);
-  const conversationsTabRef = useRef<View>(null);
-
-  const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
-    "walkthrough-post-button": postButtonRef,
-    "walkthrough-feed-card": feedCardRef,
-    "walkthrough-conversations-tab": conversationsTabRef,
-  }).current;
-
-  // Check if walkthrough has been seen
-  useEffect(() => {
-    AsyncStorage.getItem(WALKTHROUGH_SEEN_KEY).then((val) => {
-      if (val !== "true") {
-        // Small delay to let the feed render first
-        setTimeout(() => setWalkthroughVisible(true), 800);
-      }
-    });
-  }, []);
-
-  const handleWalkthroughComplete = useCallback(() => {
-    setWalkthroughVisible(false);
-    AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
-  }, []);
 
   const loadFeed = useCallback(
     async (off: number, append: boolean, opts: { isRefresh?: boolean } = {}) => {
@@ -320,23 +316,30 @@ export default function WorldsScreen() {
       ) : (
         <FlatList
           data={feed}
-          keyExtractor={(item) => (item.type === "thought" ? item.thought.id : item.type === "crossing" ? `crossing-${item.crossing.id}` : "unknown")}
+          keyExtractor={(item) =>
+            item.type === "thought"
+              ? item.thought.id
+              : item.type === "crossing"
+                ? `crossing-${item.crossing.id}`
+                : "hidden-crossing"
+          }
           renderItem={({ item, index }) => (
             <View
               ref={index === 0 ? feedCardRef : undefined}
               collapsable={false}
-              style={styles.cardWrap}
+              style={[styles.cardWrap, containerStyle]}
             >
-              <CardDeck>
+              <CardDeck layers={3}>
                 {item.type === "thought" ? (
                   <SwipeableThoughtCard
                     item={item}
+                    visible
                     isOwn={myUserId === item.user.id}
                     onDelete={handleFeedDelete}
                     onEdit={handleFeedEdit}
                   />
                 ) : item.type === "crossing" ? (
-                  <CrossingCard item={item} myUserId={myUserId} />
+                  <CrossingCard item={item} visible myUserId={myUserId} />
                 ) : null}
               </CardDeck>
             </View>
@@ -362,7 +365,6 @@ export default function WorldsScreen() {
         />
       )}
 
-      {/* Conversations tab ref anchor — positioned over the tab bar area */}
       <View
         ref={conversationsTabRef}
         collapsable={false}
@@ -370,7 +372,6 @@ export default function WorldsScreen() {
         pointerEvents="none"
       />
 
-      {/* Onboarding walkthrough overlay */}
       <OnboardingWalkthrough
         visible={walkthroughVisible}
         onComplete={handleWalkthroughComplete}
@@ -399,12 +400,13 @@ const styles = StyleSheet.create({
   },
   list: { flex: 1 },
   listContent: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.belowHeader,
-    paddingBottom: spacing.cardGap,
+    paddingTop: 16,
+    paddingBottom: 48,
+    alignItems: "center",
   },
   cardWrap: {
     marginBottom: spacing.cardGap + 4,
+    paddingHorizontal: spacing.screenPadding,
     paddingBottom: 6,
   },
   centered: {

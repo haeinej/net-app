@@ -1,0 +1,13 @@
+*
+!mobile/
+!mobile/**
+
+mobile/.expo/
+mobile/android/
+mobile/ios/
+mobile/ios/build/
+mobile/node_modules/
+mobile/node_modules.bad.*/
+mobile/node_modules.repair-backup*/
+mobile/expo 2/
+mobile/*.log

@@ -3,6 +3,8 @@ import { eq, and, or, desc, asc, lt, inArray, sql } from "drizzle-orm";
 import { db, conversations, messages, users, thoughts, crossingDrafts, crossings } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
+import { getBlockedUserIds } from "../lib/blocked-users";
+import { filterContent } from "../lib/content-filter";
 
 const DORMANT_DAYS = 14;
 const MESSAGE_PREVIEW_LEN = 100;
@@ -53,11 +55,19 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/conversations", async (request, reply) => {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
-    const list = await db
+    const blockedIds = await getBlockedUserIds(userId);
+    const allConvs = await db
       .select()
       .from(conversations)
       .where(or(eq(conversations.participantA, userId), eq(conversations.participantB, userId)))
       .orderBy(desc(conversations.lastMessageAt));
+    // Filter out conversations with blocked users
+    const list = blockedIds.size > 0
+      ? allConvs.filter((c) => {
+          const otherId = c.participantA === userId ? c.participantB : c.participantA;
+          return !blockedIds.has(otherId);
+        })
+      : allConvs;
     const convIds = list.map((c) => c.id);
     if (convIds.length === 0) return reply.send([]);
     const lastMessages = await db.execute<{
@@ -298,6 +308,12 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!text) return reply.status(400).send({ error: "text required" });
       if (text.length > MESSAGE_TEXT_MAX) {
         return reply.status(400).send({ error: `text max ${MESSAGE_TEXT_MAX} chars` });
+      }
+      const messageFilter = filterContent(text);
+      if (messageFilter.flagged) {
+        return reply.status(400).send({
+          error: "Your message was flagged for potentially objectionable content. Please revise and try again.",
+        });
       }
       const [conv] = await db
         .select()

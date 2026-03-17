@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
@@ -27,6 +28,8 @@ import Animated, {
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
+import { SwipeConfirm } from "./SwipeConfirm";
 import {
   fetchCrossingDetail,
   postCrossingReply,
@@ -35,7 +38,7 @@ import {
 } from "../lib/api";
 import { getSavedCardPanel, setSavedCardPanel } from "../lib/card-panel-memory";
 
-const REPLY_MIN_LENGTH = 50;
+const REPLY_MIN_LENGTH = 30;
 const REPLY_MAX_LENGTH = 300;
 const CARD_HEIGHT = spacing.compactCardHeight; // 190
 const HALF_HEIGHT = CARD_HEIGHT / 2; // 95
@@ -48,10 +51,11 @@ interface CrossingCardProps {
 }
 
 export function CrossingCard({ item, visible = false, myUserId }: CrossingCardProps) {
-  const { width } = useWindowDimensions();
-  const cardWidth = width - spacing.screenPadding * 2;
+  const router = useRouter();
+  const { contentWidth } = useResponsiveLayout();
+  const cardWidth = contentWidth - spacing.screenPadding * 2;
 
-  const { crossing, participant_a, participant_b, warmth_level } = item;
+  const { crossing, participant_a, participant_b } = item;
   const isParticipant = myUserId === participant_a.id || myUserId === participant_b.id;
   const cardKey = `crossing-${crossing.id}`;
   const initialPanel = getSavedCardPanel(cardKey);
@@ -73,16 +77,6 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
   const [isTyping, setIsTyping] = useState(false);
   const [replyTarget, setReplyTarget] = useState<string>(participant_a.id);
   const pulseOpacity = useSharedValue(0);
-
-  // Warmth escalation
-  const effectiveWarmth = (() => {
-    if (isTyping) return "full" as const;
-    const levels: Array<typeof warmth_level> = ["none", "low", "medium", "full"];
-    if (displayPanel >= 2) return "full" as const;
-    if (displayPanel === 1) return "medium" as const;
-    const baseIdx = levels.indexOf(warmth_level);
-    return levels[Math.max(baseIdx, 1)];
-  })();
 
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
 
@@ -296,6 +290,14 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
     setIsTyping(false);
   }, []);
 
+  const openUserProfile = useCallback(
+    (userId?: string | null) => {
+      if (!userId) return;
+      router.push({ pathname: "/user/[id]", params: { id: userId } });
+    },
+    [router]
+  );
+
   const p2 = detailData?.panel_2;
   const p3 = detailData?.panel_3;
 
@@ -307,7 +309,12 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
           {/* Top half — Person A */}
           <View style={styles.halfTop}>
             <View style={{ width: spacing.warmthBarWidth }} />
-            <View style={styles.halfContent}>
+            <TouchableOpacity
+              style={styles.halfContent}
+              activeOpacity={0.75}
+              disabled={!participant_a.id}
+              onPress={() => openUserProfile(participant_a.id)}
+            >
               {participant_a.photo_url ? (
                 <Image source={{ uri: participant_a.photo_url }} style={styles.avatar} />
               ) : (
@@ -321,14 +328,19 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {crossing.sentence}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
           {/* Divider */}
           <View style={styles.divider} />
           {/* Bottom half — Person B */}
           <View style={styles.halfBottom}>
             <View style={{ width: spacing.warmthBarWidth }} />
-            <View style={styles.halfContent}>
+            <TouchableOpacity
+              style={styles.halfContent}
+              activeOpacity={0.75}
+              disabled={!participant_b.id}
+              onPress={() => openUserProfile(participant_b.id)}
+            >
               {participant_b.photo_url ? (
                 <Image source={{ uri: participant_b.photo_url }} style={styles.avatar} />
               ) : (
@@ -342,7 +354,7 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {crossing.sentence}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -358,7 +370,12 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
           ) : p2 ? (
             <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
               {/* A context */}
-              <View style={styles.panelHalf}>
+              <TouchableOpacity
+                style={styles.panelHalf}
+                activeOpacity={0.75}
+                disabled={!participant_a.id}
+                onPress={() => openUserProfile(participant_a.id)}
+              >
                 {participant_a.photo_url ? (
                   <Image source={{ uri: participant_a.photo_url }} style={styles.panelAvatar} />
                 ) : (
@@ -368,10 +385,15 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   <Text style={styles.panelName}>{(participant_a.name ?? "—").toUpperCase()}</Text>
                   <Text style={styles.panelText}>{p2.context ?? "No context shared."}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
               <View style={styles.panelDivider} />
               {/* B context */}
-              <View style={styles.panelHalf}>
+              <TouchableOpacity
+                style={styles.panelHalf}
+                activeOpacity={0.75}
+                disabled={!participant_b.id}
+                onPress={() => openUserProfile(participant_b.id)}
+              >
                 {participant_b.photo_url ? (
                   <Image source={{ uri: participant_b.photo_url }} style={styles.panelAvatar} />
                 ) : (
@@ -381,7 +403,7 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   <Text style={styles.panelName}>{(participant_b.name ?? "—").toUpperCase()}</Text>
                   <Text style={styles.panelText}>{p2.context ?? "No context shared."}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             </ScrollView>
           ) : (
             <View style={styles.panelCentered}>
@@ -412,10 +434,16 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {p3.accepted_replies
                     .filter((r) => r.target_participant_id === participant_a.id)
                     .map((r) => (
-                      <View key={r.id} style={styles.replyItem}>
+                      <TouchableOpacity
+                        key={r.id}
+                        style={styles.replyItem}
+                        activeOpacity={0.75}
+                        disabled={!r.user?.id}
+                        onPress={() => openUserProfile(r.user?.id)}
+                      >
                         <Text style={styles.replyFrom}>{r.user?.name ? r.user.name.toUpperCase() : "—"}</Text>
                         <Text style={styles.replyText} numberOfLines={2}>{r.text}</Text>
-                      </View>
+                      </TouchableOpacity>
                     ))}
                 </View>
                 {/* B replies */}
@@ -424,10 +452,16 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                   {p3.accepted_replies
                     .filter((r) => r.target_participant_id === participant_b.id)
                     .map((r) => (
-                      <View key={r.id} style={styles.replyItem}>
+                      <TouchableOpacity
+                        key={r.id}
+                        style={styles.replyItem}
+                        activeOpacity={0.75}
+                        disabled={!r.user?.id}
+                        onPress={() => openUserProfile(r.user?.id)}
+                      >
                         <Text style={styles.replyFrom}>{r.user?.name ? r.user.name.toUpperCase() : "—"}</Text>
                         <Text style={styles.replyText} numberOfLines={2}>{r.text}</Text>
-                      </View>
+                      </TouchableOpacity>
                     ))}
                 </View>
               </>
@@ -456,16 +490,15 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                 maxLength={REPLY_MAX_LENGTH}
               />
               <View style={styles.inputRow}>
-                <Text style={styles.replyHint}>
-                  {replyText.trim().length}/{REPLY_MIN_LENGTH} min
-                </Text>
-                <TouchableOpacity
-                  style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                  onPress={handleSendReply}
+                <SwipeConfirm
+                  label="Reply"
+                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • swipe to send`}
+                  completionLabel="Send"
+                  style={styles.replySwipe}
                   disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
-                >
-                  <Text style={styles.sendBtnText}>Send</Text>
-                </TouchableOpacity>
+                  loading={sending}
+                  onComplete={handleSendReply}
+                />
               </View>
             </KeyboardAvoidingView>
           )}
@@ -476,12 +509,7 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
 
         {/* Warmth bar */}
         <Animated.View style={[styles.warmthBarOverlay, warmthBarHeightStyle]} pointerEvents="none">
-          <View style={[styles.warmthBarFill, {
-            backgroundColor: effectiveWarmth === "none" ? "transparent"
-              : effectiveWarmth === "low" ? colors.CHARTREUSE
-              : effectiveWarmth === "medium" ? colors.OLIVE
-              : colors.VERMILLION
-          }]} />
+          <View style={styles.warmthBarFill} />
         </Animated.View>
 
         {/* Panel indicator dots — animated Apple-style */}
@@ -500,7 +528,7 @@ const styles = StyleSheet.create({
     height: CARD_HEIGHT,
     borderRadius: spacing.cardRadius,
     overflow: "hidden",
-    backgroundColor: colors.CARD_GROUND,
+    backgroundColor: colors.VERMILLION,
     ...shadows.card,
   },
 
@@ -515,7 +543,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: "rgba(0,0,0,0.06)",
+    backgroundColor: "rgba(255,255,255,0.16)",
   },
   halfContent: {
     flex: 1,
@@ -532,18 +560,18 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   avatarPlaceholder: {
-    backgroundColor: colors.TYPE_MUTED,
-    opacity: 0.4,
-    borderColor: "rgba(0,0,0,0.06)",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    opacity: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
   textWrap: {
     flex: 1,
   },
   personName: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 7,
+    fontSize: 8.5,
     letterSpacing: 1,
-    color: colors.TYPE_MUTED,
+    color: "rgba(255,255,255,0.72)",
     marginBottom: 4,
   },
   sentence: {
@@ -551,7 +579,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     letterSpacing: -0.2,
-    color: colors.TYPE_DARK,
+    color: colors.TYPE_WHITE,
   },
 
   /* ── Warmth bar ── */
@@ -567,11 +595,12 @@ const styles = StyleSheet.create({
   warmthBarFill: {
     width: spacing.warmthBarWidth,
     flex: 1,
+    backgroundColor: "rgba(255,255,255,0.32)",
   },
 
   /* ── Panel 2 — Context (dark, matches SwipeableThoughtCard) ── */
   panelOverlay: {
-    backgroundColor: colors.PANEL_DARK,
+    backgroundColor: colors.VERMILLION,
     padding: 16,
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
@@ -581,8 +610,8 @@ const styles = StyleSheet.create({
   },
   panelLabel: {
     ...typography.label,
-    fontSize: 7,
-    color: "rgba(255,255,255,0.48)",
+    fontSize: 8.5,
+    color: "rgba(255,255,255,0.7)",
   },
   panelBody: {
     flex: 1,
@@ -594,7 +623,7 @@ const styles = StyleSheet.create({
   },
   panelDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.18)",
     marginVertical: 4,
   },
   panelAvatar: {
@@ -610,20 +639,20 @@ const styles = StyleSheet.create({
   },
   panelName: {
     ...typography.metadata,
-    fontSize: 6,
-    color: colors.TYPE_MUTED,
+    fontSize: 7.5,
+    color: "rgba(255,255,255,0.72)",
     marginBottom: 3,
   },
   panelText: {
     ...typography.context,
-    fontSize: 11,
-    lineHeight: 16,
-    color: "rgba(255,255,255,0.7)",
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: colors.TYPE_WHITE,
   },
   panelEmpty: {
     ...typography.context,
-    fontSize: 11,
-    color: "rgba(255,255,255,0.4)",
+    fontSize: 13.5,
+    color: "rgba(255,255,255,0.78)",
   },
   panelCentered: {
     flex: 1,
@@ -633,7 +662,7 @@ const styles = StyleSheet.create({
 
   /* ── Panel 3 — Replies (dark, matches SwipeableThoughtCard) ── */
   panel3Overlay: {
-    backgroundColor: colors.PANEL_DEEP,
+    backgroundColor: colors.VERMILLION,
     padding: 16,
     paddingTop: 14,
     borderRadius: spacing.cardRadius,
@@ -649,14 +678,14 @@ const styles = StyleSheet.create({
   },
   replyFrom: {
     ...typography.metadata,
-    fontSize: 5.5,
-    color: colors.TYPE_MUTED,
+    fontSize: 6.5,
+    color: "rgba(255,255,255,0.72)",
     marginBottom: 1,
   },
   replyText: {
     ...typography.context,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 13.5,
+    lineHeight: 18,
     color: colors.TYPE_WHITE,
   },
 
@@ -665,20 +694,20 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: "rgba(255,255,255,0.18)",
   },
   replyInputLabel: {
     ...typography.replyInput,
-    fontSize: 8,
-    color: colors.VERMILLION,
+    fontSize: 9.5,
+    color: colors.TYPE_WHITE,
     marginBottom: 4,
   },
   replyInput: {
     ...typography.replyInput,
-    fontSize: 10,
+    fontSize: 12.5,
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.2)",
+    borderBottomColor: "rgba(255,255,255,0.35)",
     paddingVertical: 6,
   },
   inputRow: {
@@ -687,23 +716,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 6,
   },
-  replyHint: {
-    ...typography.metadata,
-    fontSize: 6,
-    color: colors.TYPE_MUTED,
-  },
-  sendBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: colors.VERMILLION,
-    ...shadows.raised,
-  },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: {
-    ...typography.label,
-    fontSize: 7,
-    color: colors.TYPE_WHITE,
+  replySwipe: {
+    flex: 1,
   },
 
   /* ── Pulse overlay ── */

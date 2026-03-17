@@ -26,7 +26,7 @@ export default function IndexScreen() {
         getOnboardingComplete(),
       ]);
       if (cancelled) return;
-      let nextRoute: Href = "/login";
+      let nextRoute: Href = "/intro";
 
       if (token && userId) {
         let sessionValid = true;

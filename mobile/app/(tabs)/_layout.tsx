@@ -60,6 +60,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
+        tabBarItemStyle: styles.tabBarItem,
         tabBarActiveTintColor: colors.TYPE_DARK,
         tabBarInactiveTintColor: colors.TYPE_MUTED,
         tabBarShowLabel: false,
@@ -85,6 +86,7 @@ export default function TabLayout() {
         options={{
           title: "Me",
           tabBarIcon: ({ focused }) => <MeIcon focused={focused} />,
+          sceneStyle: { backgroundColor: colors.TYPE_DARK },
         }}
       />
     </Tabs>
@@ -93,37 +95,37 @@ export default function TabLayout() {
 
 const iconStyles = StyleSheet.create({
   blob: {
-    width: 21,
-    height: 19,
+    width: 22,
+    height: 20,
     borderTopLeftRadius: 11,
     borderTopRightRadius: 8,
-    borderBottomLeftRadius: 9,
-    borderBottomRightRadius: 12,
-    borderWidth: 1.5,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 13,
+    borderWidth: 1.6,
     alignItems: "center",
     justifyContent: "center",
     transform: [{ rotate: "-4deg" }],
   },
   dot: {
-    width: 5,
+    width: 6,
     height: 6,
     borderTopLeftRadius: 3,
     borderTopRightRadius: 2,
-    borderBottomLeftRadius: 2.5,
+    borderBottomLeftRadius: 3,
     borderBottomRightRadius: 3,
     transform: [{ rotate: "6deg" }],
   },
   ohmIcon: {
-    width: 20,
-    height: 20,
+    width: 21,
+    height: 21,
   },
   meBlob: {
-    width: 19,
-    height: 17,
-    borderTopLeftRadius: 9,
-    borderTopRightRadius: 10,
-    borderBottomLeftRadius: 11,
-    borderBottomRightRadius: 7,
+    width: 20,
+    height: 18,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 11,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 8,
     transform: [{ rotate: "3deg" }],
   },
 });
@@ -134,9 +136,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     elevation: 0,
     shadowOpacity: 0,
-    paddingTop: 0,
-    paddingBottom: 12,
-    height: 52,
+    paddingTop: 6,
+    paddingBottom: 18,
+    height: 74,
     overflow: "visible",
+  },
+  tabBarItem: {
+    paddingTop: 2,
   },
 });

@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
-import { colors, spacing, typography, shadows } from "../theme";
+import { useRouter } from "expo-router";
+import { colors, spacing, typography, shadows, radii } from "../theme";
 import type { NotificationItem } from "../lib/api";
 
 interface NotificationPanelProps {
@@ -16,6 +17,8 @@ export function NotificationPanel({
   onAccept,
   onIgnore,
 }: NotificationPanelProps) {
+  const router = useRouter();
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -36,11 +39,20 @@ export function NotificationPanel({
       <Text style={styles.caption}>Your own thought view shows the full reply inbox.</Text>
       {items.map((n) => (
         <View key={n.reply_id} style={styles.row}>
-          {n.replier?.photo_url ? (
-            <Image source={{ uri: n.replier.photo_url }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarPlaceholder]} />
-          )}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            disabled={!n.replier?.id}
+            onPress={() => {
+              if (!n.replier?.id) return;
+              router.push({ pathname: "/user/[id]", params: { id: n.replier.id } });
+            }}
+          >
+            {n.replier?.photo_url ? (
+              <Image source={{ uri: n.replier.photo_url }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]} />
+            )}
+          </TouchableOpacity>
           <View style={styles.body}>
             <Text style={styles.name} numberOfLines={1}>
               {n.replier?.name ? n.replier.name.toUpperCase() : "—"}
@@ -77,11 +89,10 @@ export function NotificationPanel({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: spacing.screenPadding,
     borderBottomWidth: 0.5,
-    borderBottomColor: "rgba(26,26,22,0.06)",
-    // Soft organic lift
+    borderBottomColor: colors.CARD_BORDER,
     ...shadows.card,
   },
   row: {
@@ -91,57 +102,56 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.label,
+    textTransform: "uppercase",
     color: colors.TYPE_DARK,
     marginBottom: 4,
   },
   caption: {
     ...typography.metadata,
     color: colors.TYPE_MUTED,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   avatar: {
-    width: spacing.profilePhotoSize,
-    height: spacing.profilePhotoSize,
-    borderRadius: spacing.profilePhotoSize / 2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     marginRight: 12,
   },
   avatarPlaceholder: {
-    backgroundColor: colors.TYPE_MUTED,
+    backgroundColor: colors.CARD_BORDER,
   },
   body: { flex: 1 },
   name: {
     ...typography.label,
+    textTransform: "uppercase",
     color: colors.TYPE_DARK,
     marginBottom: 4,
   },
   preview: {
     ...typography.context,
-    fontSize: 10,
     color: colors.TYPE_DARK,
-    marginBottom: 2,
+    marginBottom: 3,
   },
   thought: {
     ...typography.metadata,
     color: colors.TYPE_MUTED,
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  actions: { flexDirection: "row", gap: 12 },
+  actions: { flexDirection: "row", gap: 12, alignItems: "center" },
   acceptBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
     backgroundColor: colors.OLIVE,
-    borderRadius: 10,
-    // Soft organic lift
+    borderRadius: radii.button,
     ...shadows.raised,
   },
   acceptText: {
-    ...typography.label,
-    fontSize: 8,
+    ...typography.metadata,
     color: colors.TYPE_WHITE,
   },
   ignoreBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   ignoreText: {
     ...typography.metadata,

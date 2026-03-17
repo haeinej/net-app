@@ -15,13 +15,15 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { colors, spacing, fontFamily, shadows } from "../../theme";
+import { colors, spacing, fontFamily, shadows, typography, primitives, radii, opacity } from "../../theme";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import {
   getMyUserId,
   fetchProfile,
+  fetchThought,
   isSessionInvalidError,
   setCachedUserId,
   updateProfile,
@@ -36,6 +38,7 @@ import { clearAuth } from "../../lib/auth-store";
 export default function MeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { containerStyle } = useResponsiveLayout();
   const photoSize = 170;
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,30 +155,57 @@ export default function MeScreen() {
     (thoughtId: string) => {
       const thought = profile?.thoughts.find((t) => t.id === thoughtId);
       if (!thought) return;
+      const openContextPrompt = (nextSentence: string, existingContext: string) => {
+        Alert.prompt(
+          "Edit context",
+          "Update the context:",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Save",
+              onPress: async (newContext?: string) => {
+                const nextContext = newContext?.trim() ?? "";
+                try {
+                  await editThought(thoughtId, {
+                    sentence: nextSentence,
+                    context: nextContext,
+                  });
+                  setProfile((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          thoughts: prev.thoughts.map((t) =>
+                            t.id === thoughtId ? { ...t, sentence: nextSentence } : t
+                          ),
+                        }
+                      : null
+                  );
+                } catch {
+                  Alert.alert("Error", "Could not edit thought");
+                }
+              },
+            },
+          ],
+          "plain-text",
+          existingContext
+        );
+      };
+
       Alert.prompt(
         "Edit thought",
         "Update your sentence:",
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Save",
+            text: "Next",
             onPress: async (newSentence?: string) => {
-              const s = newSentence?.trim();
-              if (!s) return;
+              const nextSentence = newSentence?.trim();
+              if (!nextSentence) return;
               try {
-                await editThought(thoughtId, { sentence: s });
-                setProfile((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        thoughts: prev.thoughts.map((t) =>
-                          t.id === thoughtId ? { ...t, sentence: s } : t
-                        ),
-                      }
-                    : null
-                );
+                const thoughtDetail = await fetchThought(thoughtId);
+                openContextPrompt(nextSentence, thoughtDetail.panel_2.context ?? "");
               } catch {
-                Alert.alert("Error", "Could not edit thought");
+                Alert.alert("Error", "Could not load the current context");
               }
             },
           },
@@ -338,10 +368,9 @@ export default function MeScreen() {
                 name: profile.name,
                 photo_url: profile.photo_url,
               },
-              warmth_level: t.warmth_level,
             };
             return (
-              <View key={`t-${t.id}`} style={styles.thoughtWrap}>
+              <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
                 <CardDeck>
                   <SwipeableThoughtCard
                     item={feedItem}
@@ -354,36 +383,41 @@ export default function MeScreen() {
               </View>
             );
           }
-          const c = item.data;
-          const crossingItem: FeedItemCrossing = {
-            type: "crossing",
-            crossing: {
-              id: c.id,
-              sentence: c.sentence,
-              context: c.context,
-              created_at: c.created_at ?? new Date().toISOString(),
-            },
-            participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
-            participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
-            warmth_level: "none",
-          };
-          return (
-            <View key={`c-${c.id}`} style={styles.thoughtWrap}>
-              <CardDeck>
-                <CrossingCard item={crossingItem} visible myUserId={myUserId} />
-              </CardDeck>
-            </View>
-          );
+          if (item.kind === "crossing") {
+            const c = item.data;
+            const crossingItem: FeedItemCrossing = {
+              type: "crossing",
+              crossing: {
+                id: c.id,
+                sentence: c.sentence,
+                context: c.context,
+                created_at: c.created_at ?? new Date().toISOString(),
+              },
+              participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
+              participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
+            };
+            return (
+              <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                <CardDeck>
+                  <CrossingCard item={crossingItem} visible myUserId={myUserId} />
+                </CardDeck>
+              </View>
+            );
+          }
         })
       )}
     </ScrollView>
   );
 }
 
+/* ── Dark surface palette helpers ── */
+const WARM = colors.WARM_GROUND; // #F5F0EA
+const warmAlpha = (a: number) => `rgba(245,240,234,${a})`;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A1A16",
+    backgroundColor: colors.TYPE_DARK,
   },
   content: {
     paddingBottom: 48,
@@ -391,34 +425,30 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
 
-  /* ── Photo — organic asymmetric shape, no border ── */
+  /* ── Photo — organic asymmetric shape ── */
   photoOuter: {
     alignSelf: "center",
-    marginBottom: 10,
+    marginBottom: 12,
     width: 164,
     height: 164,
     alignItems: "center",
     justifyContent: "center",
-    // Asymmetric radii — organic blob feel
     borderTopLeftRadius: 74,
     borderTopRightRadius: 90,
     borderBottomRightRadius: 78,
     borderBottomLeftRadius: 86,
-    // Slight rotation for alive feel
     transform: [{ rotate: "-2deg" }],
-    // Natural depth shadow — floats above background
-    shadowColor: "#0A0A08",
+    shadowColor: colors.PANEL_DEEP,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 20,
     elevation: 8,
-    backgroundColor: "#1A1A16",
+    backgroundColor: colors.TYPE_DARK,
   },
   photoInner: {
     width: 164,
     height: 164,
     overflow: "hidden",
-    // Matching asymmetry
     borderTopLeftRadius: 74,
     borderTopRightRadius: 90,
     borderBottomRightRadius: 78,
@@ -431,36 +461,25 @@ const styles = StyleSheet.create({
 
   /* ── Name ── */
   name: {
-    fontFamily: fontFamily.comico,
-    fontSize: 32,
-    color: colors.WARM_GROUND,
+    ...typography.headingLg,
+    color: WARM,
     textAlign: "center",
     marginBottom: 20,
-    letterSpacing: -0.5,
   },
 
   /* ── Action pills ── */
   actionRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 10,
+    gap: 12,
     paddingHorizontal: spacing.screenPadding,
     marginBottom: 36,
   },
   glassBtn: {
-    backgroundColor: "rgba(245,240,234,0.08)",
-    borderRadius: 999,
-    paddingVertical: 11,
-    paddingHorizontal: 24,
-    // Soft organic float
-    ...shadows.raised,
+    ...primitives.buttonGlass,
   },
   glassBtnText: {
-    fontFamily: fontFamily.comico,
-    fontSize: 8,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    color: "rgba(245,240,234,0.45)",
+    ...primitives.buttonGlassText,
   },
 
   /* ── Edit mode ── */
@@ -470,15 +489,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   nameInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 15,
-    color: colors.WARM_GROUND,
+    ...primitives.inputDark,
     marginBottom: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderWidth: 1,
-    borderColor: "rgba(245,240,234,0.15)",
-    borderRadius: 999,
     width: "100%",
     maxWidth: 260,
   },
@@ -491,7 +503,7 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 40,
     overflow: "hidden",
-    backgroundColor: "rgba(245,240,234,0.06)",
+    backgroundColor: warmAlpha(0.06),
   },
   editPhotoImage: {
     width: "100%",
@@ -499,38 +511,32 @@ const styles = StyleSheet.create({
     borderRadius: 40,
   },
   changePhotoText: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 11,
-    letterSpacing: 0.2,
-    color: "rgba(245,240,234,0.5)",
+    ...typography.bodySmall,
+    color: warmAlpha(0.5),
     marginTop: 8,
   },
   editActions: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
   },
   saveBtn: {
     paddingVertical: 10,
     paddingHorizontal: 22,
-    borderRadius: 999,
-    backgroundColor: "rgba(245,240,234,0.15)",
+    borderRadius: radii.pill,
+    backgroundColor: warmAlpha(0.15),
   },
-  saveBtnDisabled: { opacity: 0.5 },
+  saveBtnDisabled: { opacity: opacity.disabled },
   saveBtnText: {
-    fontFamily: fontFamily.comico,
-    fontSize: 8,
-    letterSpacing: 0.5,
+    ...typography.label,
     textTransform: "uppercase",
-    color: colors.WARM_GROUND,
+    color: WARM,
   },
 
   /* ── Deck ── */
   deckTitle: {
-    fontFamily: fontFamily.comico,
-    fontSize: 7,
-    letterSpacing: 1.5,
+    ...typography.label,
     textTransform: "uppercase",
-    color: "rgba(245,240,234,0.35)",
+    color: warmAlpha(0.35),
     alignSelf: "flex-start",
     paddingHorizontal: spacing.screenPadding,
     marginBottom: 12,
@@ -540,9 +546,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
   },
   emptyDeck: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 12,
-    color: "rgba(245,240,234,0.35)",
+    ...typography.body,
+    color: warmAlpha(0.35),
     textAlign: "center",
     marginTop: 12,
   },
@@ -553,13 +558,13 @@ const styles = StyleSheet.create({
     height: 150,
     borderRadius: 75,
     alignSelf: "center",
-    backgroundColor: "rgba(245,240,234,0.04)",
+    backgroundColor: warmAlpha(0.04),
   },
   skeletonName: {
     width: 100,
     height: 20,
-    backgroundColor: "rgba(245,240,234,0.06)",
-    borderRadius: 999,
+    backgroundColor: warmAlpha(0.06),
+    borderRadius: radii.pill,
     alignSelf: "center",
     marginTop: 18,
     marginBottom: 16,
@@ -568,47 +573,38 @@ const styles = StyleSheet.create({
 
   /* ── States ── */
   centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
+    ...primitives.centered,
   },
   hint: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 12,
-    color: "rgba(245,240,234,0.4)",
+    ...typography.body,
+    color: warmAlpha(0.4),
     textAlign: "center",
   },
   reauthButton: {
     marginTop: 14,
     paddingHorizontal: 22,
     paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: colors.WARM_GROUND,
+    borderRadius: radii.pill,
+    backgroundColor: WARM,
   },
   reauthButtonText: {
-    color: colors.PANEL_DEEP,
-    fontFamily: fontFamily.comico,
-    fontSize: 8,
-    letterSpacing: 0.6,
+    ...typography.label,
     textTransform: "uppercase",
+    color: colors.PANEL_DEEP,
   },
   errorText: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 12,
-    color: "rgba(245,240,234,0.6)",
+    ...typography.body,
+    color: warmAlpha(0.6),
     marginBottom: 12,
   },
   retryText: {
-    color: colors.WARM_GROUND,
-    fontFamily: fontFamily.comico,
-    fontSize: 8,
-    letterSpacing: 0.5,
+    ...typography.label,
     textTransform: "uppercase",
+    color: WARM,
   },
   photoEmpty: {
     width: "100%",
     height: "100%",
-    backgroundColor: "rgba(245,240,234,0.06)",
+    backgroundColor: warmAlpha(0.06),
   },
 });

@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fontFamily, spacing, shadows } from "../theme";
+import { colors, fontFamily, spacing, shadows, typography, radii } from "../theme";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../assets/images/ohm-logo.png");
@@ -95,16 +95,13 @@ const styles = StyleSheet.create({
   },
   compose: {
     backgroundColor: colors.VERMILLION,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    // Organic liquid lift
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: radii.pill,
     ...shadows.raised,
   },
   composeText: {
-    fontFamily: fontFamily.comico,
-    fontSize: 8,
-    letterSpacing: 1.5,
+    ...typography.label,
     textTransform: "uppercase",
     color: colors.TYPE_WHITE,
   },

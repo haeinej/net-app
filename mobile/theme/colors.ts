@@ -6,6 +6,7 @@
 export const colors = {
   WARM_GROUND: "#F5F0EA",
   CARD_GROUND: "#EDE8E2",
+  CARD_BORDER: "rgba(26, 26, 22, 0.08)",
   VERMILLION: "#EB4101",
   OLIVE: "#979C5B",
   CHARTREUSE: "#D0D37C",
