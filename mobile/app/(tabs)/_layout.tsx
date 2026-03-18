@@ -1,7 +1,5 @@
 import { Tabs } from "expo-router";
-import { View, StyleSheet, useWindowDimensions } from "react-native";
-import { Image } from "expo-image";
-import Svg, { Path } from "react-native-svg";
+import { View, StyleSheet, useWindowDimensions, Image } from "react-native";
 import { colors } from "../../theme";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -42,14 +40,16 @@ function WavyTabBackground() {
   const { width } = useWindowDimensions();
   return (
     <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.WARM_GROUND }]}>
-      <View style={{ position: "absolute", top: -WAVE_HEIGHT, left: 0, right: 0 }}>
-        <Svg width={width} height={WAVE_HEIGHT} viewBox={`0 0 ${width} ${WAVE_HEIGHT}`}>
-          <Path
-            d={`M0 ${WAVE_HEIGHT} C${width * 0.15} ${WAVE_HEIGHT * 0.2}, ${width * 0.3} ${WAVE_HEIGHT * 0.7}, ${width * 0.5} ${WAVE_HEIGHT * 0.35} S${width * 0.8} ${WAVE_HEIGHT * 0.05}, ${width} ${WAVE_HEIGHT * 0.6} L${width} ${WAVE_HEIGHT} Z`}
-            fill={colors.WARM_GROUND}
-          />
-        </Svg>
-      </View>
+      <View
+        style={[
+          styles.waveLip,
+          {
+            width: width + 24,
+            left: -12,
+            top: -WAVE_HEIGHT,
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -131,6 +131,16 @@ const iconStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  waveLip: {
+    position: "absolute",
+    height: WAVE_HEIGHT + 8,
+    backgroundColor: colors.WARM_GROUND,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 42,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 24,
+    transform: [{ rotate: "-1.2deg" }],
+  },
   tabBar: {
     backgroundColor: "transparent",
     borderTopWidth: 0,
