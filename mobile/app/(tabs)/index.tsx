@@ -29,7 +29,6 @@ import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
-import { requestPushPermissionIfNeeded } from "../../lib/notifications";
 import {
   fetchFeed,
   fetchNotifications,
@@ -109,7 +108,9 @@ export default function WorldsScreen() {
         {
           text: "Turn on notifications",
           onPress: () => {
-            requestPushPermissionIfNeeded().catch(() => {});
+            void import("../../lib/notifications")
+              .then(({ requestPushPermissionIfNeeded }) => requestPushPermissionIfNeeded())
+              .catch(() => {});
           },
         },
       ]

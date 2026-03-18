@@ -5,35 +5,48 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../theme";
-import {
-  addNotificationResponseListener,
-  addNotificationReceivedListener,
-} from "../lib/notifications";
 
 export default function RootLayout() {
   const router = useRouter();
 
   // Listen for notification taps — navigate to the relevant screen
   useEffect(() => {
-    const cleanupResponse = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as
-        | { type?: string; conversation_id?: string }
-        | undefined;
-      if (data?.type === "message" && data.conversation_id) {
-        router.push({
-          pathname: "/conversation/[id]",
-          params: { id: data.conversation_id },
-        });
-      } else if (data?.type === "reply") {
-        // Go to feed and open notifications
-        router.push("/(tabs)");
-      }
-    });
+    let isMounted = true;
+    let cleanupResponse = () => {};
+    let cleanupReceived = () => {};
 
-    // Vibrate on foreground notifications (handled inside the listener)
-    const cleanupReceived = addNotificationReceivedListener(() => {});
+    void (async () => {
+      try {
+        const {
+          addNotificationResponseListener,
+          addNotificationReceivedListener,
+        } = await import("../lib/notifications");
+        if (!isMounted) return;
+
+        cleanupResponse = addNotificationResponseListener((response) => {
+          const data = response.notification.request.content.data as
+            | { type?: string; conversation_id?: string }
+            | undefined;
+          if (data?.type === "message" && data.conversation_id) {
+            router.push({
+              pathname: "/conversation/[id]",
+              params: { id: data.conversation_id },
+            });
+          } else if (data?.type === "reply") {
+            // Go to feed and open notifications
+            router.push("/(tabs)");
+          }
+        });
+
+        // Vibrate on foreground notifications (handled inside the listener)
+        cleanupReceived = addNotificationReceivedListener(() => {});
+      } catch (error) {
+        console.warn("Notification listeners unavailable at startup:", error);
+      }
+    })();
 
     return () => {
+      isMounted = false;
       cleanupResponse();
       cleanupReceived();
     };

@@ -20,34 +20,43 @@ export default function IndexScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [token, userId, onboardingComplete] = await Promise.all([
-        getStoredToken(),
-        getStoredUserId(),
-        getOnboardingComplete(),
-      ]);
-      if (cancelled) return;
-      let nextRoute: Href = "/intro";
+      try {
+        const [token, userId, onboardingComplete] = await Promise.all([
+          getStoredToken(),
+          getStoredUserId(),
+          getOnboardingComplete(),
+        ]);
+        if (cancelled) return;
+        let nextRoute: Href = "/intro";
 
-      if (token && userId) {
-        let sessionValid = true;
+        if (token && userId) {
+          let sessionValid = true;
 
-        try {
-          await fetchProfile(userId);
-        } catch (error) {
-          if (isSessionInvalidError(error)) {
-            sessionValid = false;
-            await clearAuth();
-            setCachedUserId(null);
+          try {
+            await fetchProfile(userId);
+          } catch (error) {
+            if (isSessionInvalidError(error)) {
+              sessionValid = false;
+              await clearAuth();
+              setCachedUserId(null);
+            } else {
+              console.warn("Startup profile check failed:", error);
+            }
+          }
+
+          if (sessionValid) {
+            nextRoute = onboardingComplete ? "/(tabs)" : "/onboarding";
           }
         }
 
-        if (sessionValid) {
-          nextRoute = onboardingComplete ? "/(tabs)" : "/onboarding";
+        if (!cancelled) {
+          router.replace(nextRoute);
         }
-      }
-
-      if (!cancelled) {
-        router.replace(nextRoute);
+      } catch (error) {
+        console.warn("Startup bootstrap failed:", error);
+        if (!cancelled) {
+          router.replace("/intro");
+        }
       }
     })();
     return () => {
