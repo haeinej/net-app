@@ -18,7 +18,7 @@ function ConvoIcon({ focused }: { focused: boolean }) {
     <Image
       source={ohmLogo}
       style={[iconStyles.ohmIcon, { opacity: focused ? 1 : 0.4 }]}
-      contentFit="contain"
+      resizeMode="contain"
     />
   );
 }

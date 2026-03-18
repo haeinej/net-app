@@ -13,6 +13,7 @@
     },
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "icon": "./assets/images/ohm-app-icon.png",
     "splash": {
       "backgroundColor": "#F5F0EA"
