@@ -1,27 +1,92 @@
-import * as Notifications from "expo-notifications";
-import * as Device from "expo-device";
-import * as Haptics from "expo-haptics";
+import type { Notification, NotificationResponse } from "expo-notifications";
+let Haptics: typeof import("expo-haptics") | null = null;
+try {
+  Haptics = require("expo-haptics");
+} catch {
+  // expo-haptics not available in this build
+}
 import { Platform } from "react-native";
 import { API_URL } from "./api-config";
+
+type NotificationsModule = typeof import("expo-notifications");
+type DeviceModule = typeof import("expo-device");
+
+let cachedNotificationsModule: NotificationsModule | null | undefined;
+let cachedDeviceModule: DeviceModule | null | undefined;
+let notificationHandlerConfigured = false;
+let notificationModuleWarningShown = false;
+
+function warnNotificationsUnavailable(error: unknown): void {
+  if (notificationModuleWarningShown) return;
+  notificationModuleWarningShown = true;
+  console.warn("Notifications unavailable in this build:", error);
+}
+
+function getNotificationsModule(): NotificationsModule | null {
+  if (cachedNotificationsModule !== undefined) {
+    return cachedNotificationsModule;
+  }
+  try {
+    cachedNotificationsModule = require("expo-notifications") as NotificationsModule;
+  } catch (error) {
+    cachedNotificationsModule = null;
+    warnNotificationsUnavailable(error);
+  }
+  return cachedNotificationsModule;
+}
+
+function getDeviceModule(): DeviceModule | null {
+  if (cachedDeviceModule !== undefined) {
+    return cachedDeviceModule;
+  }
+  try {
+    cachedDeviceModule = require("expo-device") as DeviceModule;
+  } catch (error) {
+    cachedDeviceModule = null;
+    warnNotificationsUnavailable(error);
+  }
+  return cachedDeviceModule;
+}
 
 /**
  * Configure how notifications appear when the app is in the foreground.
  */
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+function ensureNotificationHandlerConfigured(): void {
+  if (notificationHandlerConfigured) return;
+
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return;
+
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    notificationHandlerConfigured = true;
+  } catch (error) {
+    warnNotificationsUnavailable(error);
+  }
+}
+
+// Deferred — called lazily from listeners / requestPushPermissionIfNeeded
 
 /**
  * Request push notification permissions and register the Expo push token
  * with the API server.
  */
 export async function requestPushPermissionIfNeeded(): Promise<boolean> {
+  ensureNotificationHandlerConfigured();
+  const Notifications = getNotificationsModule();
+  const Device = getDeviceModule();
+  if (!Notifications || !Device) {
+    return false;
+  }
+
   if (Platform.OS !== "ios" && Platform.OS !== "android") {
     return false;
   }
@@ -58,6 +123,9 @@ export async function requestPushPermissionIfNeeded(): Promise<boolean> {
  * Get the Expo push token and send it to the API.
  */
 async function registerPushToken(): Promise<void> {
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return;
+
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: "8954382e-1e4f-4137-8714-9890844f9dcd",
@@ -90,6 +158,9 @@ async function registerPushToken(): Promise<void> {
  * Unregister the push token (call on logout).
  */
 export async function unregisterPushToken(): Promise<void> {
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return;
+
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: "8954382e-1e4f-4137-8714-9890844f9dcd",
@@ -119,7 +190,7 @@ export async function unregisterPushToken(): Promise<void> {
  */
 export function vibrateOnNotification(): void {
   try {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success);
   } catch {
     // Haptics not available (simulator)
   }
@@ -130,13 +201,22 @@ export function vibrateOnNotification(): void {
  * Returns a cleanup function.
  */
 export function addNotificationReceivedListener(
-  callback: (notification: Notifications.Notification) => void
+  callback: (notification: Notification) => void
 ): () => void {
-  const subscription = Notifications.addNotificationReceivedListener((notification) => {
-    vibrateOnNotification();
-    callback(notification);
-  });
-  return () => subscription.remove();
+  ensureNotificationHandlerConfigured();
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return () => {};
+
+  try {
+    const subscription = Notifications.addNotificationReceivedListener((notification) => {
+      vibrateOnNotification();
+      callback(notification);
+    });
+    return () => subscription.remove();
+  } catch (error) {
+    warnNotificationsUnavailable(error);
+    return () => {};
+  }
 }
 
 /**
@@ -144,8 +224,17 @@ export function addNotificationReceivedListener(
  * Returns a cleanup function.
  */
 export function addNotificationResponseListener(
-  callback: (response: Notifications.NotificationResponse) => void
+  callback: (response: NotificationResponse) => void
 ): () => void {
-  const subscription = Notifications.addNotificationResponseReceivedListener(callback);
-  return () => subscription.remove();
+  ensureNotificationHandlerConfigured();
+  const Notifications = getNotificationsModule();
+  if (!Notifications) return () => {};
+
+  try {
+    const subscription = Notifications.addNotificationResponseReceivedListener(callback);
+    return () => subscription.remove();
+  } catch (error) {
+    warnNotificationsUnavailable(error);
+    return () => {};
+  }
 }
