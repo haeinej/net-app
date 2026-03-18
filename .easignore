@@ -1,13 +1,11 @@
-*
-!mobile/
-!mobile/**
-
-mobile/.expo/
-mobile/android/
-mobile/ios/
-mobile/ios/build/
-mobile/node_modules/
-mobile/node_modules.bad.*/
-mobile/node_modules.repair-backup*/
-mobile/expo 2/
-mobile/*.log
+.expo/
+android/
+ios/
+ios/build/
+node_modules/
+node_modules.bad.*/
+node_modules.repair-backup*/
+expo 2/
+*.log
+xcodebuild.log
+xcodebuild-error.log
