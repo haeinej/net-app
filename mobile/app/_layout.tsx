@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
@@ -7,50 +6,6 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../theme";
 
 export default function RootLayout() {
-  const router = useRouter();
-
-  // Listen for notification taps — navigate to the relevant screen
-  useEffect(() => {
-    let isMounted = true;
-    let cleanupResponse = () => {};
-    let cleanupReceived = () => {};
-
-    void (async () => {
-      try {
-        const {
-          addNotificationResponseListener,
-          addNotificationReceivedListener,
-        } = await import("../lib/notifications");
-        if (!isMounted) return;
-
-        cleanupResponse = addNotificationResponseListener((response) => {
-          const data = response.notification.request.content.data as
-            | { type?: string; conversation_id?: string }
-            | undefined;
-          if (data?.type === "message" && data.conversation_id) {
-            router.push({
-              pathname: "/conversation/[id]",
-              params: { id: data.conversation_id },
-            });
-          } else if (data?.type === "reply") {
-            // Go to feed and open notifications
-            router.push("/(tabs)");
-          }
-        });
-
-        // Vibrate on foreground notifications (handled inside the listener)
-        cleanupReceived = addNotificationReceivedListener(() => {});
-      } catch (error) {
-        console.warn("Notification listeners unavailable at startup:", error);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-      cleanupResponse();
-      cleanupReceived();
-    };
-  }, [router]);
   const [fontsLoaded, fontError] = useFonts({
     "Sentient-Medium": require("../assets/fonts/Sentient-Light.otf"),
     "Sentient-Bold": require("../assets/fonts/Sentient-Bold.otf"),
