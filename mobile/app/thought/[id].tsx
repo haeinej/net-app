@@ -902,7 +902,7 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     fontSize: 11,
     color: "rgba(245,240,234,0.45)",
-    marginTop: 8,
+    marginTop: 6,
     textAlign: "center",
   },
   indicator: {

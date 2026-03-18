@@ -810,12 +810,6 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(255,255,255,0.35)",
     paddingVertical: 6,
   },
-  inputRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 6,
-  },
   replyHintText: {
     ...typography.metadata,
     fontSize: 11,
