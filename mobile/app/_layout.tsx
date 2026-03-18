@@ -1,11 +1,43 @@
-import { Stack } from "expo-router";
+import { useEffect } from "react";
+import { Stack, useRouter } from "expo-router";
 import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../theme";
+import {
+  addNotificationResponseListener,
+  addNotificationReceivedListener,
+} from "../lib/notifications";
 
 export default function RootLayout() {
+  const router = useRouter();
+
+  // Listen for notification taps — navigate to the relevant screen
+  useEffect(() => {
+    const cleanupResponse = addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data as
+        | { type?: string; conversation_id?: string }
+        | undefined;
+      if (data?.type === "message" && data.conversation_id) {
+        router.push({
+          pathname: "/conversation/[id]",
+          params: { id: data.conversation_id },
+        });
+      } else if (data?.type === "reply") {
+        // Go to feed and open notifications
+        router.push("/(tabs)");
+      }
+    });
+
+    // Vibrate on foreground notifications (handled inside the listener)
+    const cleanupReceived = addNotificationReceivedListener(() => {});
+
+    return () => {
+      cleanupResponse();
+      cleanupReceived();
+    };
+  }, [router]);
   const [fontsLoaded, fontError] = useFonts({
     "Sentient-Medium": require("../assets/fonts/Sentient-Light.otf"),
     "Sentient-Bold": require("../assets/fonts/Sentient-Bold.otf"),

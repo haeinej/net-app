@@ -632,7 +632,26 @@ export const reports = pgTable(
   ]
 );
 
-// 21. blocks (user blocks — hides content and notifies developer)
+// 21. push_tokens (Expo push notification tokens per device)
+export const pushTokens = pgTable(
+  "push_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    platform: text("platform").notNull(), // 'ios' | 'android'
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("push_tokens_token_unique").on(table.token),
+    index("push_tokens_user_idx").on(table.userId),
+  ]
+);
+
+// 22. blocks (user blocks — hides content and notifies developer)
 export const blocks = pgTable(
   "blocks",
   {

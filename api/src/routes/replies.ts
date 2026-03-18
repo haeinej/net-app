@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { db, thoughts, replies, conversations, messages, thoughtFeedStats, users } from "../db";
 import { invalidateFeedCache } from "../feed";
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
 import { filterContent } from "../lib/content-filter";
+import { notifyNewReply, notifyResonanceMilestone } from "../lib/push";
 
 const REPLY_TEXT_MIN = 30;
 const REPLY_TEXT_MAX = 300;
@@ -87,6 +88,9 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
           timestamp: new Date().toISOString(),
         },
       ]).catch(() => {});
+
+      // Push notification to thought author
+      notifyNewReply(t.userId, userId, t.sentence, text).catch(() => {});
 
       return reply.status(201).send({
         id: row.id,
@@ -230,6 +234,24 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
 
     void invalidateFeedCache(accepted.authorId);
     void invalidateFeedCache(accepted.replierId);
+
+    // Check if this thought hit the 10+ accepted-reply milestone
+    if (accepted.trackAcceptance) {
+      (async () => {
+        try {
+          const [stats] = await db
+            .select({ count: thoughtFeedStats.acceptedReplyCount })
+            .from(thoughtFeedStats)
+            .where(eq(thoughtFeedStats.thoughtId, accepted.thoughtId))
+            .limit(1);
+          const count = stats?.count ?? 0;
+          if (count === 10) {
+            const [t] = await db.select({ sentence: thoughts.sentence }).from(thoughts).where(eq(thoughts.id, accepted.thoughtId)).limit(1);
+            if (t) notifyResonanceMilestone(accepted.authorId, t.sentence, count).catch(() => {});
+          }
+        } catch {}
+      })();
+    }
 
     if (accepted.trackAcceptance) {
       trackEngagementEvents(userId, [{

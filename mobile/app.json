@@ -17,6 +17,15 @@
     "splash": {
       "backgroundColor": "#F5F0EA"
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/ohm-app-icon.png",
+          "color": "#C65D3E"
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ohmmmm.app",
@@ -25,7 +34,8 @@
           "NSAllowsLocalNetworking": true
         },
         "NSPhotoLibraryUsageDescription": "Allow ohm. to access your photos so you can choose a profile or thought image.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
       }
     },
     "android": {

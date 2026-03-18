@@ -5,6 +5,7 @@ import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
 import { getBlockedUserIds } from "../lib/blocked-users";
 import { filterContent } from "../lib/content-filter";
+import { notifyNewMessage } from "../lib/push";
 
 const DORMANT_DAYS = 14;
 const MESSAGE_PREVIEW_LEN = 100;
@@ -421,6 +422,10 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       });
       if (!result) return reply.status(500).send();
       const { msg, newCount } = result;
+
+      // Push notification to the other participant
+      const recipientId = conv.participantA === userId ? conv.participantB : conv.participantA;
+      notifyNewMessage(recipientId, userId, text, convId).catch(() => {});
       if ([5, 10, 20].includes(newCount)) {
         trackEngagementEvents(userId, [{
           event_type: "reply_sent",

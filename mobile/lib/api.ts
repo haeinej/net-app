@@ -741,3 +741,26 @@ export async function checkBlockStatus(userId: string): Promise<boolean> {
   );
   return result.blocked;
 }
+
+// Push token registration
+
+export async function registerPushToken(
+  token: string,
+  platform: string
+): Promise<void> {
+  await requestVoid("/api/push/register", "Push registration failed", {
+    method: "POST",
+    auth: true,
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ token, platform }),
+  });
+}
+
+export async function unregisterPushToken(token: string): Promise<void> {
+  await requestVoid("/api/push/register", "Push unregister failed", {
+    method: "DELETE",
+    auth: true,
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ token }),
+  });
+}
