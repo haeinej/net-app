@@ -200,6 +200,7 @@ export default function OnboardingScreen() {
         photo_url: selectedProfilePhoto ?? undefined,
         email: email.trim(),
         password,
+        terms_accepted: true,
       };
       const { verification_email } = await register(body);
       router.replace({

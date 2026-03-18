@@ -36,6 +36,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       photo_url?: string;
       email?: string;
       password?: string;
+      terms_accepted?: boolean;
     };
   }>(
     "/api/auth/register",
@@ -55,8 +56,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const emailRaw = readOptionalTrimmedString(body.email);
     const email = emailRaw ? normalizeEmail(emailRaw) : null;
     const password = typeof body.password === "string" ? body.password : "";
+    const termsAccepted = body.terms_accepted === true;
 
     if (!name) return reply.status(400).send({ error: "name required" });
+    if (!termsAccepted) return reply.status(400).send({ error: "You must accept the Terms of Use" });
     if (!email) return reply.status(400).send({ error: "email required" });
     const passwordError = validateStrongPassword(password);
     if (passwordError) {
@@ -79,6 +82,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           name,
           photoUrl,
           passwordHash,
+          termsAcceptedAt: new Date(),
         })
         .where(eq(users.id, user.id))
         .returning({ id: users.id });
@@ -96,6 +100,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           photoUrl,
           email,
           passwordHash,
+          termsAcceptedAt: new Date(),
         })
         .returning({ id: users.id });
 

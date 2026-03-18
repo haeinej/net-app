@@ -30,9 +30,11 @@ import {
   updateCrossingDraft,
   completeCrossing,
   abandonCrossing,
+  blockUser,
   type ConversationMessage,
   type ConversationDetail,
 } from "../../lib/api";
+import { ReportModal } from "../../components/ReportModal";
 
 const CROSSING_MESSAGE_STEP = 10;
 
@@ -114,6 +116,7 @@ export default function ConversationThreadScreen() {
   const [crossingSentence, setCrossingSentence] = useState("");
   const [crossingContext, setCrossingContext] = useState("");
   const [crossingSubmitting, setCrossingSubmitting] = useState(false);
+  const [reportVisible, setReportVisible] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
@@ -374,6 +377,40 @@ export default function ConversationThreadScreen() {
     }
   }, [crossingSubmitting, loadDetail, saveCrossingDraft]);
 
+  const handleMoreMenu = useCallback(() => {
+    if (!otherId) return;
+    Alert.alert(undefined, undefined, [
+      {
+        text: "Report",
+        onPress: () => setReportVisible(true),
+      },
+      {
+        text: "Block user",
+        style: "destructive",
+        onPress: () => {
+          Alert.alert(
+            "Block user?",
+            "Their content will be removed from your feed immediately. The ohm. team will be notified and will review the account.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Block",
+                style: "destructive",
+                onPress: async () => {
+                  try {
+                    await blockUser(otherId);
+                    router.back();
+                  } catch {}
+                },
+              },
+            ]
+          );
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }, [otherId, router]);
+
   if (!id) {
     return (
       <View style={styles.container}>
@@ -460,7 +497,25 @@ export default function ConversationThreadScreen() {
             {otherName ? otherName.toUpperCase() : "Conversation"}
           </Text>
         </TouchableOpacity>
+        {otherId ? (
+          <TouchableOpacity
+            style={styles.moreBtn}
+            onPress={handleMoreMenu}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.moreBtnText}>•••</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
+
+      {otherId ? (
+        <ReportModal
+          visible={reportVisible}
+          onClose={() => setReportVisible(false)}
+          targetType="user"
+          targetId={otherId}
+        />
+      ) : null}
 
       {loading && messages.length === 0 ? (
         <View style={styles.loadingWrap}>
@@ -695,6 +750,15 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: colors.TYPE_DARK,
     flex: 1,
+  },
+  moreBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  moreBtnText: {
+    fontSize: 16,
+    color: colors.TYPE_MUTED,
+    letterSpacing: 2,
   },
   loadingWrap: {
     flex: 1,

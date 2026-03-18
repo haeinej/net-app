@@ -79,6 +79,7 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   passwordHash: text("password_hash"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -300,6 +301,26 @@ export const feedServes = pgTable(
   ]
 );
 
+export const feedSnapshots = pgTable(
+  "feed_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    viewerId: uuid("viewer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    configVersion: text("config_version").notNull(),
+    items: jsonb("items").notNull(),
+    traces: jsonb("traces").notNull(),
+    hasMore: boolean("has_more").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("feed_snapshots_viewer_expires_idx").on(table.viewerId, table.expiresAt.desc()),
+    index("feed_snapshots_expires_idx").on(table.expiresAt),
+  ]
+);
+
 // 8. question_clusters (legacy name; currently used as resonance clusters)
 export const questionClusters = pgTable("question_clusters", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -344,6 +365,21 @@ export const userRecommendationWeights = pgTable(
     alpha: real("alpha").default(0.3),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   }
+);
+
+export const userFeedProfiles = pgTable(
+  "user_feed_profiles",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    resonanceCentroid: vector("resonance_centroid", { dimensions: VECTOR_DIMS }),
+    surfaceCentroid: vector("surface_centroid", { dimensions: VECTOR_DIMS }),
+    recentClusterIds: uuid("recent_cluster_ids").array(),
+    embeddedThoughtCount: integer("embedded_thought_count").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("user_feed_profiles_updated_idx").on(table.updatedAt.desc())]
 );
 
 // 11. failed_processing_jobs (Phase 3 + 4 — embedding pipeline or image generation retry)

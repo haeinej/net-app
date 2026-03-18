@@ -577,6 +577,7 @@ export interface RegisterBody {
   photo_url?: string;
   email: string;
   password: string;
+  terms_accepted: boolean;
 }
 
 export interface RegisterResponse {
