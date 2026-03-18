@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily, shadows, glass } from "../../theme";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
-import { SwipeConfirm } from "../../components/SwipeConfirm";
+import { SwipeSendHint } from "../../components/SwipeSendHint";
 import { WarmthBar } from "../../components/WarmthBar";
 import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
 import {
@@ -45,6 +45,8 @@ import { pickPrompt, REPLY_PROMPTS, REPLY_SAFETY_TEXT } from "../../constants/pr
 
 const REPLY_MIN_LENGTH = 30;
 const REPLY_MAX_LENGTH = 300;
+const SEND_READY_PROGRESS = 0.78;
+const SEND_VELOCITY_THRESHOLD = -650;
 
 export default function ThoughtDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -60,6 +62,8 @@ export default function ThoughtDetailScreen() {
   const [replyPlaceholder] = useState(() => pickPrompt(REPLY_PROMPTS));
   const [reportVisible, setReportVisible] = useState(false);
   const pulseOpacity = useSharedValue(0);
+  const sendSwipeProgress = useSharedValue(0);
+  const sendHapticArmed = useSharedValue(0);
 
   const translateX = useSharedValue(0);
   const gestureStartX = useSharedValue(0);
@@ -125,15 +129,30 @@ export default function ThoughtDetailScreen() {
     router.back();
   }, [router]);
 
+  const triggerSendReadyHaptic = useCallback(() => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+  }, []);
+
   const snapToPanel = useCallback(
     (targetIndex: number) => {
       const target = -targetIndex * screenWidth;
       translateX.value = withTiming(target, { duration: 280 });
+      sendSwipeProgress.value = withTiming(0, { duration: 140 });
+      sendHapticArmed.value = 0;
       const fromIndex = lastPanelIndex.current;
       handleSwipeToPanel(fromIndex, targetIndex);
       applyPanel(targetIndex);
     },
-    [screenWidth, translateX, handleSwipeToPanel, applyPanel]
+    [
+      screenWidth,
+      translateX,
+      sendSwipeProgress,
+      sendHapticArmed,
+      handleSwipeToPanel,
+      applyPanel,
+    ]
   );
 
   const panGesture = Gesture.Pan()
@@ -143,12 +162,63 @@ export default function ThoughtDetailScreen() {
     .onUpdate((e) => {
       const min = -2 * screenWidth;
       const max = 0;
-      const next = Math.min(max, Math.max(min, gestureStartX.value + e.translationX));
+      const sendDistance = screenWidth * 0.22;
+      const rawNext = gestureStartX.value + e.translationX;
+      const canOverswipeSend =
+        currentPanelIndex === 2 &&
+        !sending &&
+        replyText.trim().length >= REPLY_MIN_LENGTH &&
+        Boolean(data?.panel_3.can_reply);
+
+      if (canOverswipeSend && rawNext < min) {
+        const overswipe = Math.max(0, min - rawNext);
+        const progress = Math.max(0, Math.min(1, overswipe / sendDistance));
+        const resisted = sendDistance * (1 - Math.exp((-0.35 * overswipe) / sendDistance));
+
+        sendSwipeProgress.value = progress;
+
+        if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
+          sendHapticArmed.value = 1;
+          runOnJS(triggerSendReadyHaptic)();
+        } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
+          sendHapticArmed.value = 0;
+        }
+
+        translateX.value = min - resisted;
+        return;
+      }
+
+      sendSwipeProgress.value = 0;
+      sendHapticArmed.value = 0;
+      const next = Math.min(max, Math.max(min, rawNext));
       translateX.value = next;
     })
     .onEnd((e) => {
       const current = translateX.value;
       const velocity = e.velocityX;
+      const min = -2 * screenWidth;
+      const overswipe = Math.max(0, min - current);
+      const canOverswipeSend =
+        currentPanelIndex === 2 &&
+        !sending &&
+        replyText.trim().length >= REPLY_MIN_LENGTH &&
+        Boolean(data?.panel_3.can_reply);
+      const shouldSend =
+        canOverswipeSend &&
+        (sendSwipeProgress.value >= SEND_READY_PROGRESS ||
+          overswipe >= screenWidth * 0.22 * SEND_READY_PROGRESS ||
+          velocity <= SEND_VELOCITY_THRESHOLD);
+
+      if (shouldSend) {
+        sendSwipeProgress.value = withTiming(0, { duration: 120 });
+        sendHapticArmed.value = 0;
+        translateX.value = withTiming(min, { duration: 120 });
+        runOnJS(handleSendReply)();
+        return;
+      }
+
+      sendSwipeProgress.value = withTiming(0, { duration: 120 });
+      sendHapticArmed.value = 0;
       let targetIndex = Math.round(-current / screenWidth);
       if (targetIndex < 0) targetIndex = 0;
       if (targetIndex > 2) targetIndex = 2;
@@ -195,6 +265,8 @@ export default function ThoughtDetailScreen() {
       );
       setReplyText("");
       setIsTyping(false);
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
       translateX.value = withTiming(0, { duration: 220 });
       applyPanel(0);
       await refreshThought();
@@ -203,7 +275,19 @@ export default function ThoughtDetailScreen() {
     } finally {
       setSending(false);
     }
-  }, [id, replyText, data?.panel_3.can_reply, sending, recordReplySent, translateX, applyPanel, refreshThought]);
+  }, [
+    id,
+    replyText,
+    data?.panel_3.can_reply,
+    sending,
+    recordReplySent,
+    pulseOpacity,
+    sendSwipeProgress,
+    sendHapticArmed,
+    translateX,
+    applyPanel,
+    refreshThought,
+  ]);
 
   const handleDeleteReply = useCallback(
     (replyId: string) => {
@@ -511,14 +595,14 @@ export default function ThoughtDetailScreen() {
                   maxLength={REPLY_MAX_LENGTH}
                 />
                 <Text style={styles.replySafety}>{REPLY_SAFETY_TEXT}</Text>
-                <SwipeConfirm
+                <SwipeSendHint
                   label="Reply"
-                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • swipe to send`}
-                  completionLabel="Send"
+                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • keep swiping left to send`}
+                  progress={sendSwipeProgress}
                   style={styles.replySwipe}
                   disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
                   loading={sending}
-                  onComplete={handleSendReply}
+                  darkSurface
                 />
               </KeyboardAvoidingView>
             )}

@@ -19,10 +19,11 @@ export function CardDeck({ children, layers = 2 }: CardDeckProps) {
   const cardWidth = width - spacing.screenPadding * 2;
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} pointerEvents="box-none">
       {/* Back layer (deepest) — faintest, most offset */}
       {layers >= 2 && (
         <View
+          pointerEvents="none"
           style={[
             styles.layer,
             shadows.cardAmbient,
@@ -38,12 +39,13 @@ export function CardDeck({ children, layers = 2 }: CardDeckProps) {
           ]}
         >
           {/* Inner highlight rim */}
-          <View style={[StyleSheet.absoluteFill, styles.innerRim]} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.innerRim]} />
         </View>
       )}
       {/* Middle layer — slightly visible, slight offset */}
       {layers >= 1 && (
         <View
+          pointerEvents="none"
           style={[
             styles.layer,
             shadows.cardAmbient,
@@ -58,11 +60,11 @@ export function CardDeck({ children, layers = 2 }: CardDeckProps) {
             },
           ]}
         >
-          <View style={[StyleSheet.absoluteFill, styles.innerRim]} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.innerRim]} />
         </View>
       )}
       {/* Main card — flat, no shadow */}
-      <View style={styles.mainCardWrap}>
+      <View style={styles.mainCardWrap} pointerEvents="box-none">
         {children}
       </View>
     </View>

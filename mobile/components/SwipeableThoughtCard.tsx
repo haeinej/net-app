@@ -32,7 +32,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
-import { SwipeConfirm } from "./SwipeConfirm";
+import { SwipeSendHint } from "./SwipeSendHint";
 import {
   deleteReply,
   fetchThought,
@@ -50,6 +50,8 @@ const IMAGE_HEIGHT = 150;
 const CARD_HEIGHT = spacing.compactCardHeight;
 const FOOTER_HEIGHT = spacing.compactFooterHeight;
 const EXPANDED_HEIGHT = 340;
+const SEND_READY_PROGRESS = 0.78;
+const SEND_VELOCITY_THRESHOLD = -650;
 
 interface SwipeableThoughtCardProps {
   item: FeedItemThought;
@@ -90,6 +92,8 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const pulseOpacity = useSharedValue(0);
+  const sendSwipeProgress = useSharedValue(0);
+  const sendHapticArmed = useSharedValue(0);
 
   // Card height animation for reply expansion
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
@@ -136,6 +140,12 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     } catch {}
   }, []);
 
+  const triggerSendReadyHaptic = useCallback(() => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+  }, []);
+
   const rememberPanel = useCallback(
     (panel: number) => {
       setSavedCardPanel(cardKey, panel);
@@ -162,6 +172,8 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       indicatorProgress.value = withSpring(target, { damping: 20, stiffness: 200 });
       // Reset drag progress
       dragProgress.value = withSpring(0, RUBBER_SPRING);
+      sendSwipeProgress.value = withTiming(0, { duration: 140 });
+      sendHapticArmed.value = 0;
 
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
@@ -179,7 +191,18 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
         runOnJS(recordSwipeP3)();
       }
     },
-    [cardWidth, currentPanel, indicatorProgress, loadDetail, panel2X, panel3X, rememberPanel, triggerSnapHaptic]
+    [
+      cardWidth,
+      currentPanel,
+      indicatorProgress,
+      loadDetail,
+      panel2X,
+      panel3X,
+      rememberPanel,
+      sendHapticArmed,
+      sendSwipeProgress,
+      triggerSnapHaptic,
+    ]
   );
 
   // Rubber-band function: diminishing returns past boundary (like iOS overscroll)
@@ -196,15 +219,20 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       "worklet";
       const ci = currentPanel.value;
       const tx = e.translationX;
+      const sendDistance = cardWidth * 0.28;
 
       // Track drag progress for parallax
       dragProgress.value = Math.max(-1, Math.min(1, tx / cardWidth));
 
       // Update indicator progress during drag
       if (ci === 0) {
+        sendSwipeProgress.value = 0;
+        sendHapticArmed.value = 0;
         const progress = Math.max(0, Math.min(1, -tx / cardWidth));
         indicatorProgress.value = progress;
       } else if (ci === 1) {
+        sendSwipeProgress.value = 0;
+        sendHapticArmed.value = 0;
         if (tx < 0) {
           indicatorProgress.value = 1 + Math.max(0, Math.min(1, -tx / cardWidth));
         } else {
@@ -238,9 +266,34 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           // Swiping right → push panel 3 out
           const next = Math.max(0, Math.min(cardWidth, tx));
           panel3X.value = next;
+          sendSwipeProgress.value = 0;
+          sendHapticArmed.value = 0;
         } else {
-          // Swiping left on last panel → rubber band
-          panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
+          const canOverswipeSend =
+            !isOwn &&
+            !sending &&
+            replyText.trim().length >= REPLY_MIN_LENGTH &&
+            Boolean(detailData?.panel_3.can_reply);
+
+          if (canOverswipeSend) {
+            const overswipe = Math.max(0, -tx);
+            const progress = Math.max(0, Math.min(1, overswipe / sendDistance));
+            sendSwipeProgress.value = progress;
+
+            if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
+              sendHapticArmed.value = 1;
+              runOnJS(triggerSendReadyHaptic)();
+            } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
+              sendHapticArmed.value = 0;
+            }
+
+            panel3X.value = -rubberBand(overswipe, cardWidth * 0.22);
+          } else {
+            sendSwipeProgress.value = 0;
+            sendHapticArmed.value = 0;
+            // Swiping left on last panel → rubber band
+            panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
+          }
         }
       }
     })
@@ -276,7 +329,26 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           }
         }
       } else if (ci === 2) {
-        if (e.translationX < 0) {
+        const canOverswipeSend =
+          !isOwn &&
+          !sending &&
+          replyText.trim().length >= REPLY_MIN_LENGTH &&
+          Boolean(detailData?.panel_3.can_reply);
+        const shouldSend =
+          canOverswipeSend &&
+          e.translationX < 0 &&
+          (sendSwipeProgress.value >= SEND_READY_PROGRESS ||
+            vx <= SEND_VELOCITY_THRESHOLD);
+
+        if (shouldSend) {
+          sendSwipeProgress.value = withTiming(0, { duration: 120 });
+          sendHapticArmed.value = 0;
+          panel3X.value = withSpring(0, SNAP_SPRING);
+          indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
+          runOnJS(handleSendReply)();
+        } else if (e.translationX < 0) {
+          sendSwipeProgress.value = withTiming(0, { duration: 120 });
+          sendHapticArmed.value = 0;
           // Rubber-band release — snap back
           snapTo(2, 2);
         } else if (panel3X.value > threshold || vx > flickVelocity) {
@@ -625,14 +697,14 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 maxLength={REPLY_MAX_LENGTH}
               />
               <View style={styles.inputRow}>
-                <SwipeConfirm
+                <SwipeSendHint
                   label="Reply"
-                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • swipe to send`}
-                  completionLabel="Send"
+                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • keep swiping left to send`}
+                  progress={sendSwipeProgress}
                   style={styles.replySwipe}
                   disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
                   loading={sending}
-                  onComplete={handleSendReply}
+                  darkSurface
                 />
               </View>
             </KeyboardAvoidingView>

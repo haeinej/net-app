@@ -291,10 +291,9 @@ export default function UserProfileScreen() {
                 <CardDeck layers={3}>
                   <ProfileThoughtCard
                     thought={thought}
-                    disableOpen
                     authorName={profile.name ?? undefined}
                     authorPhotoUrl={profile.photo_url}
-                    authorUserId={profile.id}
+                    authorUserId={null}
                   />
                 </CardDeck>
               </View>
@@ -317,7 +316,7 @@ export default function UserProfileScreen() {
           return (
             <View key={`c-${crossing.id}`} style={[styles.thoughtWrap, containerStyle]}>
               <CardDeck layers={3}>
-                <CrossingCard item={crossingItem} visible />
+                <CrossingCard item={crossingItem} visible ignoreUserId={profile.id} />
               </CardDeck>
             </View>
           );

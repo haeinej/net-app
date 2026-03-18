@@ -29,7 +29,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
-import { SwipeConfirm } from "./SwipeConfirm";
+import { SwipeSendHint } from "./SwipeSendHint";
 import {
   fetchCrossingDetail,
   postCrossingReply,
@@ -43,14 +43,22 @@ const REPLY_MAX_LENGTH = 300;
 const CARD_HEIGHT = spacing.compactCardHeight; // 190
 const HALF_HEIGHT = CARD_HEIGHT / 2; // 95
 const PROFILE_SIZE = 28;
+const SEND_READY_PROGRESS = 0.78;
+const SEND_VELOCITY_THRESHOLD = -650;
 
 interface CrossingCardProps {
   item: FeedItemCrossing;
   visible?: boolean;
   myUserId?: string | null;
+  ignoreUserId?: string | null;
 }
 
-export function CrossingCard({ item, visible = false, myUserId }: CrossingCardProps) {
+export function CrossingCard({
+  item,
+  visible = false,
+  myUserId,
+  ignoreUserId,
+}: CrossingCardProps) {
   const router = useRouter();
   const { contentWidth } = useResponsiveLayout();
   const cardWidth = contentWidth - spacing.screenPadding * 2;
@@ -77,6 +85,8 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
   const [isTyping, setIsTyping] = useState(false);
   const [replyTarget, setReplyTarget] = useState<string>(participant_a.id);
   const pulseOpacity = useSharedValue(0);
+  const sendSwipeProgress = useSharedValue(0);
+  const sendHapticArmed = useSharedValue(0);
 
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
 
@@ -89,6 +99,10 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
 
   const triggerSnapHaptic = useCallback(() => {
     try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+  }, []);
+
+  const triggerSendReadyHaptic = useCallback(() => {
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
   }, []);
 
   const rememberPanel = useCallback(
@@ -126,6 +140,8 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
       panel2X.value = withSpring(target >= 1 ? 0 : cardWidth, SNAP_SPRING);
       panel3X.value = withSpring(target >= 2 ? 0 : cardWidth, SNAP_SPRING);
       indicatorProgress.value = withSpring(target, { damping: 20, stiffness: 200 });
+      sendSwipeProgress.value = withTiming(0, { duration: 140 });
+      sendHapticArmed.value = 0;
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
       runOnJS(rememberPanel)(target);
@@ -134,7 +150,18 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
       }
       if (from === 0 && target === 1) runOnJS(loadDetail)();
     },
-    [cardWidth, currentPanel, indicatorProgress, loadDetail, panel2X, panel3X, rememberPanel, triggerSnapHaptic]
+    [
+      cardWidth,
+      currentPanel,
+      indicatorProgress,
+      loadDetail,
+      panel2X,
+      panel3X,
+      rememberPanel,
+      sendHapticArmed,
+      sendSwipeProgress,
+      triggerSnapHaptic,
+    ]
   );
 
   const panGesture = Gesture.Pan()
@@ -144,11 +171,16 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
       "worklet";
       const ci = currentPanel.value;
       const tx = e.translationX;
+      const sendDistance = cardWidth * 0.28;
 
       // Update indicator progress during drag
       if (ci === 0) {
+        sendSwipeProgress.value = 0;
+        sendHapticArmed.value = 0;
         indicatorProgress.value = Math.max(0, Math.min(1, -tx / cardWidth));
       } else if (ci === 1) {
+        sendSwipeProgress.value = 0;
+        sendHapticArmed.value = 0;
         if (tx < 0) {
           indicatorProgress.value = 1 + Math.max(0, Math.min(1, -tx / cardWidth));
         } else {
@@ -174,9 +206,34 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
       } else if (ci === 2) {
         if (tx > 0) {
           panel3X.value = Math.max(0, Math.min(cardWidth, tx));
+          sendSwipeProgress.value = 0;
+          sendHapticArmed.value = 0;
         } else {
-          // Rubber band on last panel
-          panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
+          const canOverswipeSend =
+            !isParticipant &&
+            !sending &&
+            replyText.trim().length >= REPLY_MIN_LENGTH &&
+            Boolean(detailData?.panel_3.can_reply);
+
+          if (canOverswipeSend) {
+            const overswipe = Math.max(0, -tx);
+            const progress = Math.max(0, Math.min(1, overswipe / sendDistance));
+            sendSwipeProgress.value = progress;
+
+            if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
+              sendHapticArmed.value = 1;
+              runOnJS(triggerSendReadyHaptic)();
+            } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
+              sendHapticArmed.value = 0;
+            }
+
+            panel3X.value = -rubberBand(overswipe, cardWidth * 0.22);
+          } else {
+            sendSwipeProgress.value = 0;
+            sendHapticArmed.value = 0;
+            // Rubber band on last panel
+            panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
+          }
         }
       }
     })
@@ -209,7 +266,26 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
           }
         }
       } else if (ci === 2) {
-        if (e.translationX < 0) {
+        const canOverswipeSend =
+          !isParticipant &&
+          !sending &&
+          replyText.trim().length >= REPLY_MIN_LENGTH &&
+          Boolean(detailData?.panel_3.can_reply);
+        const shouldSend =
+          canOverswipeSend &&
+          e.translationX < 0 &&
+          (sendSwipeProgress.value >= SEND_READY_PROGRESS ||
+            e.velocityX <= SEND_VELOCITY_THRESHOLD);
+
+        if (shouldSend) {
+          sendSwipeProgress.value = withTiming(0, { duration: 120 });
+          sendHapticArmed.value = 0;
+          panel3X.value = withSpring(0, SNAP_SPRING);
+          indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
+          runOnJS(handleSendReply)();
+        } else if (e.translationX < 0) {
+          sendSwipeProgress.value = withTiming(0, { duration: 120 });
+          sendHapticArmed.value = 0;
           snapTo(2, 2);
         } else if (panel3X.value > threshold || e.velocityX > flickVelocity) {
           snapTo(1, 2);
@@ -292,10 +368,10 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
 
   const openUserProfile = useCallback(
     (userId?: string | null) => {
-      if (!userId) return;
+      if (!userId || userId === ignoreUserId) return;
       router.push({ pathname: "/user/[id]", params: { id: userId } });
     },
-    [router]
+    [ignoreUserId, router]
   );
 
   const p2 = detailData?.panel_2;
@@ -490,14 +566,14 @@ export function CrossingCard({ item, visible = false, myUserId }: CrossingCardPr
                 maxLength={REPLY_MAX_LENGTH}
               />
               <View style={styles.inputRow}>
-                <SwipeConfirm
+                <SwipeSendHint
                   label="Reply"
-                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • swipe to send`}
-                  completionLabel="Send"
+                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • keep swiping left to send`}
+                  progress={sendSwipeProgress}
                   style={styles.replySwipe}
                   disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
                   loading={sending}
-                  onComplete={handleSendReply}
+                  darkSurface
                 />
               </View>
             </KeyboardAvoidingView>
