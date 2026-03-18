@@ -56,7 +56,7 @@ export default function MeScreen() {
   }, [router]);
 
   useEffect(() => {
-    getMyUserId().then(setMyUserId);
+    getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
   }, []);
 
   const load = useCallback(async () => {

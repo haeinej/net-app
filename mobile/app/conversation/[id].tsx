@@ -120,7 +120,7 @@ export default function ConversationThreadScreen() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
-    getMyUserId().then(setMyUserId);
+    getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
   }, []);
 
   const loadDetail = useCallback(async () => {

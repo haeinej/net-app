@@ -87,11 +87,15 @@ export default function WorldsScreen() {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem(WALKTHROUGH_SEEN_KEY).then((val) => {
-      if (val !== "true") {
-        setTimeout(() => setWalkthroughVisible(true), 800);
-      }
-    });
+    AsyncStorage.getItem(WALKTHROUGH_SEEN_KEY)
+      .then((val) => {
+        if (val !== "true") {
+          setTimeout(() => setWalkthroughVisible(true), 800);
+        }
+      })
+      .catch(() => {
+        // Storage unavailable — skip walkthrough
+      });
   }, []);
 
   const handleWalkthroughComplete = useCallback(() => {
