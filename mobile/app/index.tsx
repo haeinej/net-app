@@ -1,89 +1,28 @@
-import { useEffect } from "react";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
-import { useRouter, type Href } from "expo-router";
-import { colors } from "../theme";
-import {
-  clearAuth,
-  getStoredToken,
-  getStoredUserId,
-  getOnboardingComplete,
-} from "../lib/auth-store";
-import {
-  fetchProfile,
-  isSessionInvalidError,
-  setCachedUserId,
-} from "../lib/api";
+import { useCallback, useState } from "react";
+import { useRouter } from "expo-router";
+import { IntroLanding } from "./intro";
+import { resolveStartupRoute } from "../lib/startup-route";
 
 export default function IndexScreen() {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const handleContinue = useCallback(() => {
+    if (busy) return;
+
+    setBusy(true);
+    void (async () => {
       try {
-        const [token, userId, onboardingComplete] = await Promise.all([
-          getStoredToken(),
-          getStoredUserId(),
-          getOnboardingComplete(),
-        ]);
-        if (cancelled) return;
-        let nextRoute: Href = "/intro";
-
-        if (token && userId) {
-          let sessionValid = true;
-
-          try {
-            await fetchProfile(userId);
-          } catch (error) {
-            if (isSessionInvalidError(error)) {
-              sessionValid = false;
-              await clearAuth();
-              setCachedUserId(null);
-            } else {
-              console.warn("Startup profile check failed:", error);
-            }
-          }
-
-          if (sessionValid) {
-            nextRoute = onboardingComplete ? "/(tabs)" : "/onboarding";
-          }
-        }
-
-        if (!cancelled) {
-          requestAnimationFrame(() => {
-            if (!cancelled) {
-              router.replace(nextRoute);
-            }
-          });
-        }
+        const nextRoute = await resolveStartupRoute();
+        router.replace(nextRoute);
       } catch (error) {
-        console.warn("Startup bootstrap failed:", error);
-        if (!cancelled) {
-          requestAnimationFrame(() => {
-            if (!cancelled) {
-              router.replace("/intro");
-            }
-          });
-        }
+        console.warn("Startup route resolution failed:", error);
+        router.replace("/login");
+      } finally {
+        setBusy(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+  }, [busy, router]);
 
-  return (
-    <View style={styles.centered}>
-      <ActivityIndicator size="large" color={colors.TYPE_MUTED} />
-    </View>
-  );
+  return <IntroLanding buttonLabel="Continue" busy={busy} onContinue={handleContinue} />;
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.WARM_GROUND,
-  },
-});
