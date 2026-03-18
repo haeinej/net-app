@@ -47,24 +47,52 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: "Profile not found" });
       }
 
-      const [[user], userThoughts] = await Promise.all([
-        db.select().from(users).where(eq(users.id, targetId)).limit(1),
-        db
-          .select()
-          .from(thoughts)
-          .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
-          .orderBy(desc(thoughts.createdAt)),
-      ]);
+      const [user] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          photoUrl: users.photoUrl,
+        })
+        .from(users)
+        .where(eq(users.id, targetId))
+        .limit(1);
 
       if (!user) return reply.status(404).send({ error: "Profile not found" });
 
-      const thoughtsForProfile = userThoughts.map((t) => ({
-        id: t.id,
-        sentence: t.sentence,
-        photo_url: t.photoUrl,
-        image_url: t.imageUrl,
-        created_at: t.createdAt?.toISOString(),
-      }));
+      let thoughtsForProfile: Array<{
+        id: string;
+        sentence: string;
+        photo_url: string | null;
+        image_url: string | null;
+        created_at: string | null;
+      }> = [];
+
+      try {
+        const userThoughts = await db
+          .select({
+            id: thoughts.id,
+            sentence: thoughts.sentence,
+            photoUrl: thoughts.photoUrl,
+            imageUrl: thoughts.imageUrl,
+            createdAt: thoughts.createdAt,
+          })
+          .from(thoughts)
+          .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
+          .orderBy(desc(thoughts.createdAt));
+
+        thoughtsForProfile = userThoughts.map((t) => ({
+          id: t.id,
+          sentence: t.sentence,
+          photo_url: t.photoUrl,
+          image_url: t.imageUrl,
+          created_at: t.createdAt?.toISOString() ?? null,
+        }));
+      } catch (error) {
+        request.log.error(
+          { error, targetId },
+          "profile thought hydration failed; returning profile without thoughts"
+        );
+      }
 
       let crossingsForProfile: Array<{
         id: string;
@@ -78,7 +106,15 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         const userCrossings = await db
-          .select()
+          .select({
+            id: crossings.id,
+            sentence: crossings.sentence,
+            context: crossings.context,
+            imageUrl: crossings.imageUrl,
+            createdAt: crossings.createdAt,
+            participantA: crossings.participantA,
+            participantB: crossings.participantB,
+          })
           .from(crossings)
           .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
           .orderBy(desc(crossings.createdAt));
@@ -108,8 +144,18 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
           context: c.context,
           image_url: c.imageUrl,
           created_at: c.createdAt?.toISOString() ?? null,
-          participant_a: userInfoMap.get(c.participantA) ?? null,
-          participant_b: userInfoMap.get(c.participantB) ?? null,
+          participant_a:
+            userInfoMap.get(c.participantA) ?? {
+              id: c.participantA,
+              name: null,
+              photo_url: null,
+            },
+          participant_b:
+            userInfoMap.get(c.participantB) ?? {
+              id: c.participantB,
+              name: null,
+              photo_url: null,
+            },
         }));
       } catch (error) {
         request.log.error(
