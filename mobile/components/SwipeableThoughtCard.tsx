@@ -32,7 +32,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
-import { SwipeSendHint } from "./SwipeSendHint";
+
 import {
   deleteReply,
   fetchThought,
@@ -715,17 +715,13 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 multiline={false}
                 maxLength={REPLY_MAX_LENGTH}
               />
-              <View style={styles.inputRow}>
-                <SwipeSendHint
-                  label="Reply"
-                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • keep swiping left to send`}
-                  progress={sendSwipeProgress}
-                  style={styles.replySwipe}
-                  disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
-                  loading={sending}
-                  darkSurface
-                />
-              </View>
+              <Text style={styles.replyHintText}>
+                {sending
+                  ? "sending..."
+                  : replyText.trim().length < REPLY_MIN_LENGTH
+                    ? `${replyText.trim().length}/${REPLY_MIN_LENGTH} min`
+                    : "← swipe left to send"}
+              </Text>
             </KeyboardAvoidingView>
           )}
         </Animated.View>
@@ -997,8 +993,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 6,
   },
-  replySwipe: {
-    flex: 1,
+  replyHintText: {
+    ...typography.metadata,
+    fontSize: 11,
+    color: "rgba(245,240,234,0.45)",
+    marginTop: 6,
+    textAlign: "center",
   },
 
   // Pulse overlay

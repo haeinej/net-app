@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily, shadows, glass } from "../../theme";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
-import { SwipeSendHint } from "../../components/SwipeSendHint";
+
 import { WarmthBar } from "../../components/WarmthBar";
 import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
 import {
@@ -626,15 +626,13 @@ export default function ThoughtDetailScreen() {
                   maxLength={REPLY_MAX_LENGTH}
                 />
                 <Text style={styles.replySafety}>{REPLY_SAFETY_TEXT}</Text>
-                <SwipeSendHint
-                  label="Reply"
-                  hint={`${replyText.trim().length}/${REPLY_MIN_LENGTH} min • keep swiping left to send`}
-                  progress={sendSwipeProgress}
-                  style={styles.replySwipe}
-                  disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
-                  loading={sending}
-                  darkSurface
-                />
+                <Text style={styles.replyHintText}>
+                  {sending
+                    ? "sending..."
+                    : replyText.trim().length < REPLY_MIN_LENGTH
+                      ? `${replyText.trim().length}/${REPLY_MIN_LENGTH} min`
+                      : "← swipe left to send"}
+                </Text>
               </KeyboardAvoidingView>
             )}
           </View>
@@ -900,8 +898,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: "italic",
   },
-  replySwipe: {
-    marginTop: 12,
+  replyHintText: {
+    ...typography.metadata,
+    fontSize: 11,
+    color: "rgba(245,240,234,0.45)",
+    marginTop: 8,
+    textAlign: "center",
   },
   indicator: {
     position: "absolute",
