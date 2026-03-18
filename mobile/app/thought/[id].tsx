@@ -64,6 +64,7 @@ export default function ThoughtDetailScreen() {
   const pulseOpacity = useSharedValue(0);
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
+  const sendTriggered = useSharedValue(0);
 
   const translateX = useSharedValue(0);
   const gestureStartX = useSharedValue(0);
@@ -141,6 +142,7 @@ export default function ThoughtDetailScreen() {
       translateX.value = withTiming(target, { duration: 280 });
       sendSwipeProgress.value = withTiming(0, { duration: 140 });
       sendHapticArmed.value = 0;
+      sendTriggered.value = 0;
       const fromIndex = lastPanelIndex.current;
       handleSwipeToPanel(fromIndex, targetIndex);
       applyPanel(targetIndex);
@@ -150,6 +152,7 @@ export default function ThoughtDetailScreen() {
       translateX,
       sendSwipeProgress,
       sendHapticArmed,
+      sendTriggered,
       handleSwipeToPanel,
       applyPanel,
     ]
@@ -170,6 +173,10 @@ export default function ThoughtDetailScreen() {
         replyText.trim().length >= REPLY_MIN_LENGTH &&
         Boolean(data?.panel_3.can_reply);
 
+      if (currentPanelIndex === 2 && sendTriggered.value === 1) {
+        return;
+      }
+
       if (canOverswipeSend && rawNext < min) {
         const overswipe = Math.max(0, min - rawNext);
         const progress = Math.max(0, Math.min(1, overswipe / sendDistance));
@@ -182,6 +189,14 @@ export default function ThoughtDetailScreen() {
           runOnJS(triggerSendReadyHaptic)();
         } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
           sendHapticArmed.value = 0;
+        }
+
+        if (progress >= SEND_READY_PROGRESS && sendTriggered.value === 0) {
+          sendTriggered.value = 1;
+          sendSwipeProgress.value = withTiming(1, { duration: 80 });
+          translateX.value = withTiming(min - screenWidth * 0.08, { duration: 80 });
+          runOnJS(handleSendReply)();
+          return;
         }
 
         translateX.value = min - resisted;
@@ -203,6 +218,11 @@ export default function ThoughtDetailScreen() {
         !sending &&
         replyText.trim().length >= REPLY_MIN_LENGTH &&
         Boolean(data?.panel_3.can_reply);
+
+      if (currentPanelIndex === 2 && sendTriggered.value === 1) {
+        return;
+      }
+
       const shouldSend =
         canOverswipeSend &&
         (sendSwipeProgress.value >= SEND_READY_PROGRESS ||
@@ -250,6 +270,10 @@ export default function ThoughtDetailScreen() {
       !data?.panel_3.can_reply ||
       sending
     ) {
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapToPanel(2);
       return;
     }
     setSending(true);
@@ -267,10 +291,15 @@ export default function ThoughtDetailScreen() {
       setIsTyping(false);
       sendSwipeProgress.value = withTiming(0, { duration: 100 });
       sendHapticArmed.value = 0;
+      sendTriggered.value = 0;
       translateX.value = withTiming(0, { duration: 220 });
       applyPanel(0);
       await refreshThought();
     } catch {
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapToPanel(2);
       setSending(false);
     } finally {
       setSending(false);
@@ -284,8 +313,10 @@ export default function ThoughtDetailScreen() {
     pulseOpacity,
     sendSwipeProgress,
     sendHapticArmed,
+    sendTriggered,
     translateX,
     applyPanel,
+    snapToPanel,
     refreshThought,
   ]);
 

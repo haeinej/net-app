@@ -3,11 +3,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { colors, spacing, typography, fontFamily } from "../theme";
+import { colors, spacing, typography } from "../theme";
 import { WarmthBar } from "./WarmthBar";
 import type { ProfileThought } from "../lib/api";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
@@ -34,9 +33,6 @@ interface ProfileThoughtCardProps {
 
 export function ProfileThoughtCard({
   thought,
-  onPress,
-  onLongPress,
-  disableOpen = false,
   dark,
   authorName,
   authorPhotoUrl,
@@ -44,24 +40,9 @@ export function ProfileThoughtCard({
 }: ProfileThoughtCardProps) {
   const router = useRouter();
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
-  const handleOpenThought = () => {
-    if (disableOpen) {
-      return;
-    }
-    if (onPress) {
-      onPress(thought.id);
-      return;
-    }
-    router.push({ pathname: "/thought/[id]", params: { id: thought.id } });
-  };
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={handleOpenThought}
-      onLongPress={onLongPress}
-      activeOpacity={disableOpen ? 1 : 0.92}
-    >
+    <View style={styles.card}>
       <View style={styles.cardInner}>
         <WarmthBar height={CARD_HEIGHT} />
         <View style={{ flex: 1 }}>
@@ -88,8 +69,7 @@ export function ProfileThoughtCard({
               style={styles.footerProfile}
               activeOpacity={0.7}
               disabled={!authorUserId}
-              onPress={(event: GestureResponderEvent) => {
-                event.stopPropagation();
+              onPress={() => {
                 if (!authorUserId) return;
                 router.push({ pathname: "/user/[id]", params: { id: authorUserId } });
               }}
@@ -109,7 +89,7 @@ export function ProfileThoughtCard({
           </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 

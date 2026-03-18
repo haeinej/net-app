@@ -86,7 +86,7 @@ export default function IntroScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: colors.PANEL_DEEP,
   },
   video: {
     flex: 1,

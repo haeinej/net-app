@@ -29,27 +29,46 @@ export function SwipeSendHint({
   darkSurface = false,
   style,
 }: SwipeSendHintProps) {
-  const cardStyle = useAnimatedStyle(() => {
+  const shellStyle = useAnimatedStyle(() => {
     const clamped = Math.max(0, Math.min(1, progress.value));
     return {
       backgroundColor: interpolateColor(
         clamped,
         [0, 1],
         darkSurface
-          ? ["rgba(245, 240, 234, 0.08)", "rgba(235, 65, 1, 0.32)"]
-          : ["rgba(235, 65, 1, 0.06)", "rgba(235, 65, 1, 0.24)"]
+          ? ["rgba(245, 240, 234, 0.06)", "rgba(235, 65, 1, 0.18)"]
+          : ["rgba(235, 65, 1, 0.04)", "rgba(235, 65, 1, 0.14)"]
       ),
       borderColor: interpolateColor(
         clamped,
         [0, 1],
         darkSurface
-          ? ["rgba(245, 240, 234, 0.12)", "rgba(245, 240, 234, 0.36)"]
-          : ["rgba(235, 65, 1, 0.16)", "rgba(245, 240, 234, 0.36)"]
+          ? ["rgba(245, 240, 234, 0.12)", "rgba(245, 240, 234, 0.26)"]
+          : ["rgba(235, 65, 1, 0.12)", "rgba(235, 65, 1, 0.22)"]
+      ),
+    };
+  });
+
+  const actionWrapStyle = useAnimatedStyle(() => {
+    const clamped = Math.max(0, Math.min(1, progress.value));
+    return {
+      backgroundColor: interpolateColor(
+        clamped,
+        [0, 1],
+        darkSurface
+          ? ["rgba(245, 240, 234, 0.08)", "rgba(245, 240, 234, 0.18)"]
+          : ["rgba(235, 65, 1, 0.08)", "rgba(235, 65, 1, 0.22)"]
+      ),
+      borderColor: interpolateColor(
+        clamped,
+        [0, 1],
+        darkSurface
+          ? ["rgba(245, 240, 234, 0.14)", "rgba(245, 240, 234, 0.32)"]
+          : ["rgba(235, 65, 1, 0.14)", "rgba(235, 65, 1, 0.28)"]
       ),
       transform: [
-        {
-          translateX: interpolate(clamped, [0, 1], [0, -10], Extrapolation.CLAMP),
-        },
+        { translateX: interpolate(clamped, [0, 1], [0, -8], Extrapolation.CLAMP) },
+        { scale: interpolate(clamped, [0, 1], [1, 1.04], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -57,21 +76,22 @@ export function SwipeSendHint({
   const arrowStyle = useAnimatedStyle(() => {
     const clamped = Math.max(0, Math.min(1, progress.value));
     return {
-      opacity: interpolate(clamped, [0, 1], [0.6, 1], Extrapolation.CLAMP),
+      opacity: interpolate(clamped, [0, 1], [0.56, 1], Extrapolation.CLAMP),
+      transform: [{ translateX: interpolate(clamped, [0, 1], [0, -3], Extrapolation.CLAMP) }],
     };
   });
 
   return (
     <Animated.View
       pointerEvents="none"
-      style={[styles.card, cardStyle, disabled && styles.cardDisabled, style]}
+      style={[styles.card, shellStyle, disabled && styles.cardDisabled, style]}
     >
       <View style={styles.cardContent}>
         <View style={styles.cardLeft}>
           <Text style={[styles.label, darkSurface && styles.labelDark]}>{label}</Text>
           {hint ? <Text style={[styles.hint, darkSurface && styles.hintDark]}>{hint}</Text> : null}
         </View>
-        <View style={styles.cardRight}>
+        <Animated.View style={[styles.cardRight, actionWrapStyle]}>
           <Text
             style={[
               styles.actionLabel,
@@ -79,10 +99,10 @@ export function SwipeSendHint({
               loading && styles.actionLabelSending,
             ]}
           >
-            {loading ? "Sending..." : "Swipe left"}
+            {loading ? "Sending..." : "Keep left"}
           </Text>
           <Animated.Text style={[styles.arrow, arrowStyle]}>←</Animated.Text>
-        </View>
+        </Animated.View>
       </View>
     </Animated.View>
   );
@@ -90,8 +110,8 @@ export function SwipeSendHint({
 
 const styles = StyleSheet.create({
   card: {
-    height: CARD_HEIGHT,
-    borderRadius: 14,
+    minHeight: CARD_HEIGHT,
+    borderRadius: 12,
     borderWidth: 1,
     justifyContent: "center",
   },
@@ -103,6 +123,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 14,
+    paddingVertical: 4,
   },
   cardLeft: {
     flex: 1,
@@ -131,6 +152,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     marginLeft: 12,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   actionLabel: {
     ...typography.label,

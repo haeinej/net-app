@@ -6,7 +6,7 @@ import { BrandLockup } from "../components/BrandLockup";
 import { ScreenExitButton } from "../components/ScreenExitButton";
 import { clearAuth } from "../lib/auth-store";
 import { setCachedUserId } from "../lib/api";
-import { colors, spacing, typography } from "../theme";
+import { colors, spacing, typography, radii } from "../theme";
 
 function SettingsRow({
   title,
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   },
   row: {
     backgroundColor: colors.CARD_GROUND,
-    borderRadius: 16,
+    borderRadius: radii.card,
     paddingHorizontal: 16,
     paddingVertical: 16,
     flexDirection: "row",

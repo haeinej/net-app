@@ -94,6 +94,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const pulseOpacity = useSharedValue(0);
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
+  const sendTriggered = useSharedValue(0);
 
   // Card height animation for reply expansion
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
@@ -174,6 +175,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       dragProgress.value = withSpring(0, RUBBER_SPRING);
       sendSwipeProgress.value = withTiming(0, { duration: 140 });
       sendHapticArmed.value = 0;
+      sendTriggered.value = 0;
 
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
@@ -200,6 +202,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       panel3X,
       rememberPanel,
       sendHapticArmed,
+      sendTriggered,
       sendSwipeProgress,
       triggerSnapHaptic,
     ]
@@ -262,6 +265,9 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           panel2X.value = next;
         }
       } else if (ci === 2) {
+        if (sendTriggered.value === 1) {
+          return;
+        }
         if (tx > 0) {
           // Swiping right → push panel 3 out
           const next = Math.max(0, Math.min(cardWidth, tx));
@@ -285,6 +291,15 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
               runOnJS(triggerSendReadyHaptic)();
             } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
               sendHapticArmed.value = 0;
+            }
+
+            if (progress >= SEND_READY_PROGRESS && sendTriggered.value === 0) {
+              sendTriggered.value = 1;
+              sendSwipeProgress.value = withTiming(1, { duration: 80 });
+              panel3X.value = withTiming(-cardWidth * 0.1, { duration: 80 });
+              indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
+              runOnJS(handleSendReply)();
+              return;
             }
 
             panel3X.value = -rubberBand(overswipe, cardWidth * 0.22);
@@ -329,6 +344,9 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           }
         }
       } else if (ci === 2) {
+        if (sendTriggered.value === 1) {
+          return;
+        }
         const canOverswipeSend =
           !isOwn &&
           !sending &&
@@ -415,8 +433,13 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   // Reply handlers
   const handleSendReply = useCallback(async () => {
     const text = replyText.trim();
-    if (!text || text.length < REPLY_MIN_LENGTH || sending) return;
-    if (!detailData?.panel_3.can_reply) return;
+    if (!text || text.length < REPLY_MIN_LENGTH || sending || !detailData?.panel_3.can_reply) {
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapTo(2, 2);
+      return;
+    }
     setSending(true);
     try {
       await postReply(thought.id, text);
@@ -432,11 +455,26 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       snapTo(0, 2);
       await refreshDetail();
     } catch {
-      // keep state for retry
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapTo(2, 2);
     } finally {
       setSending(false);
     }
-  }, [thought.id, replyText, sending, detailData, recordReplySent, pulseOpacity, snapTo, refreshDetail]);
+  }, [
+    thought.id,
+    replyText,
+    sending,
+    detailData,
+    recordReplySent,
+    pulseOpacity,
+    sendHapticArmed,
+    sendSwipeProgress,
+    sendTriggered,
+    snapTo,
+    refreshDetail,
+  ]);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
@@ -470,10 +508,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     Alert.alert("Thought", undefined, options);
   }, [isOwn, onEdit, onDelete, thought.id]);
 
-  const handleLongPress = useCallback(() => {
-    showOwnerActions();
-  }, [showOwnerActions]);
-
   const handleDeleteReply = useCallback(
     (replyId: string) => {
       Alert.alert("Delete reply", "Remove this reply from your thought?", [
@@ -505,13 +539,8 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     [router]
   );
 
-  const openThoughtDetail = useCallback(() => {
-    router.push({ pathname: "/thought/[id]", params: { id: thought.id } });
-  }, [router, thought.id]);
-
   const handleProfilePress = useCallback(
-    (event: GestureResponderEvent) => {
-      event.stopPropagation();
+    () => {
       openUserProfile(user.id);
     },
     [openUserProfile, user.id]
@@ -525,11 +554,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           <View style={styles.panel1Inner}>
             <View style={{ width: spacing.warmthBarWidth }} />
             <View style={[styles.imageWrap, { width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT }]}>
-              <TouchableOpacity
-                style={styles.panel1OpenHitArea}
-                activeOpacity={0.92}
-                onPress={openThoughtDetail}
-              >
+              <View style={styles.panel1OpenHitArea}>
                 <ThoughtImageFrame
                   imageUrl={thought.photo_url ?? thought.image_url}
                   aspectRatio={4 / 3}
@@ -551,16 +576,10 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                     <View style={styles.dot} />
                   </View>
                 </View>
-              </TouchableOpacity>
+              </View>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.footer}
-            onPress={openThoughtDetail}
-            onLongPress={handleLongPress}
-            activeOpacity={0.92}
-            delayLongPress={400}
-          >
+          <View style={styles.footer}>
             <TouchableOpacity
               style={styles.profileRow}
               onPress={handleProfilePress}
@@ -590,7 +609,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 </TouchableOpacity>
               ) : null}
             </View>
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* Panel 2 — Context (slides from right, glass-rimmed) */}

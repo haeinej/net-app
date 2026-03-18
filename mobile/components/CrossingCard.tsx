@@ -87,6 +87,7 @@ export function CrossingCard({
   const pulseOpacity = useSharedValue(0);
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
+  const sendTriggered = useSharedValue(0);
 
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
 
@@ -142,6 +143,7 @@ export function CrossingCard({
       indicatorProgress.value = withSpring(target, { damping: 20, stiffness: 200 });
       sendSwipeProgress.value = withTiming(0, { duration: 140 });
       sendHapticArmed.value = 0;
+      sendTriggered.value = 0;
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
       runOnJS(rememberPanel)(target);
@@ -159,6 +161,7 @@ export function CrossingCard({
       panel3X,
       rememberPanel,
       sendHapticArmed,
+      sendTriggered,
       sendSwipeProgress,
       triggerSnapHaptic,
     ]
@@ -204,6 +207,9 @@ export function CrossingCard({
           panel2X.value = Math.max(0, Math.min(cardWidth, tx));
         }
       } else if (ci === 2) {
+        if (sendTriggered.value === 1) {
+          return;
+        }
         if (tx > 0) {
           panel3X.value = Math.max(0, Math.min(cardWidth, tx));
           sendSwipeProgress.value = 0;
@@ -225,6 +231,15 @@ export function CrossingCard({
               runOnJS(triggerSendReadyHaptic)();
             } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
               sendHapticArmed.value = 0;
+            }
+
+            if (progress >= SEND_READY_PROGRESS && sendTriggered.value === 0) {
+              sendTriggered.value = 1;
+              sendSwipeProgress.value = withTiming(1, { duration: 80 });
+              panel3X.value = withTiming(-cardWidth * 0.1, { duration: 80 });
+              indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
+              runOnJS(handleSendReply)();
+              return;
             }
 
             panel3X.value = -rubberBand(overswipe, cardWidth * 0.22);
@@ -266,6 +281,9 @@ export function CrossingCard({
           }
         }
       } else if (ci === 2) {
+        if (sendTriggered.value === 1) {
+          return;
+        }
         const canOverswipeSend =
           !isParticipant &&
           !sending &&
@@ -336,8 +354,13 @@ export function CrossingCard({
   // Reply handlers
   const handleSendReply = useCallback(async () => {
     const text = replyText.trim();
-    if (!text || text.length < REPLY_MIN_LENGTH || sending) return;
-    if (!detailData?.panel_3.can_reply) return;
+    if (!text || text.length < REPLY_MIN_LENGTH || sending || !detailData?.panel_3.can_reply) {
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapTo(2, 2);
+      return;
+    }
     setSending(true);
     try {
       await postCrossingReply(crossing.id, text, replyTarget);
@@ -352,11 +375,26 @@ export function CrossingCard({
       fetchedRef.current = false;
       loadDetail();
     } catch {
-      // keep state for retry
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapTo(2, 2);
     } finally {
       setSending(false);
     }
-  }, [crossing.id, replyText, replyTarget, sending, detailData, pulseOpacity, snapTo, loadDetail]);
+  }, [
+    crossing.id,
+    replyText,
+    replyTarget,
+    sending,
+    detailData,
+    pulseOpacity,
+    sendHapticArmed,
+    sendSwipeProgress,
+    sendTriggered,
+    snapTo,
+    loadDetail,
+  ]);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
@@ -385,12 +423,7 @@ export function CrossingCard({
           {/* Top half — Person A */}
           <View style={styles.halfTop}>
             <View style={{ width: spacing.warmthBarWidth }} />
-            <TouchableOpacity
-              style={styles.halfContent}
-              activeOpacity={0.75}
-              disabled={!participant_a.id}
-              onPress={() => openUserProfile(participant_a.id)}
-            >
+            <View style={styles.halfContent}>
               {participant_a.photo_url ? (
                 <Image source={{ uri: participant_a.photo_url }} style={styles.avatar} />
               ) : (
@@ -404,19 +437,14 @@ export function CrossingCard({
                   {crossing.sentence}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </View>
           </View>
           {/* Divider */}
           <View style={styles.divider} />
           {/* Bottom half — Person B */}
           <View style={styles.halfBottom}>
             <View style={{ width: spacing.warmthBarWidth }} />
-            <TouchableOpacity
-              style={styles.halfContent}
-              activeOpacity={0.75}
-              disabled={!participant_b.id}
-              onPress={() => openUserProfile(participant_b.id)}
-            >
+            <View style={styles.halfContent}>
               {participant_b.photo_url ? (
                 <Image source={{ uri: participant_b.photo_url }} style={styles.avatar} />
               ) : (
@@ -430,7 +458,7 @@ export function CrossingCard({
                   {crossing.sentence}
                 </Text>
               </View>
-            </TouchableOpacity>
+            </View>
           </View>
         </View>
 
