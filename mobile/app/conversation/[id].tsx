@@ -399,7 +399,7 @@ export default function ConversationThreadScreen() {
         <View style={styles.crossingWrap}>
           <SwipeConfirm
             label="Crossing?"
-            hint="Slide to make a crossing from this conversation."
+            hint="Swipe to make a crossing from this conversation."
             completionLabel="Start crossing"
             loading={crossingSubmitting}
             onComplete={handleStartCrossing}

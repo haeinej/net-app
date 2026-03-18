@@ -9,10 +9,21 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { colors, typography } from "../theme";
 
-const KNOB_SIZE = 42;
-const TRACK_HEIGHT = 60;
+const CARD_HEIGHT = 52;
+const SEND_THRESHOLD = 0.40; // 40% of container width to trigger send
+const FLYOUT_DURATION = 180;
+
+/**
+ * Threshold (px) the finger must move before the PanResponder claims the
+ * gesture. Keeping this *higher* than the parent Gesture.Pan's activeOffsetX
+ * (12 px) avoids stealing the parent's panel-navigation swipe.  The user has
+ * to start a deliberate horizontal drag on the SwipeConfirm card itself for
+ * the send gesture to engage.
+ */
+const CLAIM_THRESHOLD = 16;
 
 interface SwipeConfirmProps {
   label: string;
@@ -22,168 +33,281 @@ interface SwipeConfirmProps {
   loading?: boolean;
   onComplete: () => void | Promise<void>;
   style?: StyleProp<ViewStyle>;
+  /** When true, text colors adapt for a dark background (Panel 3). */
+  darkSurface?: boolean;
 }
 
 export function SwipeConfirm({
   label,
   hint,
-  completionLabel = "Slide",
+  completionLabel = "Send",
   disabled = false,
   loading = false,
   onComplete,
   style,
+  darkSurface = false,
 }: SwipeConfirmProps) {
   const translateX = useRef(new Animated.Value(0)).current;
-  const [trackWidth, setTrackWidth] = useState(0);
+  const opacity = useRef(new Animated.Value(1)).current;
+  const [containerWidth, setContainerWidth] = useState(0);
   const [completing, setCompleting] = useState(false);
-  const maxOffset = Math.max(0, trackWidth - KNOB_SIZE - 8);
+  const hasFiredHaptic = useRef(false);
 
   useEffect(() => {
-    if (disabled || maxOffset === 0) {
+    if (disabled) {
       translateX.setValue(0);
+      opacity.setValue(1);
     }
-  }, [disabled, maxOffset, translateX]);
+  }, [disabled, translateX, opacity]);
 
-  const resetKnob = () => {
+  const resetCard = () => {
+    hasFiredHaptic.current = false;
     Animated.spring(translateX, {
       toValue: 0,
       useNativeDriver: true,
-      bounciness: 6,
-      speed: 20,
+      damping: 20,
+      stiffness: 260,
+      mass: 0.7,
     }).start();
+  };
+
+  const flyOut = (cb: () => void) => {
+    Animated.parallel([
+      Animated.timing(translateX, {
+        toValue: containerWidth * 1.2,
+        duration: FLYOUT_DURATION,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: FLYOUT_DURATION,
+        useNativeDriver: true,
+      }),
+    ]).start(cb);
   };
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          !disabled && !loading && !completing && Math.abs(gestureState.dx) > 4,
-        onPanResponderMove: (_, gestureState) => {
-          const nextX = Math.min(Math.max(0, gestureState.dx), maxOffset);
-          translateX.setValue(nextX);
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gs) => {
+          // Only claim rightward drags that exceed our threshold and are
+          // primarily horizontal (prevent stealing vertical scroll).
+          if (disabled || loading || completing) return false;
+          return gs.dx > CLAIM_THRESHOLD && Math.abs(gs.dy) < gs.dx * 0.5;
         },
-        onPanResponderRelease: async (_, gestureState) => {
+        // Prevent the parent RNGH Gesture.Pan from reclaiming mid-drag.
+        onMoveShouldSetPanResponderCapture: () => false,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          hasFiredHaptic.current = false;
+        },
+        onPanResponderMove: (_, gs) => {
+          const dx = gs.dx;
+          if (dx >= 0) {
+            translateX.setValue(dx);
+          } else {
+            // Rubber-band leftward
+            const resist = 12 * (1 - Math.exp((-0.25 * Math.abs(dx)) / 12));
+            translateX.setValue(-resist);
+          }
+
+          // Haptic when crossing threshold
+          if (containerWidth > 0 && dx >= containerWidth * SEND_THRESHOLD && !hasFiredHaptic.current) {
+            hasFiredHaptic.current = true;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          }
+          if (containerWidth > 0 && dx < containerWidth * SEND_THRESHOLD) {
+            hasFiredHaptic.current = false;
+          }
+        },
+        onPanResponderRelease: async (_, gs) => {
           if (disabled || loading || completing) {
-            resetKnob();
+            resetCard();
             return;
           }
-          const shouldComplete = gestureState.dx >= maxOffset * 0.78;
-          if (!shouldComplete) {
-            resetKnob();
-            return;
+          const pastThreshold = containerWidth > 0 && gs.dx >= containerWidth * SEND_THRESHOLD;
+          const flickedRight = gs.vx > 0.8;
+
+          if (pastThreshold || flickedRight) {
+            setCompleting(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            flyOut(async () => {
+              try {
+                await onComplete();
+              } finally {
+                setCompleting(false);
+                translateX.setValue(0);
+                opacity.setValue(1);
+                hasFiredHaptic.current = false;
+              }
+            });
+          } else {
+            resetCard();
           }
-          setCompleting(true);
-          Animated.timing(translateX, {
-            toValue: maxOffset,
-            duration: 120,
-            useNativeDriver: true,
-          }).start(async () => {
-            try {
-              await onComplete();
-            } finally {
-              setCompleting(false);
-              resetKnob();
-            }
-          });
         },
-        onPanResponderTerminate: resetKnob,
+        onPanResponderTerminate: () => resetCard(),
       }),
-    [completing, disabled, loading, maxOffset, onComplete, translateX]
+    [completing, disabled, loading, containerWidth, onComplete, translateX, opacity]
   );
 
-  const handleLayout = (event: LayoutChangeEvent) => {
-    setTrackWidth(event.nativeEvent.layout.width);
+  const handleLayout = (e: LayoutChangeEvent) => {
+    setContainerWidth(e.nativeEvent.layout.width);
   };
 
   const inFlight = loading || completing;
 
+  // Progress-based background tint
+  const bgInterpolation = translateX.interpolate({
+    inputRange: [0, containerWidth * SEND_THRESHOLD || 1],
+    outputRange: darkSurface
+      ? ["rgba(235, 65, 1, 0.10)", "rgba(235, 65, 1, 0.28)"]
+      : ["rgba(235, 65, 1, 0.06)", "rgba(235, 65, 1, 0.18)"],
+    extrapolate: "clamp",
+  });
+
+  // Slight rotation as card moves
+  const rotate = translateX.interpolate({
+    inputRange: [0, containerWidth || 1],
+    outputRange: ["0deg", "4deg"],
+    extrapolate: "clamp",
+  });
+
   return (
-    <View
-      style={[
-        styles.wrapper,
-        disabled && styles.wrapperDisabled,
-        style,
-      ]}
-      onLayout={handleLayout}
-    >
-      <View style={styles.copy}>
-        <Text style={styles.label}>{label}</Text>
-        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-      </View>
-      <View style={styles.track}>
-        <Text style={styles.trackLabel}>
-          {inFlight ? "..." : completionLabel}
+    <View style={[styles.wrapper, style]} onLayout={handleLayout}>
+      {/* Reveal layer behind the card */}
+      <View style={styles.revealLayer}>
+        <Text style={styles.revealText}>
+          {inFlight ? "sending..." : "→ send"}
         </Text>
-        <Animated.View
-          style={[
-            styles.knob,
-            { transform: [{ translateX }] },
-          ]}
-          {...panResponder.panHandlers}
-        >
-          <Text style={styles.knobText}>→</Text>
-        </Animated.View>
       </View>
+
+      {/* Swipeable card */}
+      <Animated.View
+        style={[
+          styles.card,
+          darkSurface && styles.cardDark,
+          disabled && styles.cardDisabled,
+          {
+            transform: [{ translateX }, { rotate }],
+            opacity,
+            backgroundColor: bgInterpolation,
+          },
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <View style={styles.cardContent}>
+          <View style={styles.cardLeft}>
+            <Text
+              style={[styles.label, darkSurface && styles.labelDark]}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
+            {hint ? (
+              <Text style={styles.hint} numberOfLines={1}>
+                {hint}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.cardRight}>
+            <Text
+              style={[styles.actionLabel, inFlight && styles.actionLabelSending]}
+              numberOfLines={1}
+            >
+              {inFlight ? "..." : completionLabel}
+            </Text>
+            <Text style={styles.arrow}>→</Text>
+          </View>
+        </View>
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrapper: {
-    borderRadius: 18,
-    padding: 12,
-    backgroundColor: "rgba(235, 65, 1, 0.08)",
+    height: CARD_HEIGHT,
+    borderRadius: 14,
+    overflow: "hidden",
+    position: "relative",
+  },
+
+  // Reveal layer sits behind the card
+  revealLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(235, 65, 1, 0.14)",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  revealText: {
+    ...typography.label,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: colors.VERMILLION,
+  },
+
+  // The draggable card
+  card: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(235, 65, 1, 0.16)",
+    justifyContent: "center",
   },
-  wrapperDisabled: {
-    opacity: 0.55,
+  cardDark: {
+    borderColor: "rgba(235, 65, 1, 0.28)",
   },
-  copy: {
-    marginBottom: 10,
-    paddingRight: 10,
+  cardDisabled: {
+    opacity: 0.45,
+  },
+  cardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+  },
+  cardLeft: {
+    flex: 1,
+    marginRight: 8,
   },
   label: {
     ...typography.replyInput,
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 18,
     color: colors.TYPE_DARK,
+  },
+  labelDark: {
+    color: colors.TYPE_WHITE,
   },
   hint: {
     ...typography.context,
-    fontSize: 14,
-    lineHeight: 18,
-    color: colors.TYPE_MUTED,
-    marginTop: 4,
-  },
-  track: {
-    height: TRACK_HEIGHT,
-    borderRadius: TRACK_HEIGHT / 2,
-    backgroundColor: "rgba(235, 65, 1, 0.12)",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  trackLabel: {
-    ...typography.label,
     fontSize: 11,
-    color: colors.VERMILLION,
-    textAlign: "center",
+    lineHeight: 14,
+    color: colors.TYPE_MUTED,
+    marginTop: 1,
   },
-  knob: {
-    position: "absolute",
-    left: 4,
-    top: 6,
-    width: KNOB_SIZE,
-    height: KNOB_SIZE,
-    borderRadius: KNOB_SIZE / 2,
-    backgroundColor: colors.VERMILLION,
+  cardRight: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    flexShrink: 0,
   },
-  knobText: {
+  actionLabel: {
     ...typography.label,
-    fontSize: 18,
-    color: colors.TYPE_WHITE,
-    letterSpacing: 0,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.VERMILLION,
+  },
+  actionLabelSending: {
+    color: colors.TYPE_MUTED,
+  },
+  arrow: {
+    fontSize: 16,
+    color: colors.VERMILLION,
+    marginTop: -1,
   },
 });
