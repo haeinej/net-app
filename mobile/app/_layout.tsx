@@ -22,21 +22,21 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <GestureHandlerRootView style={styles.root}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.WARM_GROUND },
+        <GestureHandlerRootView style={styles.root}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.WARM_GROUND },
             animation: Platform.OS === "ios" ? "default" : "fade_from_bottom",
-          }}
-          initialRouteName="index"
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="intro" />
-          <Stack.Screen name="login" options={{ animation: "fade" }} />
-          <Stack.Screen name="verify-email" />
-          <Stack.Screen name="onboarding" options={{ animation: "fade" }} />
-          <Stack.Screen name="(tabs)" options={{ animation: "fade" }} />
+            }}
+            initialRouteName="index"
+          >
+          <Stack.Screen name="index" options={{ animation: "none" }} />
+          <Stack.Screen name="intro" options={{ animation: "none" }} />
+          <Stack.Screen name="login" options={{ animation: "none" }} />
+          <Stack.Screen name="verify-email" options={{ animation: "none" }} />
+          <Stack.Screen name="onboarding" options={{ animation: "none" }} />
+          <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
           <Stack.Screen name="thought/[id]" />
           <Stack.Screen name="conversation/[id]" />
           <Stack.Screen name="user/[id]" />

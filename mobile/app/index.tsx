@@ -50,12 +50,20 @@ export default function IndexScreen() {
         }
 
         if (!cancelled) {
-          router.replace(nextRoute);
+          requestAnimationFrame(() => {
+            if (!cancelled) {
+              router.replace(nextRoute);
+            }
+          });
         }
       } catch (error) {
         console.warn("Startup bootstrap failed:", error);
         if (!cancelled) {
-          router.replace("/intro");
+          requestAnimationFrame(() => {
+            if (!cancelled) {
+              router.replace("/intro");
+            }
+          });
         }
       }
     })();

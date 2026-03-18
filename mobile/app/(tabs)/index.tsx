@@ -97,24 +97,6 @@ export default function WorldsScreen() {
   const handleWalkthroughComplete = useCallback(() => {
     setWalkthroughVisible(false);
     AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
-
-    // Ask for notifications after the user understands the core loop.
-    // We show a single gentle prompt; the native dialog only appears if they accept.
-    Alert.alert(
-      "Stay in the conversation",
-      "ohm. can notify you when someone accepts your reply, sends a new message, or your crossings are about to fade.\n\nYou can change this anytime in Settings.",
-      [
-        { text: "Not now", style: "cancel" },
-        {
-          text: "Turn on notifications",
-          onPress: () => {
-            void import("../../lib/notifications")
-              .then(({ requestPushPermissionIfNeeded }) => requestPushPermissionIfNeeded())
-              .catch(() => {});
-          },
-        },
-      ]
-    );
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
