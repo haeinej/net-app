@@ -1,3 +1,62 @@
+export const EULA_LAST_UPDATED = "March 18, 2026";
+
+export const EULA_SECTIONS: Array<{
+  title: string;
+  paragraphs: string[];
+}> = [
+  {
+    title: "Acceptance of Terms",
+    paragraphs: [
+      "By creating an account and using ohm., you agree to be bound by these Terms of Use. If you do not agree, you may not use the app.",
+    ],
+  },
+  {
+    title: "User-Generated Content",
+    paragraphs: [
+      "ohm. allows users to share thoughts, replies, and engage in conversations with other users. You are solely responsible for the content you create and share through the app.",
+      "You agree not to post, share, or transmit any content that is objectionable, including but not limited to content that is defamatory, obscene, harassing, threatening, hateful, discriminatory, sexually explicit, violent, promotes self-harm, or otherwise violates applicable law.",
+    ],
+  },
+  {
+    title: "Zero Tolerance Policy",
+    paragraphs: [
+      "ohm. maintains a zero-tolerance policy for objectionable content and abusive behavior. Users who violate these terms may have their content removed and their accounts suspended or permanently terminated without prior notice.",
+      "Examples of prohibited conduct include harassment, hate speech, spam, posting sexual content, threats of violence, promotion of self-harm, and any behavior intended to intimidate, bully, or abuse other users.",
+    ],
+  },
+  {
+    title: "Reporting and Blocking",
+    paragraphs: [
+      "If you encounter objectionable content or abusive users, you may report the content or block the user directly through the app. When you block a user, their content is removed from your feed immediately and a report is automatically sent to the ohm. team for review.",
+      "ohm. reviews all reports and takes appropriate action, which may include content removal and account termination.",
+    ],
+  },
+  {
+    title: "Content Moderation",
+    paragraphs: [
+      "ohm. reserves the right to review, filter, and remove any content that violates these terms. Content may be filtered automatically or reviewed manually following user reports.",
+    ],
+  },
+  {
+    title: "Account Termination",
+    paragraphs: [
+      "ohm. may suspend or terminate your account at any time if you violate these Terms of Use. You may also delete your account at any time from the app settings.",
+    ],
+  },
+  {
+    title: "Changes to Terms",
+    paragraphs: [
+      "ohm. may update these Terms of Use from time to time. Continued use of the app after changes constitutes acceptance of the updated terms.",
+    ],
+  },
+  {
+    title: "Contact",
+    paragraphs: [
+      "For questions about these terms, use the support contact published with the app listing.",
+    ],
+  },
+];
+
 export const PRIVACY_POLICY_LAST_UPDATED = "March 12, 2026";
 
 export const PRIVACY_POLICY_SECTIONS: Array<{

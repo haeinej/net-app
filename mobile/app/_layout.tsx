@@ -50,6 +50,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="support" />
           <Stack.Screen name="privacy" />
+          <Stack.Screen name="terms" />
           <Stack.Screen name="delete-account" />
         </Stack>
       </GestureHandlerRootView>

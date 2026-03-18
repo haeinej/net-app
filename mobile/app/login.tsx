@@ -139,10 +139,17 @@ export default function LoginScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.tertiaryLink}
+            onPress={() => router.push("/terms" as Href)}
+            disabled={loading}
+          >
+            <Text style={styles.secondaryLinkText}>Terms of Use</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tertiaryLink}
             onPress={() => router.push("/privacy" as Href)}
             disabled={loading}
           >
-            <Text style={styles.secondaryLinkText}>Privacy policy</Text>
+            <Text style={styles.secondaryLinkText}>Privacy Policy</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>

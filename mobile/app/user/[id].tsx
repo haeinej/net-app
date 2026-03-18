@@ -124,7 +124,7 @@ export default function UserProfileScreen() {
     } else {
       Alert.alert(
         "Block user?",
-        "Their content will be removed from your feed immediately. They won't be notified.",
+        "Their content will be removed from your feed immediately. The ohm. team will be notified and will review the account.",
         [
           { text: "Cancel", style: "cancel" },
           {

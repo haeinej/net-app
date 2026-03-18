@@ -78,6 +78,11 @@ export default function SettingsScreen() {
             onPress={() => router.push("/support" as Href)}
           />
           <SettingsRow
+            title="Terms of Use"
+            subtitle="Review the rules for using ohm. and its zero-tolerance content policy."
+            onPress={() => router.push("/terms" as Href)}
+          />
+          <SettingsRow
             title="Privacy Policy"
             subtitle="Read how ohm. stores and uses account and conversation data."
             onPress={() => router.push("/privacy" as Href)}

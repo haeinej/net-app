@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO, primitives, radii, opacity } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
@@ -70,6 +70,8 @@ export default function OnboardingScreen() {
   const [regError, setRegError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [sendingStep1, setSendingStep1] = useState(false);
+
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Step 2
   const [interest1, setInterest1] = useState("");
@@ -176,7 +178,8 @@ export default function OnboardingScreen() {
     name.trim().length > 0 &&
     email.trim().length > 0 &&
     password.length >= 10 &&
-    confirmPassword.length > 0;
+    confirmPassword.length > 0 &&
+    termsAccepted;
 
   const handleStep1Continue = useCallback(async () => {
     if (!canContinueStep1 || sendingStep1) return;
@@ -362,6 +365,33 @@ export default function OnboardingScreen() {
           <Text style={styles.passwordGuide}>
             Use 10+ characters with uppercase, lowercase, a number, and a symbol.
           </Text>
+
+          <View style={styles.termsRow}>
+            <TouchableOpacity
+              style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}
+              onPress={() => setTermsAccepted((v) => !v)}
+              disabled={sendingStep1}
+              activeOpacity={0.7}
+            >
+              {termsAccepted ? <Text style={styles.checkmark}>✓</Text> : null}
+            </TouchableOpacity>
+            <Text style={styles.termsText}>
+              I agree to the{" "}
+              <Text
+                style={styles.termsLink}
+                onPress={() => router.push("/terms" as Href)}
+              >
+                Terms of Use
+              </Text>
+              {" "}and{" "}
+              <Text
+                style={styles.termsLink}
+                onPress={() => router.push("/privacy" as Href)}
+              >
+                Privacy Policy
+              </Text>
+            </Text>
+          </View>
 
           {regError ? <Text style={styles.error}>{regError}</Text> : null}
 
@@ -665,6 +695,44 @@ const styles = StyleSheet.create({
     color: colors.TYPE_MUTED,
     textAlign: "center",
     marginBottom: 12,
+  },
+  termsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.TYPE_MUTED,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.OLIVE,
+    borderColor: colors.OLIVE,
+  },
+  checkmark: {
+    color: colors.TYPE_WHITE,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 16,
+  },
+  termsText: {
+    flex: 1,
+    fontFamily: typography.context.fontFamily,
+    fontSize: 11.5,
+    lineHeight: 17,
+    color: colors.TYPE_DARK,
+  },
+  termsLink: {
+    color: colors.OLIVE,
+    textDecorationLine: "underline" as const,
   },
   error: {
     ...primitives.errorText,

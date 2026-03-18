@@ -1,44 +1,59 @@
-import { useWindowDimensions } from "react-native";
+import { useWindowDimensions, type ViewStyle } from "react-native";
+import { spacing } from "../theme";
 
-/**
- * Max content width on tablet-sized screens.
- * Keeps the phone-optimised layout comfortable on iPad without
- * stretching cards across the full 1024+ px width.
- */
-const TABLET_BREAKPOINT = 600;
+/** Breakpoints (width in points) */
+const TABLET_MIN = 600;
+const DESKTOP_MIN = 1024;
+
+/** Maximum content width on wider screens so the UI doesn't stretch edge-to-edge */
 const MAX_CONTENT_WIDTH = 540;
 
+export interface ResponsiveLayout {
+  /** True when the window is tablet-width or wider */
+  isTablet: boolean;
+  /** True when the window is desktop-width or wider */
+  isDesktop: boolean;
+  /** The usable content width — capped on wider screens */
+  contentWidth: number;
+  /** Style object that centers and caps the main content column */
+  containerStyle: ViewStyle;
+  /** Current window width */
+  windowWidth: number;
+  /** Current window height */
+  windowHeight: number;
+}
+
 /**
- * Provides responsive layout values that adapt to phone vs tablet screens.
- *
- * On phone-sized screens (<600 px), returns full-width behaviour.
- * On tablet-sized screens (>=600 px), constrains content to a centred column.
+ * Returns layout helpers that adapt to the current window size.
+ * On phones the content fills the screen; on tablets and larger the
+ * content is centred in a capped-width column so the UI stays
+ * comfortable and readable per Apple Guideline 4.
  */
-export function useResponsiveLayout() {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const isTablet = screenWidth >= TABLET_BREAKPOINT;
+export function useResponsiveLayout(): ResponsiveLayout {
+  const { width, height } = useWindowDimensions();
+
+  const isTablet = width >= TABLET_MIN;
+  const isDesktop = width >= DESKTOP_MIN;
+
+  const availableWidth = width - spacing.screenPadding * 2;
   const contentWidth = isTablet
-    ? Math.min(MAX_CONTENT_WIDTH, screenWidth - 48)
-    : screenWidth;
-  const contentPadding = isTablet
-    ? Math.max(24, (screenWidth - contentWidth) / 2)
-    : 16;
+    ? Math.min(availableWidth, MAX_CONTENT_WIDTH)
+    : availableWidth;
+
+  const containerStyle: ViewStyle = isTablet
+    ? {
+        maxWidth: MAX_CONTENT_WIDTH,
+        alignSelf: "center",
+        width: "100%",
+      }
+    : {};
 
   return {
-    screenWidth,
-    screenHeight,
     isTablet,
-    /** The max width content should occupy. */
+    isDesktop,
     contentWidth,
-    /** Horizontal padding to center content. */
-    contentPadding,
-    /** Style to apply to a container to constrain and center content. */
-    containerStyle: isTablet
-      ? ({
-          maxWidth: MAX_CONTENT_WIDTH,
-          alignSelf: "center" as const,
-          width: "100%" as const,
-        } as const)
-      : undefined,
+    containerStyle,
+    windowWidth: width,
+    windowHeight: height,
   };
 }
