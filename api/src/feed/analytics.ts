@@ -79,6 +79,14 @@ const MIN_DEPTH10_DELTA = -0.005;
 const MIN_ACCEPT_DELTA = -0.01;
 const MAX_AUTOPOST_DELTA = 0.02;
 const MAX_REPEAT_AUTHOR_DELTA = 0.01;
+const FEED_SERVE_FLUSH_BATCH_SIZE = 250;
+const FEED_SERVE_FLUSH_DELAY_MS = 1000;
+
+type PendingFeedServeInsert = typeof feedServes.$inferInsert;
+
+let pendingFeedServeRows: PendingFeedServeInsert[] = [];
+let feedServeFlushTimer: NodeJS.Timeout | null = null;
+let feedServeFlushPromise: Promise<void> | null = null;
 
 function numericMetric(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -333,8 +341,8 @@ export async function recordFeedServe(
   if (traces.length === 0) return;
   const requestId = randomUUID();
   const servedAt = new Date();
-  await db.insert(feedServes).values(
-    traces.map((trace) => ({
+  pendingFeedServeRows.push(
+    ...traces.map((trace) => ({
       requestId,
       viewerId,
       itemType: trace.item_type,
@@ -356,6 +364,53 @@ export async function recordFeedServe(
       servedAt,
     }))
   );
+
+  if (pendingFeedServeRows.length >= FEED_SERVE_FLUSH_BATCH_SIZE) {
+    void flushPendingFeedServes();
+    return;
+  }
+
+  if (!feedServeFlushTimer) {
+    feedServeFlushTimer = setTimeout(() => {
+      feedServeFlushTimer = null;
+      void flushPendingFeedServes();
+    }, FEED_SERVE_FLUSH_DELAY_MS);
+  }
+}
+
+async function flushPendingFeedServes(): Promise<void> {
+  if (feedServeFlushPromise) {
+    return feedServeFlushPromise;
+  }
+  if (pendingFeedServeRows.length === 0) {
+    return;
+  }
+
+  if (feedServeFlushTimer) {
+    clearTimeout(feedServeFlushTimer);
+    feedServeFlushTimer = null;
+  }
+
+  const rows = pendingFeedServeRows;
+  pendingFeedServeRows = [];
+
+  feedServeFlushPromise = db
+    .insert(feedServes)
+    .values(rows)
+    .catch((error) => {
+      console.error("feed serve batch insert failed", {
+        count: rows.length,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    })
+    .finally(() => {
+      feedServeFlushPromise = null;
+      if (pendingFeedServeRows.length > 0) {
+        void flushPendingFeedServes();
+      }
+    });
+
+  await feedServeFlushPromise;
 }
 
 export async function getFeedMetrics(days: number = 7) {

@@ -171,6 +171,20 @@ export const replies = pgTable(
   (table) => [index("replies_thought_status_idx").on(table.thoughtId, table.status)]
 );
 
+// 3b. thought_feed_stats (materialized reply / conversation quality signals per thought)
+export const thoughtFeedStats = pgTable("thought_feed_stats", {
+  thoughtId: uuid("thought_id")
+    .primaryKey()
+    .references(() => thoughts.id, { onDelete: "cascade" }),
+  acceptedReplyCount: integer("accepted_reply_count").notNull().default(0),
+  crossDomainAcceptedReplyCount: integer("cross_domain_accepted_reply_count")
+    .notNull()
+    .default(0),
+  sustainedConversationCount: integer("sustained_conversation_count").notNull().default(0),
+  maxConversationDepth: integer("max_conversation_depth").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // 4. conversations
 export const conversations = pgTable(
   "conversations",
@@ -199,6 +213,14 @@ export const conversations = pgTable(
     index("conversations_participant_a_idx").on(table.participantA),
     index("conversations_participant_b_idx").on(table.participantB),
     index("conversations_last_message_at_idx").on(table.lastMessageAt.desc()),
+    index("conversations_participant_a_last_msg_idx").on(
+      table.participantA,
+      table.lastMessageAt.desc()
+    ),
+    index("conversations_participant_b_last_msg_idx").on(
+      table.participantB,
+      table.lastMessageAt.desc()
+    ),
     uniqueIndex("conversations_reply_id_unique").on(table.replyId),
   ]
 );
@@ -550,7 +572,15 @@ export const crossings = pgTable("crossings", {
   uniqueIndex("crossings_source_draft_unique")
     .on(table.sourceDraftId)
     .where(sql`${table.sourceDraftId} is not null`),
-]);
+  index("crossings_participant_a_created_idx").on(
+    table.participantA,
+    table.createdAt.desc()
+  ),
+  index("crossings_participant_b_created_idx").on(
+    table.participantB,
+    table.createdAt.desc()
+  ),
+]);*** End Patch```} />
 
 // 19b. crossing_replies (replies to crossings, tagged to a participant)
 export const crossingReplies = pgTable(

@@ -4,12 +4,19 @@ import { db, thoughts, replies, users } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { getBlockedUserIds } from "../lib/blocked-users";
 
+interface NotificationsQuery {
+  limit?: string;
+}
+
 export async function notificationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
-  app.get("/api/notifications", async (request, reply) => {
+  app.get<{ Querystring: NotificationsQuery }>("/api/notifications", async (request, reply) => {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
+    const rawLimit = parseInt(request.query.limit ?? "50", 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
     const pendingReplies = await db
       .select({
         replyId: replies.id,
@@ -21,7 +28,8 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
       .from(replies)
       .innerJoin(thoughts, eq(replies.thoughtId, thoughts.id))
       .where(and(eq(thoughts.userId, userId), eq(replies.status, "pending"), isNull(thoughts.deletedAt)))
-      .orderBy(desc(replies.createdAt));
+      .orderBy(desc(replies.createdAt))
+      .limit(limit);
     const thoughtIds = [...new Set(pendingReplies.map((r) => r.thoughtId))];
     const replierIds = [...new Set(pendingReplies.map((r) => r.replierId))];
     const thoughtRows =

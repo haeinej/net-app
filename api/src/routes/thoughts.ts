@@ -5,6 +5,7 @@ import { getUserId, authenticate } from "../lib/auth";
 import { processNewThought } from "../thought-processing";
 import { invalidateFeedCache } from "../feed";
 import { filterContent } from "../lib/content-filter";
+import { invalidateViewerFeedProfile } from "../feed/viewer-profile";
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -81,7 +82,8 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         code: err?.code,
       });
     });
-    invalidateFeedCache(userId);
+    void invalidateFeedCache(userId);
+    void invalidateViewerFeedProfile(userId);
 
     return reply.status(201).send({
       id: thoughtId,
@@ -101,7 +103,8 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (!t) return reply.status(404).send();
     if (t.userId !== userId) return reply.status(403).send();
     await db.update(thoughts).set({ deletedAt: new Date() }).where(eq(thoughts.id, id));
-    invalidateFeedCache(userId);
+    void invalidateFeedCache(userId);
+    void invalidateViewerFeedProfile(userId);
     return reply.status(200).send();
   });
 
@@ -129,7 +132,17 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
 
     if (Object.keys(updates).length > 0) {
       await db.update(thoughts).set(updates).where(eq(thoughts.id, id));
-      invalidateFeedCache(userId);
+      void invalidateFeedCache(userId);
+      void invalidateViewerFeedProfile(userId);
+      if (sentence !== undefined || context !== undefined) {
+        processNewThought(id).catch((err: any) => {
+          console.error("processNewThought after edit failed", {
+            thoughtId: id,
+            message: err?.message ?? String(err),
+            code: err?.code,
+          });
+        });
+      }
     }
 
     const [updated] = await db.select().from(thoughts).where(eq(thoughts.id, id));

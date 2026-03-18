@@ -201,7 +201,7 @@ export async function moderationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Invalidate feed cache so blocked user content is immediately removed
-    invalidateFeedCache(userId);
+    void invalidateFeedCache(userId);
 
     // Log for developer notification
     request.log.warn(
@@ -243,7 +243,7 @@ export async function moderationRoutes(app: FastifyInstance): Promise<void> {
         .delete(blocks)
         .where(and(eq(blocks.blockerId, userId), eq(blocks.blockedId, blockedId)));
 
-      invalidateFeedCache(userId);
+      void invalidateFeedCache(userId);
       return reply.status(200).send({ blocked: false });
     }
   );

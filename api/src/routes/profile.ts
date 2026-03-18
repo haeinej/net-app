@@ -25,6 +25,11 @@ interface UserIdParam {
   id: string;
 }
 
+interface ProfileQuery {
+  thoughts_limit?: string;
+  crossings_limit?: string;
+}
+
 interface UpdateProfileBody {
   name?: string;
   photo_url?: string;
@@ -38,7 +43,9 @@ interface DeleteAccountBody {
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
-  app.get<{ Params: UserIdParam }>("/api/users/:id/profile", async (request, reply) => {
+  app.get<{ Params: UserIdParam; Querystring: ProfileQuery }>(
+    "/api/users/:id/profile",
+    async (request, reply) => {
     try {
       const userId = getUserId(request);
       if (!userId) return reply.status(401).send();
@@ -59,6 +66,12 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
 
       if (!user) return reply.status(404).send({ error: "Profile not found" });
 
+      const rawThoughtsLimit = parseInt(request.query.thoughts_limit ?? "100", 10);
+      const thoughtsLimit =
+        Number.isFinite(rawThoughtsLimit) && rawThoughtsLimit > 0
+          ? Math.min(rawThoughtsLimit, 200)
+          : 100;
+
       let thoughtsForProfile: Array<{
         id: string;
         sentence: string;
@@ -78,7 +91,8 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
           })
           .from(thoughts)
           .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
-          .orderBy(desc(thoughts.createdAt));
+          .orderBy(desc(thoughts.createdAt))
+          .limit(thoughtsLimit);
 
         thoughtsForProfile = userThoughts.map((t) => ({
           id: t.id,
@@ -93,6 +107,12 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
           "profile thought hydration failed; returning profile without thoughts"
         );
       }
+
+      const rawCrossingsLimit = parseInt(request.query.crossings_limit ?? "100", 10);
+      const crossingsLimit =
+        Number.isFinite(rawCrossingsLimit) && rawCrossingsLimit > 0
+          ? Math.min(rawCrossingsLimit, 200)
+          : 100;
 
       let crossingsForProfile: Array<{
         id: string;
@@ -117,7 +137,8 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
           })
           .from(crossings)
           .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
-          .orderBy(desc(crossings.createdAt));
+          .orderBy(desc(crossings.createdAt))
+          .limit(crossingsLimit);
 
         const participantIds = [
           ...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB])),

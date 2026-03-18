@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { eq, and, isNull } from "drizzle-orm";
-import { db, thoughts, replies, conversations, messages } from "../db";
+import { db, thoughts, replies, conversations, messages, thoughtFeedStats, users } from "../db";
 import { invalidateFeedCache } from "../feed";
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
@@ -176,6 +176,44 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      // Update materialized reply stats for this thought
+      const [author, replier] = await Promise.all([
+        tx
+          .select({ concentration: users.concentration })
+          .from(users)
+          .where(eq(users.id, thought.userId))
+          .limit(1),
+        tx
+          .select({ concentration: users.concentration })
+          .from(users)
+          .where(eq(users.id, acceptedReply.replierId))
+          .limit(1),
+      ]);
+      const authorConc = (author?.concentration ?? "").trim().toLowerCase();
+      const replierConc = (replier?.concentration ?? "").trim().toLowerCase();
+      const isCrossDomain =
+        authorConc.length > 0 && replierConc.length > 0 && authorConc !== replierConc;
+
+      await tx
+        .insert(thoughtFeedStats)
+        .values({
+          thoughtId: thought.id,
+          acceptedReplyCount: 1,
+          crossDomainAcceptedReplyCount: isCrossDomain ? 1 : 0,
+          sustainedConversationCount: 0,
+          maxConversationDepth: 1,
+        })
+        .onConflictDoUpdate({
+          target: thoughtFeedStats.thoughtId,
+          set: {
+            acceptedReplyCount: sql`thought_feed_stats.accepted_reply_count + 1`,
+            crossDomainAcceptedReplyCount: isCrossDomain
+              ? sql`thought_feed_stats.cross_domain_accepted_reply_count + 1`
+              : thoughtFeedStats.crossDomainAcceptedReplyCount,
+            updatedAt: sql`now()`,
+          },
+        });
+
       return {
         status: 200 as const,
         conversationId,
@@ -190,8 +228,8 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(accepted.status).send();
     }
 
-    invalidateFeedCache(accepted.authorId);
-    invalidateFeedCache(accepted.replierId);
+    void invalidateFeedCache(accepted.authorId);
+    void invalidateFeedCache(accepted.replierId);
 
     if (accepted.trackAcceptance) {
       trackEngagementEvents(userId, [{

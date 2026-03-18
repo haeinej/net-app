@@ -4,7 +4,7 @@
  */
 
 import { and, eq, inArray } from "drizzle-orm";
-import { db, replies, conversations, users, crossDomainAffinity, systemConfig, crossClusterAffinity } from "../db";
+import { db, replies, conversations, users, crossDomainAffinity, systemConfig, crossClusterAffinity, thoughtFeedStats } from "../db";
 import { feedConfig, type FeedRuntimeConfig } from "./config";
 import type { ThoughtCandidate, ViewerProfile, RecommendationWeights } from "./types";
 
@@ -164,7 +164,15 @@ export type ReplyQualityMap = Map<string, number>;
 
 /**
  * Build reply quality scores in batch for a set of thought IDs.
- * R ~ 0.3 base + 0.4 if any sustained conversation (>=10 msgs) + up to 0.3 cross-domain reply ratio.
+ *
+ * This now reads from materialized `thought_feed_stats` rows:
+ *   - accepted_reply_count
+ *   - cross_domain_accepted_reply_count
+ *   - sustained_conversation_count
+ *   - max_conversation_depth
+ *
+ * R ~ 0.3 base + 0.4 if any sustained conversation (>=10 msgs)
+ *   + up to 0.3 from cross-domain ratio.
  */
 export async function buildReplyQualityMap(
   thoughtIds: string[],
@@ -173,70 +181,44 @@ export async function buildReplyQualityMap(
   const map: ReplyQualityMap = new Map();
   if (thoughtIds.length === 0) return map;
 
-  // Accepted replies per thought
-  const acceptedRows = await db
-    .select({ thoughtId: replies.thoughtId, replierId: replies.replierId })
-    .from(replies)
-    .where(and(inArray(replies.thoughtId, thoughtIds), eq(replies.status, "accepted")));
-
-  // Conversations per thought
-  const convRows = await db
-    .select({
-      thoughtId: conversations.thoughtId,
-      messageCount: conversations.messageCount,
-      participantA: conversations.participantA,
-      participantB: conversations.participantB,
-    })
-    .from(conversations)
-    .where(inArray(conversations.thoughtId, thoughtIds));
-
-  const convByThought = new Map<string, typeof convRows>();
-  for (const row of convRows) {
-    const arr = convByThought.get(row.thoughtId) ?? [];
-    arr.push(row);
-    convByThought.set(row.thoughtId, arr);
-  }
-
-  const acceptedByThought = new Map<string, typeof acceptedRows>();
-  for (const row of acceptedRows) {
-    const arr = acceptedByThought.get(row.thoughtId) ?? [];
-    arr.push(row);
-    acceptedByThought.set(row.thoughtId, arr);
-  }
-
-  // Replier users in one batched query
-  const replierIds = [...new Set(acceptedRows.map((r) => r.replierId))];
-  const replierUsers =
-    replierIds.length > 0
+  const rows =
+    thoughtIds.length > 0
       ? await db
-          .select({ id: users.id, concentration: users.concentration })
-          .from(users)
-          .where(inArray(users.id, replierIds))
+          .select({
+            thoughtId: thoughtFeedStats.thoughtId,
+            acceptedReplyCount: thoughtFeedStats.acceptedReplyCount,
+            crossDomainAcceptedReplyCount: thoughtFeedStats.crossDomainAcceptedReplyCount,
+            sustainedConversationCount: thoughtFeedStats.sustainedConversationCount,
+            maxConversationDepth: thoughtFeedStats.maxConversationDepth,
+          })
+          .from(thoughtFeedStats)
+          .where(inArray(thoughtFeedStats.thoughtId, thoughtIds))
       : [];
-  const replierConc = new Map(replierUsers.map((u) => [u.id, (u.concentration ?? "").toLowerCase()]));
+  const byThought = new Map(rows.map((r) => [r.thoughtId, r]));
 
   for (const thoughtId of thoughtIds) {
-    const accepted = acceptedByThought.get(thoughtId) ?? [];
-    if (accepted.length === 0) {
+    const row = byThought.get(thoughtId);
+    if (!row) {
+      map.set(thoughtId, 0.5);
+      continue;
+    }
+
+    const accepted = row.acceptedReplyCount ?? 0;
+    if (accepted === 0) {
       map.set(thoughtId, 0.5);
       continue;
     }
 
     let r = 0.3;
 
-    const convs = convByThought.get(thoughtId) ?? [];
-    const sustained = convs.filter((c) => (c.messageCount ?? 0) >= 10);
-    if (sustained.length > 0) r += 0.4;
+    if ((row.sustainedConversationCount ?? 0) > 0 || (row.maxConversationDepth ?? 0) >= 10) {
+      r += 0.4;
+    }
 
-    const authorConc = (authorConcentrationByThought.get(thoughtId) ?? "").toLowerCase();
-    if (authorConc && accepted.length > 0) {
-      let different = 0;
-      for (const a of accepted) {
-        const c = replierConc.get(a.replierId) ?? "";
-        if (c && c !== authorConc) different++;
-      }
-      const crossDomain = (different / accepted.length) * 0.3;
-      r += crossDomain;
+    const crossDomainAccepted = row.crossDomainAcceptedReplyCount ?? 0;
+    if (accepted > 0 && crossDomainAccepted > 0) {
+      const crossDomainRatio = Math.min(1, crossDomainAccepted / accepted);
+      r += crossDomainRatio * 0.3;
     }
 
     map.set(thoughtId, Math.min(1, r));

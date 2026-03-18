@@ -10,29 +10,56 @@ import { feedConfig, type FeedRuntimeConfig } from "./config";
 import { getSimilarities } from "./score";
 import type { ThoughtCandidate, ViewerEmbeddings, BucketedCandidate, UserStage } from "./types";
 
-/** Map DB row to ThoughtCandidate (embeddings as number[] from driver). */
-function toCandidate(row: {
-  thought: typeof thoughts.$inferSelect;
+type CandidateRow = {
+  id: string;
+  userId: string;
+  sentence: string;
+  context: string | null;
+  photoUrl: string | null;
+  imageUrl: string | null;
+  surfaceEmbedding: unknown;
+  questionEmbedding: unknown;
+  qualityScore: number | null;
+  createdAt: Date | null;
   authorCohortYear: number | null;
   authorConcentration: string | null;
-}): ThoughtCandidate {
-  const t = row.thought;
+  clusterId: string | null;
+};
+
+const candidateSelect = {
+  id: thoughts.id,
+  userId: thoughts.userId,
+  sentence: thoughts.sentence,
+  context: thoughts.context,
+  photoUrl: thoughts.photoUrl,
+  imageUrl: thoughts.imageUrl,
+  surfaceEmbedding: thoughts.surfaceEmbedding,
+  questionEmbedding: thoughts.questionEmbedding,
+  qualityScore: thoughts.qualityScore,
+  createdAt: thoughts.createdAt,
+  clusterId: thoughts.clusterId,
+  authorCohortYear: users.cohortYear,
+  authorConcentration: users.concentration,
+} as const;
+
+/** Map DB row to ThoughtCandidate (embeddings as number[] from driver). */
+function toCandidate(row: CandidateRow): ThoughtCandidate {
   return {
-    id: t.id,
-    userId: t.userId,
-    sentence: t.sentence,
-    context: t.context,
-    photoUrl: t.photoUrl,
-    imageUrl: t.imageUrl,
-    surfaceEmbedding: Array.isArray(t.surfaceEmbedding) ? (t.surfaceEmbedding as number[]) : null,
-    resonanceEmbedding: Array.isArray(t.questionEmbedding)
-      ? (t.questionEmbedding as number[])
+    id: row.id,
+    userId: row.userId,
+    sentence: row.sentence,
+    context: row.context,
+    photoUrl: row.photoUrl,
+    imageUrl: row.imageUrl,
+    surfaceEmbedding: Array.isArray(row.surfaceEmbedding) ? (row.surfaceEmbedding as number[]) : null,
+    resonanceEmbedding: Array.isArray(row.questionEmbedding)
+      ? (row.questionEmbedding as number[])
       : null,
-    qualityScore: t.qualityScore,
-    createdAt: t.createdAt ?? new Date(),
+    qualityScore: row.qualityScore,
+    createdAt: row.createdAt ?? new Date(),
     authorCohortYear: row.authorCohortYear,
     authorConcentration: row.authorConcentration,
-    clusterId: t.clusterId ?? null,
+    clusterId: row.clusterId ?? null,
   };
 }
 
@@ -52,11 +79,7 @@ async function getRecentCandidates(
   config: FeedRuntimeConfig = feedConfig
 ): Promise<ThoughtCandidate[]> {
   const rows = await db
-    .select({
-      thought: thoughts,
-      authorCohortYear: users.cohortYear,
-      authorConcentration: users.concentration,
-    })
+    .select(candidateSelect)
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(and(ne(thoughts.userId, viewerId), isNull(thoughts.deletedAt)))
@@ -72,11 +95,7 @@ async function getNearestByResonance(
   k: number
 ): Promise<ThoughtCandidate[]> {
   const rows = await db
-    .select({
-      thought: thoughts,
-      authorCohortYear: users.cohortYear,
-      authorConcentration: users.concentration,
-    })
+    .select(candidateSelect)
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(
@@ -98,11 +117,7 @@ async function getNearestBySurface(
   k: number
 ): Promise<ThoughtCandidate[]> {
   const rows = await db
-    .select({
-      thought: thoughts,
-      authorCohortYear: users.cohortYear,
-      authorConcentration: users.concentration,
-    })
+    .select(candidateSelect)
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(
@@ -143,11 +158,7 @@ async function getRandomCandidates(
   }
 
   const rows = await db
-    .select({
-      thought: thoughts,
-      authorCohortYear: users.cohortYear,
-      authorConcentration: users.concentration,
-    })
+    .select(candidateSelect)
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(and(...conditions))
@@ -155,7 +166,7 @@ async function getRandomCandidates(
     .limit(poolLimit);
   return rows
     .map((row) => ({
-      score: stableShuffleScore(viewerId, row.thought.id, dayKey),
+      score: stableShuffleScore(viewerId, row.id, dayKey),
       candidate: toCandidate(row),
     }))
     .sort((a, b) => a.score - b.score)
@@ -280,31 +291,11 @@ export async function getBucketedCandidates(
   // Retrieve flat candidate pool (reuse existing logic)
   const recent = await getRecentCandidates(viewerId, config);
   const bySimilarity: ThoughtCandidate[] = [];
-  const viewerThoughts = await db
-    .select({
-      resonanceEmbedding: thoughts.questionEmbedding,
-      surfaceEmbedding: thoughts.surfaceEmbedding,
-    })
-    .from(thoughts)
-    .where(eq(thoughts.userId, viewerId));
-
-  const resonanceVecs = viewerThoughts
-    .map((t) =>
-      Array.isArray(t.resonanceEmbedding)
-        ? (t.resonanceEmbedding as number[])
-        : null
-    )
-    .filter((v): v is number[] => v != null);
-  const hasViewerThoughts = resonanceVecs.length > 0;
+  const primaryResonanceEmbedding = viewerEmbeddings.resonanceEmbeddings[0] ?? null;
+  const hasViewerThoughts = Boolean(primaryResonanceEmbedding);
 
   if (hasViewerThoughts) {
-    const dim = resonanceVecs[0]!.length;
-    const sum = new Array(dim).fill(0);
-    for (const v of resonanceVecs) {
-      for (let i = 0; i < dim; i++) sum[i] += v[i]!;
-    }
-    const avg = sum.map((x) => x / resonanceVecs.length);
-    const batch = await getNearestByResonance(viewerId, avg, limit);
+    const batch = await getNearestByResonance(viewerId, primaryResonanceEmbedding!, limit);
     bySimilarity.push(...batch);
   }
 

@@ -6,6 +6,8 @@
 import { eq } from "drizzle-orm";
 import { db, thoughts, failedProcessingJobs } from "../db";
 import { getEmbeddingService } from "../embedding";
+import { invalidateFeedCache } from "../feed";
+import { invalidateViewerFeedProfile } from "../feed/viewer-profile";
 import { llmConfig, complete } from "../llm";
 import {
   RESONANCE_SIGNATURE_SYSTEM,
@@ -88,6 +90,11 @@ async function runPipeline(thoughtId: string): Promise<void> {
       qualityScore,
     })
     .where(eq(thoughts.id, thoughtId));
+
+  await Promise.all([
+    invalidateViewerFeedProfile(row.userId),
+    invalidateFeedCache(row.userId),
+  ]);
 }
 
 /**
@@ -95,6 +102,11 @@ async function runPipeline(thoughtId: string): Promise<void> {
  * On failure: retry once; if still failing, store nulls and enqueue for reprocessing.
  */
 export async function processNewThought(thoughtId: string): Promise<void> {
+  const [thought] = await db
+    .select({ userId: thoughts.userId })
+    .from(thoughts)
+    .where(eq(thoughts.id, thoughtId))
+    .limit(1);
   const run = () => runPipeline(thoughtId);
   try {
     await run();
@@ -110,6 +122,12 @@ export async function processNewThought(thoughtId: string): Promise<void> {
           qualityScore: null,
         })
         .where(eq(thoughts.id, thoughtId));
+      if (thought?.userId) {
+        await Promise.all([
+          invalidateViewerFeedProfile(thought.userId),
+          invalidateFeedCache(thought.userId),
+        ]);
+      }
       await db.insert(failedProcessingJobs).values({
         thoughtId,
         error: second instanceof Error ? second.message : String(second),

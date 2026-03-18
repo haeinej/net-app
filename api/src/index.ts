@@ -46,6 +46,27 @@ async function main() {
     throw new Error("CORS_ORIGIN must be set in production");
   }
 
+  app.addHook("onResponse", async (request, reply) => {
+    const route = request.routerPath ?? request.raw.url ?? "unknown";
+    const method = request.method;
+    const statusCode = reply.statusCode;
+    const durationNs = reply.getResponseTime?.() ?? 0;
+    const durationMs =
+      typeof durationNs === "number" && durationNs > 0 ? durationNs / 1_000_000 : 0;
+    const userId = (request as any).user?.sub ?? null;
+
+    request.log.info(
+      {
+        route,
+        method,
+        statusCode,
+        duration_ms: Math.round(durationMs),
+        user_id: userId,
+      },
+      "request_completed"
+    );
+  });
+
   console.log("[boot] registering cors...");
   await app.register(cors, {
     origin(origin, callback) {

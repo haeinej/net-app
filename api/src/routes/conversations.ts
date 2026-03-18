@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { eq, and, or, desc, asc, lt, inArray, sql } from "drizzle-orm";
-import { db, conversations, messages, users, thoughts, crossingDrafts, crossings } from "../db";
+import { db, conversations, messages, users, thoughts, crossingDrafts, crossings, thoughtFeedStats } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { trackEngagementEvents } from "../engagement/track";
 import { getBlockedUserIds } from "../lib/blocked-users";
@@ -26,41 +26,88 @@ interface MessagesQuery {
   before_id?: string;
 }
 
+interface ConversationListQuery {
+  limit?: string;
+  before_id?: string;
+}
+
 async function markConversationRead(
-  conversationId: string,
-  userId: string,
-  participantA: string,
-  participantB: string
+  conv: typeof conversations.$inferSelect,
+  userId: string
 ): Promise<void> {
   const now = new Date();
-  if (participantA === userId) {
+  if (conv.participantA === userId) {
+    const seenAt = conv.participantASeenAt;
+    if (conv.lastMessageAt && seenAt && conv.lastMessageAt <= seenAt) return;
     await db
       .update(conversations)
       .set({ participantASeenAt: now })
-      .where(eq(conversations.id, conversationId));
+      .where(eq(conversations.id, conv.id));
     return;
   }
 
-  if (participantB === userId) {
+  if (conv.participantB === userId) {
+    const seenAt = conv.participantBSeenAt;
+    if (conv.lastMessageAt && seenAt && conv.lastMessageAt <= seenAt) return;
     await db
       .update(conversations)
       .set({ participantBSeenAt: now })
-      .where(eq(conversations.id, conversationId));
+      .where(eq(conversations.id, conv.id));
   }
 }
 
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
-  app.get("/api/conversations", async (request, reply) => {
+  app.get<{ Querystring: ConversationListQuery }>("/api/conversations", async (request, reply) => {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
     const blockedIds = await getBlockedUserIds(userId);
-    const allConvs = await db
-      .select()
-      .from(conversations)
-      .where(or(eq(conversations.participantA, userId), eq(conversations.participantB, userId)))
-      .orderBy(desc(conversations.lastMessageAt));
+    const rawLimit = parseInt(request.query.limit ?? "50", 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 50;
+    const beforeId = request.query.before_id;
+
+    let allConvs;
+    if (beforeId) {
+      const [before] = await db
+        .select({
+          id: conversations.id,
+          lastMessageAt: conversations.lastMessageAt,
+        })
+        .from(conversations)
+        .where(eq(conversations.id, beforeId));
+      if (!before?.lastMessageAt) {
+        allConvs = [];
+      } else {
+        allConvs = await db
+          .select()
+          .from(conversations)
+          .where(
+            and(
+              or(
+                eq(conversations.participantA, userId),
+                eq(conversations.participantB, userId)
+              ),
+              sql`(${conversations.lastMessageAt}, ${conversations.id}) < (${before.lastMessageAt}, ${before.id})`
+            )
+          )
+          .orderBy(desc(conversations.lastMessageAt), desc(conversations.id))
+          .limit(limit);
+      }
+    } else {
+      allConvs = await db
+        .select()
+        .from(conversations)
+        .where(
+          or(
+            eq(conversations.participantA, userId),
+            eq(conversations.participantB, userId)
+          )
+        )
+        .orderBy(desc(conversations.lastMessageAt), desc(conversations.id))
+        .limit(limit);
+    }
     // Filter out conversations with blocked users
     const list = blockedIds.size > 0
       ? allConvs.filter((c) => {
@@ -146,7 +193,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     if (!conv) return reply.status(404).send();
     if (conv.participantA !== userId && conv.participantB !== userId)
       return reply.status(403).send();
-    await markConversationRead(convId, userId, conv.participantA, conv.participantB);
+    await markConversationRead(conv, userId);
     const messageCount = conv.messageCount ?? 0;
     const [crossDraft] = await db
       .select()
@@ -241,7 +288,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       if (!conv) return reply.status(404).send();
       if (conv.participantA !== userId && conv.participantB !== userId)
         return reply.status(403).send();
-      await markConversationRead(convId, userId, conv.participantA, conv.participantB);
+      await markConversationRead(conv, userId);
       const limit = Math.min(50, Math.max(1, parseInt(request.query.limit ?? "50", 10) || 50));
       const beforeId = request.query.before_id;
       if (beforeId) {
@@ -343,9 +390,33 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
           })
           .where(eq(conversations.id, convId))
           .returning({ messageCount: conversations.messageCount });
+        const newCount = updatedConversation?.messageCount ?? (conv.messageCount ?? 0) + 1;
+
+        // Update materialized conversation stats for this thought
+        await tx
+          .insert(thoughtFeedStats)
+          .values({
+            thoughtId: conv.thoughtId,
+            acceptedReplyCount: 0,
+            crossDomainAcceptedReplyCount: 0,
+            sustainedConversationCount: newCount >= 10 ? 1 : 0,
+            maxConversationDepth: newCount,
+          })
+          .onConflictDoUpdate({
+            target: thoughtFeedStats.thoughtId,
+            set: {
+              sustainedConversationCount:
+                newCount >= 10
+                  ? sql`greatest(thought_feed_stats.sustained_conversation_count, 1)`
+                  : thoughtFeedStats.sustainedConversationCount,
+              maxConversationDepth: sql`greatest(thought_feed_stats.max_conversation_depth, ${newCount})`,
+              updatedAt: sql`now()`,
+            },
+          });
+
         return {
           msg,
-          newCount: updatedConversation?.messageCount ?? (conv.messageCount ?? 0) + 1,
+          newCount,
         };
       });
       if (!result) return reply.status(500).send();

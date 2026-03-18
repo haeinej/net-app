@@ -3,14 +3,14 @@
  * Three-bucket system with wild card interspersion.
  */
 
-import { and, eq, inArray, sql, or, desc } from "drizzle-orm";
+import { eq, inArray, sql, or, desc, and } from "drizzle-orm";
 import {
   db,
-  thoughts,
   users,
   userRecommendationWeights,
   systemConfig,
   crossings,
+  feedSnapshots,
 } from "../db";
 import { getBucketedCandidates } from "./retrieve";
 import { scoreThought } from "./score";
@@ -40,17 +40,11 @@ import type {
   FeedServeTrace,
 } from "./types";
 import { getBlockedUserIds } from "../lib/blocked-users";
+import { loadViewerFeedProfile } from "./viewer-profile";
 
-/** Cache per user (up to 100 items), 5 min TTL. */
-type FeedCacheEntry = {
-  items: FeedItem[];
-  traces: FeedServeTrace[];
-  expiresAt: number;
-};
-
-const cache = new Map<string, FeedCacheEntry>();
-const CACHE_MAX_ITEMS = 100;
-const CACHE_MAX_USERS = 1000;
+const FEED_SNAPSHOT_PREFETCH_PAGES = 3;
+const FEED_SNAPSHOT_MIN_ITEMS = 60;
+const FEED_SNAPSHOT_MAX_ITEMS = 300;
 
 type FeedRequestOptions = {
   config?: FeedRuntimeConfig;
@@ -59,9 +53,22 @@ type FeedRequestOptions = {
   skipCache?: boolean;
 };
 
-function getCacheKey(userId: string, configVersion: string): string {
-  return `${userId}:${configVersion}`;
-}
+type FeedPageResult = {
+  items: FeedItem[];
+  nextCursor: string | null;
+};
+
+type FeedSnapshotRecord = {
+  id: string;
+  items: FeedItem[];
+  traces: FeedServeTrace[];
+  hasMore: boolean;
+};
+
+type FeedCursorPayload = {
+  snapshot_id: string;
+  offset: number;
+};
 
 async function logFeedSlice(
   userId: string,
@@ -73,7 +80,7 @@ async function logFeedSlice(
   const slice = traces.slice(offset, offset + limit);
   if (slice.length === 0) return;
   try {
-    await recordFeedServe(userId, slice, configVersion);
+    void recordFeedServe(userId, slice, configVersion);
   } catch (error) {
     console.error("recordFeedServe failed", {
       userId,
@@ -83,16 +90,12 @@ async function logFeedSlice(
   }
 }
 
-export function invalidateFeedCache(userId?: string): void {
+export async function invalidateFeedCache(userId?: string): Promise<void> {
   if (!userId) {
-    cache.clear();
+    await db.delete(feedSnapshots);
     return;
   }
-  for (const key of [...cache.keys()]) {
-    if (key.startsWith(`${userId}:`)) {
-      cache.delete(key);
-    }
-  }
+  await db.delete(feedSnapshots).where(eq(feedSnapshots.viewerId, userId));
 }
 
 let totalEngagementEventsCache: { value: number; expiresAt: number } | null = null;
@@ -123,21 +126,16 @@ async function loadViewerEmbeddingsAndProfile(
   embeddings: ViewerEmbeddings;
   profile: ViewerProfile;
   weights: RecommendationWeights;
+  viewerClusterIds: string[];
 }> {
-  const [viewer, viewerThoughts, weightsRow] = await Promise.all([
+  const [viewer, weightsRow, viewerFeedProfile] = await Promise.all([
     db.select().from(users).where(eq(users.id, viewerId)).limit(1),
-    db
-      .select({
-        resonanceEmbedding: thoughts.questionEmbedding,
-        surfaceEmbedding: thoughts.surfaceEmbedding,
-      })
-      .from(thoughts)
-      .where(eq(thoughts.userId, viewerId)),
     db
       .select()
       .from(userRecommendationWeights)
       .where(eq(userRecommendationWeights.userId, viewerId))
       .limit(1),
+    loadViewerFeedProfile(viewerId),
   ]);
 
   const profile: ViewerProfile = {
@@ -146,34 +144,149 @@ async function loadViewerEmbeddingsAndProfile(
     concentration: viewer[0]?.concentration ?? null,
   };
 
-  const resonanceEmbeddings: number[][] = [];
-  const surfaceEmbeddings: number[][] = [];
-  for (const t of viewerThoughts) {
-    if (Array.isArray(t.resonanceEmbedding)) {
-      resonanceEmbeddings.push(t.resonanceEmbedding as number[]);
-    }
-    if (Array.isArray(t.surfaceEmbedding)) surfaceEmbeddings.push(t.surfaceEmbedding as number[]);
-  }
+  const defaultWeights: RecommendationWeights = {
+    qWeight: config.defaultWeights.qWeight,
+    dWeight: config.defaultWeights.dWeight,
+    fWeight: config.defaultWeights.fWeight,
+    rWeight: config.defaultWeights.rWeight,
+    alpha: config.defaultWeights.alpha,
+  };
 
   const weights: RecommendationWeights = weightsRow[0]
     ? {
-        qWeight: weightsRow[0].qWeight ?? config.defaultWeights.qWeight,
-        dWeight: weightsRow[0].dWeight ?? config.defaultWeights.dWeight,
-        fWeight: weightsRow[0].fWeight ?? config.defaultWeights.fWeight,
-        rWeight: weightsRow[0].rWeight ?? config.defaultWeights.rWeight,
-        alpha: weightsRow[0].alpha ?? config.defaultWeights.alpha,
+        qWeight: weightsRow[0].qWeight ?? defaultWeights.qWeight,
+        dWeight: weightsRow[0].dWeight ?? defaultWeights.dWeight,
+        fWeight: weightsRow[0].fWeight ?? defaultWeights.fWeight,
+        rWeight: weightsRow[0].rWeight ?? defaultWeights.rWeight,
+        alpha: weightsRow[0].alpha ?? defaultWeights.alpha,
       }
-    : config.defaultWeights;
+    : defaultWeights;
 
   return {
-    embeddings: {
-      resonanceEmbeddings,
-      surfaceEmbeddings,
-      interestsEmbedding: null,
-    },
+    embeddings: viewerFeedProfile.embeddings,
     profile,
     weights,
+    viewerClusterIds: viewerFeedProfile.viewerClusterIds,
   };
+}
+
+function encodeFeedCursor(snapshotId: string, offset: number): string {
+  return Buffer.from(
+    JSON.stringify({
+      snapshot_id: snapshotId,
+      offset,
+    } satisfies FeedCursorPayload)
+  ).toString("base64url");
+}
+
+function decodeFeedCursor(cursor?: string | null): FeedCursorPayload | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
+      snapshot_id?: unknown;
+      offset?: unknown;
+    };
+    if (
+      typeof parsed.snapshot_id !== "string" ||
+      typeof parsed.offset !== "number" ||
+      !Number.isFinite(parsed.offset) ||
+      parsed.offset < 0
+    ) {
+      return null;
+    }
+    return {
+      snapshot_id: parsed.snapshot_id,
+      offset: Math.floor(parsed.offset),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getSnapshotTargetCount(limit: number, offset: number): number {
+  const requested = offset + limit * FEED_SNAPSHOT_PREFETCH_PAGES;
+  return Math.max(
+    FEED_SNAPSHOT_MIN_ITEMS,
+    Math.min(FEED_SNAPSHOT_MAX_ITEMS, requested)
+  );
+}
+
+function toFeedSnapshotRecord(
+  row: typeof feedSnapshots.$inferSelect | undefined
+): FeedSnapshotRecord | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    items: Array.isArray(row.items) ? (row.items as FeedItem[]) : [],
+    traces: Array.isArray(row.traces) ? (row.traces as FeedServeTrace[]) : [],
+    hasMore: row.hasMore,
+  };
+}
+
+async function getFeedSnapshot(
+  viewerId: string,
+  snapshotId: string,
+  configVersion: string
+): Promise<FeedSnapshotRecord | null> {
+  const [row] = await db
+    .select()
+    .from(feedSnapshots)
+    .where(
+      and(
+        eq(feedSnapshots.id, snapshotId),
+        eq(feedSnapshots.viewerId, viewerId),
+        eq(feedSnapshots.configVersion, configVersion),
+        sql`${feedSnapshots.expiresAt} > now()`
+      )
+    )
+    .limit(1);
+  return toFeedSnapshotRecord(row);
+}
+
+async function getLatestFeedSnapshot(
+  viewerId: string,
+  configVersion: string
+): Promise<FeedSnapshotRecord | null> {
+  const [row] = await db
+    .select()
+    .from(feedSnapshots)
+    .where(
+      and(
+        eq(feedSnapshots.viewerId, viewerId),
+        eq(feedSnapshots.configVersion, configVersion),
+        sql`${feedSnapshots.expiresAt} > now()`
+      )
+    )
+    .orderBy(desc(feedSnapshots.createdAt))
+    .limit(1);
+  return toFeedSnapshotRecord(row);
+}
+
+async function createFeedSnapshot(
+  viewerId: string,
+  configVersion: string,
+  items: FeedItem[],
+  traces: FeedServeTrace[],
+  hasMore: boolean,
+  ttlSeconds: number
+): Promise<FeedSnapshotRecord> {
+  await db.delete(feedSnapshots).where(sql`${feedSnapshots.expiresAt} <= now()`);
+  const [row] = await db
+    .insert(feedSnapshots)
+    .values({
+      viewerId,
+      configVersion,
+      items,
+      traces,
+      hasMore,
+      expiresAt: new Date(Date.now() + ttlSeconds * 1000),
+    })
+    .returning();
+  const snapshot = toFeedSnapshotRecord(row);
+  if (!snapshot) {
+    throw new Error("Failed to persist feed snapshot");
+  }
+  return snapshot;
 }
 
 /**
@@ -194,96 +307,50 @@ function intersperseWildcards<T>(
   return result;
 }
 
-/**
- * getFeed(userId, limit, offset): Three-bucket pipeline.
- * Load viewer → bucketed retrieve → score → rank per bucket → diversity → intersperse wild cards → FeedItem[].
- */
-export async function getFeed(
+async function buildFeedSnapshot(
   userId: string,
-  limit: number = feedConfig.feedLimit,
-  offset: number = 0,
-  options: FeedRequestOptions = {}
-): Promise<FeedItem[]> {
-  const activeSnapshot =
-    options.config && options.configVersion
-      ? ({
-          id: null,
-          version: options.configVersion,
-          name: options.configVersion,
-          notes: null,
-          is_active: false,
-          source: "database",
-          config: options.config,
-          created_at: null,
-          updated_at: null,
-          activated_at: null,
-        } as RankingConfigSnapshot)
-      : await getActiveRankingConfig();
-  const runtimeConfig = options.config ?? activeSnapshot.config;
-  const configVersion = options.configVersion ?? activeSnapshot.version;
-  const cacheKey = getCacheKey(userId, configVersion);
-
-  const hit = options.skipCache ? undefined : cache.get(cacheKey);
-  if (hit && hit.expiresAt > Date.now() && offset + limit <= hit.items.length) {
-    // simple LRU: move this entry to the end of the Map
-    cache.delete(cacheKey);
-    cache.set(cacheKey, hit);
-    if (!options.disableServeLogging) {
-      await logFeedSlice(userId, hit.traces, offset, limit, configVersion);
-    }
-    return hit.items.slice(offset, offset + limit);
-  }
-
-  // Load viewer + learning data in parallel
+  targetTotal: number,
+  runtimeConfig: FeedRuntimeConfig
+): Promise<{ items: FeedItem[]; traces: FeedServeTrace[]; hasMore: boolean }> {
   const [viewerData, affinityMap, resonanceMap, clusterAffinityMap] = await Promise.all([
     loadViewerEmbeddingsAndProfile(userId, runtimeConfig),
     loadCrossDomainAffinityMap(),
     loadTemporalResonanceMap(),
     loadClusterAffinityMap(),
   ]);
-  const { embeddings, profile, weights } = viewerData;
+  const { embeddings, profile, weights, viewerClusterIds } = viewerData;
   const maps: LearningMaps = { affinityMap, resonanceMap, clusterAffinityMap };
+  const candidateLimit = Math.max(
+    runtimeConfig.candidateLimit,
+    Math.min(targetTotal * 2, 400)
+  );
 
-  // Get viewer's cluster IDs for cluster novelty scoring
-  const viewerClusterRows = await db
-    .select({ clusterId: thoughts.clusterId })
-    .from(thoughts)
-    .where(and(eq(thoughts.userId, userId), sql`${thoughts.clusterId} IS NOT NULL`));
-  const viewerClusterIds = [...new Set(viewerClusterRows.map((r) => r.clusterId!))];
-
-  // Three-bucket retrieval
   const { candidates: rawCandidates, stage } = await getBucketedCandidates(
     userId,
     embeddings,
-    runtimeConfig.candidateLimit,
+    candidateLimit,
     runtimeConfig
   );
-  if (rawCandidates.length === 0) return [];
 
-  // Filter out blocked users' content
   const blockedUserIds = await getBlockedUserIds(userId);
   const candidates = blockedUserIds.size > 0
-    ? rawCandidates.filter((c) => !blockedUserIds.has(c.thought.userId))
+    ? rawCandidates.filter((candidate) => !blockedUserIds.has(candidate.thought.userId))
     : rawCandidates;
-  if (candidates.length === 0) return [];
 
-  // Score all candidates
   const layer2Scores = new Map<string, number>();
   let layer2Max = 0;
   for (const { thought } of candidates) {
-    const s = scoreThought(thought, embeddings, profile, weights.alpha);
-    layer2Scores.set(thought.id, s);
-    if (s > layer2Max) layer2Max = s;
+    const score = scoreThought(thought, embeddings, profile, weights.alpha);
+    layer2Scores.set(thought.id, score);
+    if (score > layer2Max) layer2Max = score;
   }
 
-  // Phase detection: use aggregated total engagement events from system_config when present
   const totalEngagements = await getTotalEngagementEvents(runtimeConfig);
   const isPhase1 =
     embeddings.resonanceEmbeddings.length < runtimeConfig.phase1ViewerThoughtThreshold ||
     totalEngagements < runtimeConfig.phase1SystemEngagementThreshold;
   const phaseUsed: FeedPhaseUsed = isPhase1 ? "pre-data" : "learning";
 
-  // Precompute reply quality scores for all candidate thoughts
   const thoughtAuthorConcMap = new Map<string, string | null>();
   const candidateThoughtIds: string[] = [];
   for (const { thought } of candidates) {
@@ -292,7 +359,6 @@ export async function getFeed(
   }
   const replyQualityMap = await buildReplyQualityMap(candidateThoughtIds, thoughtAuthorConcMap);
 
-  // Rank all candidates
   const withRank: Array<{
     thought: ThoughtCandidate;
     rankScore: number;
@@ -302,6 +368,7 @@ export async function getFeed(
     F: number;
     R: number;
   }> = [];
+
   for (const { thought, bucket } of candidates) {
     const layer2 = layer2Scores.get(thought.id) ?? 0;
     if (isPhase1) {
@@ -340,29 +407,23 @@ export async function getFeed(
     });
   }
 
-  // Split by bucket, apply diversity per bucket
-  const b1Items = withRank.filter((x) => x.bucket === "resonance");
-  const b2Items = withRank.filter((x) => x.bucket === "adjacent");
-  const b3Items = withRank.filter((x) => x.bucket === "wildcard");
+  const b1Items = withRank.filter((item) => item.bucket === "resonance");
+  const b2Items = withRank.filter((item) => item.bucket === "adjacent");
+  const b3Items = withRank.filter((item) => item.bucket === "wildcard");
 
   const ratios = runtimeConfig.bucketRatios[stage];
-  const targetTotal = CACHE_MAX_ITEMS;
   const b1Count = Math.ceil(targetTotal * ratios.resonance);
   const b2Count = Math.ceil(targetTotal * ratios.adjacent);
   const b3Count = Math.max(1, Math.ceil(targetTotal * ratios.wildcard));
 
-  // Diversity enforcement on main buckets
   const b1Diverse = applyDiversityEnforcement(b1Items, runtimeConfig).slice(0, b1Count);
   const b2Diverse = applyDiversityEnforcement(b2Items, runtimeConfig).slice(0, b2Count);
-  // Wild cards: sort by rank but no diversity enforcement (they're already random)
-  const b3Sorted = [...b3Items].sort((a, b) => b.rankScore - a.rankScore).slice(0, b3Count);
+  const b3Sorted = [...b3Items]
+    .sort((a, b) => b.rankScore - a.rankScore)
+    .slice(0, b3Count);
 
-  // Merge B1+B2 by rank score, then intersperse wild cards
   const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
-  const allItems = intersperseWildcards(mainMerged, b3Sorted);
-
-  // Hydrate FeedItemThought
-  const slice = allItems.slice(0, CACHE_MAX_ITEMS);
+  const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
   const candidateMap = new Map(withRank.map((item) => [item.thought.id, item.thought]));
   const rankDebugMap = new Map(
     withRank.map((item) => [
@@ -377,7 +438,8 @@ export async function getFeed(
       },
     ])
   );
-  const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
+
+  const authorIds = [...new Set(selectedThoughts.map((item) => item.thought.userId))];
   const authorRows =
     authorIds.length > 0
       ? await db
@@ -385,9 +447,9 @@ export async function getFeed(
           .from(users)
           .where(inArray(users.id, authorIds))
       : [];
-  const authorMap = new Map(authorRows.map((u) => [u.id, u]));
+  const authorMap = new Map(authorRows.map((user) => [user.id, user]));
 
-  const thoughtItems: FeedItem[] = slice.map(({ thought }) => {
+  const thoughtItems: FeedItem[] = selectedThoughts.map(({ thought }) => {
     const author = authorMap.get(thought.userId);
     return {
       type: "thought",
@@ -407,42 +469,65 @@ export async function getFeed(
     };
   });
 
-  // Mix in crossings (exclude crossings involving blocked users)
   const allUserCrossings = await db
     .select()
     .from(crossings)
     .where(or(eq(crossings.participantA, userId), eq(crossings.participantB, userId)))
     .orderBy(desc(crossings.createdAt))
-    .limit(CACHE_MAX_ITEMS);
+    .limit(targetTotal);
   const userCrossings = blockedUserIds.size > 0
     ? allUserCrossings.filter(
-        (c) => !blockedUserIds.has(c.participantA) && !blockedUserIds.has(c.participantB)
+        (crossing) =>
+          !blockedUserIds.has(crossing.participantA) &&
+          !blockedUserIds.has(crossing.participantB)
       )
     : allUserCrossings;
-  const crossingUserIds = [...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB]))];
-  const crossingUsers = crossingUserIds.length > 0
-    ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, crossingUserIds))
-    : [];
-  const crossingUserMap = new Map(crossingUsers.map((u) => [u.id, { id: u.id, name: u.name, photo_url: u.photoUrl }]));
+  const crossingUserIds = [
+    ...new Set(userCrossings.flatMap((crossing) => [crossing.participantA, crossing.participantB])),
+  ];
+  const crossingUsers =
+    crossingUserIds.length > 0
+      ? await db
+          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+          .from(users)
+          .where(inArray(users.id, crossingUserIds))
+      : [];
+  const crossingUserMap = new Map(
+    crossingUsers.map((user) => [
+      user.id,
+      { id: user.id, name: user.name, photo_url: user.photoUrl },
+    ])
+  );
 
-  const crossingItems: FeedItem[] = userCrossings.map((c) => ({
+  const crossingItems: FeedItem[] = userCrossings.map((crossing) => ({
     type: "crossing",
     crossing: {
-      id: c.id,
-      sentence: c.sentence,
-      context: c.context,
-      created_at: c.createdAt?.toISOString() ?? new Date().toISOString(),
+      id: crossing.id,
+      sentence: crossing.sentence,
+      context: crossing.context,
+      created_at: crossing.createdAt?.toISOString() ?? new Date().toISOString(),
     },
-    participant_a: crossingUserMap.get(c.participantA) ?? { id: c.participantA, name: null, photo_url: null },
-    participant_b: crossingUserMap.get(c.participantB) ?? { id: c.participantB, name: null, photo_url: null },
+    participant_a:
+      crossingUserMap.get(crossing.participantA) ?? {
+        id: crossing.participantA,
+        name: null,
+        photo_url: null,
+      },
+    participant_b:
+      crossingUserMap.get(crossing.participantB) ?? {
+        id: crossing.participantB,
+        name: null,
+        photo_url: null,
+      },
   }));
 
-  const byDate = (a: FeedItem, b: FeedItem) => {
+  const combinedItems = [...thoughtItems, ...crossingItems].sort((a, b) => {
     const dateA = a.type === "thought" ? a.thought.created_at : a.crossing.created_at;
     const dateB = b.type === "thought" ? b.thought.created_at : b.crossing.created_at;
     return new Date(dateB).getTime() - new Date(dateA).getTime();
-  };
-  const items = [...thoughtItems, ...crossingItems].sort(byDate).slice(0, CACHE_MAX_ITEMS);
+  });
+  const hasMore = combinedItems.length > targetTotal || allUserCrossings.length === targetTotal;
+  const items = combinedItems.slice(0, targetTotal);
 
   const traces: FeedServeTrace[] = items.map((item, index) => {
     if (item.type === "crossing") {
@@ -455,13 +540,7 @@ export async function getFeed(
         bucket: null,
         stage: null,
         phase_used: null,
-        scores: {
-          Q: null,
-          D: null,
-          F: null,
-          R: null,
-          final_rank: null,
-        },
+        scores: { Q: null, D: null, F: null, R: null, final_rank: null },
         resonance_similarity: null,
         surface_similarity: null,
       };
@@ -472,6 +551,7 @@ export async function getFeed(
     const similarities = candidate
       ? getSimilarities(candidate, embeddings)
       : { resonance_similarity: 0, surface_similarity: 0 };
+
     return {
       item_type: "thought",
       thought_id: item.thought.id,
@@ -493,20 +573,79 @@ export async function getFeed(
     };
   });
 
-  cache.set(cacheKey, {
-    items,
-    traces,
-    expiresAt: Date.now() + runtimeConfig.cacheTtlSeconds * 1000,
-  });
-  // bounded LRU: evict oldest user entries when over capacity
-  if (cache.size > CACHE_MAX_USERS) {
-    const oldestKey = cache.keys().next().value as string | undefined;
-    if (oldestKey) cache.delete(oldestKey);
+  return { items, traces, hasMore };
+}
+
+/**
+ * getFeed(userId, limit, cursor): cursor + snapshot pagination.
+ */
+export async function getFeed(
+  userId: string,
+  limit: number = feedConfig.feedLimit,
+  cursor?: string | null,
+  options: FeedRequestOptions = {}
+): Promise<FeedPageResult> {
+  const activeSnapshot =
+    options.config && options.configVersion
+      ? ({
+          id: null,
+          version: options.configVersion,
+          name: options.configVersion,
+          notes: null,
+          is_active: false,
+          source: "database",
+          config: options.config,
+          created_at: null,
+          updated_at: null,
+          activated_at: null,
+        } as RankingConfigSnapshot)
+      : await getActiveRankingConfig();
+  const runtimeConfig = options.config ?? activeSnapshot.config;
+  const configVersion = options.configVersion ?? activeSnapshot.version;
+  const decodedCursor = decodeFeedCursor(cursor);
+  const offset = decodedCursor?.offset ?? 0;
+  let snapshot =
+    !options.skipCache && decodedCursor?.snapshot_id
+      ? await getFeedSnapshot(userId, decodedCursor.snapshot_id, configVersion)
+      : null;
+
+  if (!snapshot && !options.skipCache) {
+    snapshot = await getLatestFeedSnapshot(userId, configVersion);
   }
+
+  if (!snapshot || snapshot.items.length < offset + limit) {
+    const targetTotal = getSnapshotTargetCount(limit, offset);
+    const built = await buildFeedSnapshot(userId, targetTotal, runtimeConfig);
+    snapshot = await createFeedSnapshot(
+      userId,
+      configVersion,
+      built.items,
+      built.traces,
+      built.hasMore,
+      runtimeConfig.cacheTtlSeconds
+    );
+  }
+
+  const items = snapshot.items.slice(offset, offset + limit);
+  if (items.length === 0) {
+    return {
+      items: [],
+      nextCursor: null,
+    };
+  }
+  const nextOffset = offset + items.length;
+  const hasMore =
+    nextOffset < snapshot.items.length ||
+    (nextOffset === snapshot.items.length && snapshot.hasMore);
+  const nextCursor = hasMore ? encodeFeedCursor(snapshot.id, nextOffset) : null;
+
   if (!options.disableServeLogging) {
-    await logFeedSlice(userId, traces, offset, limit, configVersion);
+    void logFeedSlice(userId, snapshot.traces, offset, limit, configVersion);
   }
-  return items.slice(offset, offset + limit);
+  return {
+    items,
+    nextCursor,
+  };
 }
 
 export type FeedDebugInfo = {
@@ -549,14 +688,8 @@ export async function getFeedWithDebug(
     loadTemporalResonanceMap(),
     loadClusterAffinityMap(),
   ]);
-  const { embeddings, profile, weights } = viewerData;
+  const { embeddings, profile, weights, viewerClusterIds } = viewerData;
   const maps: LearningMaps = { affinityMap, resonanceMap, clusterAffinityMap };
-
-  const viewerClusterRows = await db
-    .select({ clusterId: thoughts.clusterId })
-    .from(thoughts)
-    .where(and(eq(thoughts.userId, userId), sql`${thoughts.clusterId} IS NOT NULL`));
-  const viewerClusterIds = [...new Set(viewerClusterRows.map((r) => r.clusterId!))];
 
   const { candidates, stage } = await getBucketedCandidates(
     userId,
@@ -624,9 +757,10 @@ export async function getFeedWithDebug(
   const b3Items = withRank.filter((x) => x.bucket === "wildcard");
 
   const ratios = runtimeConfig.bucketRatios[stage];
-  const b1Count = Math.ceil(CACHE_MAX_ITEMS * ratios.resonance);
-  const b2Count = Math.ceil(CACHE_MAX_ITEMS * ratios.adjacent);
-  const b3Count = Math.max(1, Math.ceil(CACHE_MAX_ITEMS * ratios.wildcard));
+  const targetTotal = FEED_SNAPSHOT_MAX_ITEMS;
+  const b1Count = Math.ceil(targetTotal * ratios.resonance);
+  const b2Count = Math.ceil(targetTotal * ratios.adjacent);
+  const b3Count = Math.max(1, Math.ceil(targetTotal * ratios.wildcard));
 
   // Build lookup map for extra debug fields before diversity enforcement strips them
   const debugLookup = new Map(withRank.map((x) => [x.thought.id, { bucket: x.bucket, Q: x.Q, D: x.D, F: x.F, R: x.R }]));
@@ -637,7 +771,7 @@ export async function getFeedWithDebug(
 
   const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
   const allItems = intersperseWildcards(mainMerged, b3Sorted);
-  const slice = allItems.slice(0, CACHE_MAX_ITEMS);
+  const slice = allItems.slice(0, targetTotal);
 
   const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
   const authorRows = authorIds.length

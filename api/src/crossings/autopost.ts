@@ -2,6 +2,7 @@ import { and, eq, lte } from "drizzle-orm";
 import { db, crossingDrafts, thoughts, users } from "../db";
 import { invalidateFeedCache } from "../feed";
 import { processNewThought } from "../thought-processing";
+import { invalidateViewerFeedProfile } from "../feed/viewer-profile";
 
 export async function autoPostExpiredCrossings(): Promise<{ posted: number }> {
   const now = new Date();
@@ -92,7 +93,8 @@ export async function autoPostExpiredCrossings(): Promise<{ posted: number }> {
   }
 
   for (const userId of postedUserIds) {
-    invalidateFeedCache(userId);
+    void invalidateFeedCache(userId);
+    void invalidateViewerFeedProfile(userId);
   }
 
   for (const thoughtId of postedThoughtIds) {

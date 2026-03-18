@@ -159,6 +159,10 @@ export interface FeedItemCrossing {
 }
 
 export type FeedItem = FeedItemThought | FeedItemCrossing;
+export interface FeedPageResponse {
+  items: FeedItem[];
+  next_cursor: string | null;
+}
 
 export interface NotificationItem {
   reply_id: string;
@@ -191,9 +195,15 @@ async function getAuthToken(): Promise<string | null> {
   return getStoredToken();
 }
 
-export async function fetchFeed(limit: number, offset: number): Promise<FeedItem[]> {
-  return requestJson<FeedItem[]>(
-    `/api/feed?limit=${limit}&offset=${offset}`,
+export async function fetchFeed(
+  limit: number,
+  cursor?: string | null
+): Promise<FeedPageResponse> {
+  const query = cursor
+    ? `/api/feed?limit=${limit}&cursor=${encodeURIComponent(cursor)}`
+    : `/api/feed?limit=${limit}`;
+  return requestJson<FeedPageResponse>(
+    query,
     "Feed failed",
     { auth: true }
   );

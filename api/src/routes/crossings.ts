@@ -416,8 +416,8 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
     if (result.status !== 200) {
       return reply.status(result.status).send(result.body);
     }
-    invalidateFeedCache(ctx.participantA);
-    invalidateFeedCache(ctx.participantB);
+    void invalidateFeedCache(ctx.participantA);
+    void invalidateFeedCache(ctx.participantB);
     return reply.send(result.body);
   });
 

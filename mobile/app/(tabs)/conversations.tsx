@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
@@ -20,7 +20,7 @@ import {
 } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/format";
 
-function ConversationRow({
+const ConversationRow = React.memo(function ConversationRow({
   item,
   onPress,
   onProfilePress,
@@ -92,7 +92,7 @@ function ConversationRow({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 export default function ConversationsScreen() {
   const router = useRouter();
@@ -107,7 +107,7 @@ export default function ConversationsScreen() {
   const load = useCallback(
     async (opts: { isRefresh?: boolean } = {}) => {
       if (inFlight.current) {
-        // ignore overlapping calls
+        return inFlight.current;
       }
 
       const { isRefresh } = opts;
@@ -130,7 +130,7 @@ export default function ConversationsScreen() {
       })();
 
       inFlight.current = p;
-      await p;
+      return p;
     },
     []
   );
@@ -166,6 +166,17 @@ export default function ConversationsScreen() {
       router.push({ pathname: "/user/[id]", params: { id: item.other_user.id } });
     },
     [router]
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: ConversationListItem }) => (
+      <ConversationRow
+        item={item}
+        onPress={() => onPressRow(item)}
+        onProfilePress={() => onPressProfile(item)}
+      />
+    ),
+    [onPressRow, onPressProfile]
   );
 
   if (loading && list.length === 0) {
@@ -212,13 +223,7 @@ export default function ConversationsScreen() {
       <FlatList
         data={list}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ConversationRow
-            item={item}
-            onPress={() => onPressRow(item)}
-            onProfilePress={() => onPressProfile(item)}
-          />
-        )}
+        renderItem={renderItem}
         contentContainerStyle={[styles.listContent, containerStyle]}
         refreshControl={
           <RefreshControl

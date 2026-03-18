@@ -29,6 +29,7 @@ import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
+import { requestPushPermissionIfNeeded } from "../../lib/notifications";
 import {
   fetchFeed,
   fetchNotifications,
@@ -55,7 +56,7 @@ export default function WorldsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -97,6 +98,22 @@ export default function WorldsScreen() {
   const handleWalkthroughComplete = useCallback(() => {
     setWalkthroughVisible(false);
     AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
+
+    // Ask for notifications after the user understands the core loop.
+    // We show a single gentle prompt; the native dialog only appears if they accept.
+    Alert.alert(
+      "Stay in the conversation",
+      "ohm. can notify you when someone accepts your reply, sends a new message, or your crossings are about to fade.\n\nYou can change this anytime in Settings.",
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Turn on notifications",
+          onPress: () => {
+            requestPushPermissionIfNeeded().catch(() => {});
+          },
+        },
+      ]
+    );
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -147,23 +164,23 @@ export default function WorldsScreen() {
   );
 
   const loadFeed = useCallback(
-    async (off: number, append: boolean, opts: { isRefresh?: boolean } = {}) => {
+    async (cursor: string | null, append: boolean, opts: { isRefresh?: boolean } = {}) => {
       if (inFlightFeed.current) {
-        // ignore overlapping calls
+        return inFlightFeed.current;
       }
       const { isRefresh } = opts;
       if (append) setLoadingMore(true);
       else if (isRefresh) setRefreshing(true);
-      else if (off === 0) setLoading(true);
+      else if (!cursor) setLoading(true);
 
       setError(null);
 
       const p = (async () => {
         try {
-          const items = await fetchFeed(PAGE_SIZE, off);
-          setFeed((prev) => (append ? prev.concat(items) : items));
-          setOffset(off + items.length);
-          setHasMore(items.length === PAGE_SIZE);
+          const page = await fetchFeed(PAGE_SIZE, cursor);
+          setFeed((prev) => (append ? prev.concat(page.items) : page.items));
+          setNextCursor(page.next_cursor);
+          setHasMore(Boolean(page.next_cursor));
         } catch (e) {
           setError(e instanceof Error ? e.message : "Something went wrong");
         } finally {
@@ -193,15 +210,15 @@ export default function WorldsScreen() {
   }, []);
 
   const onRefresh = useCallback(() => {
-    setOffset(0);
+    setNextCursor(null);
     loadNotifications();
-    loadFeed(0, false, { isRefresh: true });
+    loadFeed(null, false, { isRefresh: true });
   }, [loadFeed, loadNotifications]);
 
   const onEndReached = useCallback(() => {
-    if (!hasMore || loadingMore || feed.length === 0) return;
-    loadFeed(offset, true);
-  }, [hasMore, loadingMore, feed.length, offset, loadFeed]);
+    if (!hasMore || loadingMore || feed.length === 0 || !nextCursor) return;
+    loadFeed(nextCursor, true);
+  }, [hasMore, loadingMore, feed.length, nextCursor, loadFeed]);
 
   const openNotifications = useCallback(() => {
     setNotificationPanelOpen((prev) => {
@@ -279,7 +296,7 @@ export default function WorldsScreen() {
 
       if (shouldRefresh) {
         lastFocusRefreshAt.current = now;
-        loadFeed(0, false);
+        loadFeed(null, false);
         loadNotifications();
       }
     }, [feed.length, loadFeed, loadNotifications])
