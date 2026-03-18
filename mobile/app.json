@@ -25,7 +25,8 @@
           "icon": "./assets/images/ohm-app-icon.png",
           "color": "#C65D3E"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "ios": {
       "supportsTablet": false,
@@ -34,6 +35,7 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         },
+        "NSFaceIDUsageDescription": "Allow ohm to access your Face ID biometric data.",
         "NSPhotoLibraryUsageDescription": "Allow ohm. to access your photos so you can choose a profile or thought image.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": ["remote-notification"]
