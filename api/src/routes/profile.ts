@@ -5,6 +5,7 @@ import {
   users,
   thoughts,
   replies,
+  emailVerificationCodes,
   crossings,
   conversations,
   messages,
@@ -13,6 +14,8 @@ import {
   engagementEvents,
   failedProcessingJobs,
   imageGenerations,
+  reports,
+  blocks,
   userRecommendationWeights,
 } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
@@ -254,92 +257,107 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: "incorrect password" });
       }
 
-      await db.transaction(async (tx) => {
-        const [userThoughtRows, conversationRows, userCrossingRows] = await Promise.all([
-          tx
-            .select({ id: thoughts.id })
-            .from(thoughts)
-            .where(eq(thoughts.userId, userId)),
-          tx
-            .select({ id: conversations.id })
-            .from(conversations)
-            .where(
-              or(
-                eq(conversations.participantA, userId),
-                eq(conversations.participantB, userId)
-              )
-            ),
-          tx
-            .select({ id: crossings.id })
-            .from(crossings)
-            .where(
-              or(eq(crossings.participantA, userId), eq(crossings.participantB, userId))
-            ),
-        ]);
-        const userThoughtIds = userThoughtRows.map((row) => row.id);
-        const conversationIds = conversationRows.map((row) => row.id);
-        const userCrossingIds = userCrossingRows.map((row) => row.id);
+      try {
+        await db.transaction(async (tx) => {
+          const [userThoughtRows, conversationRows, userCrossingRows] = await Promise.all([
+            tx
+              .select({ id: thoughts.id })
+              .from(thoughts)
+              .where(eq(thoughts.userId, userId)),
+            tx
+              .select({ id: conversations.id })
+              .from(conversations)
+              .where(
+                or(
+                  eq(conversations.participantA, userId),
+                  eq(conversations.participantB, userId)
+                )
+              ),
+            tx
+              .select({ id: crossings.id })
+              .from(crossings)
+              .where(
+                or(eq(crossings.participantA, userId), eq(crossings.participantB, userId))
+              ),
+          ]);
+          const userThoughtIds = userThoughtRows.map((row) => row.id);
+          const conversationIds = conversationRows.map((row) => row.id);
+          const userCrossingIds = userCrossingRows.map((row) => row.id);
 
-        if (userCrossingIds.length > 0) {
           await tx
-            .delete(crossingReplies)
-            .where(inArray(crossingReplies.crossingId, userCrossingIds));
-        }
+            .delete(emailVerificationCodes)
+            .where(eq(emailVerificationCodes.userId, userId));
+          await tx
+            .delete(reports)
+            .where(or(eq(reports.reporterId, userId), eq(reports.targetUserId, userId)));
+          await tx
+            .delete(blocks)
+            .where(or(eq(blocks.blockerId, userId), eq(blocks.blockedId, userId)));
 
-        if (conversationIds.length > 0) {
-          await tx
-            .delete(messages)
-            .where(inArray(messages.conversationId, conversationIds));
+          if (userCrossingIds.length > 0) {
+            await tx
+              .delete(crossingReplies)
+              .where(inArray(crossingReplies.crossingId, userCrossingIds));
+          }
+
+          if (conversationIds.length > 0) {
+            await tx
+              .delete(messages)
+              .where(inArray(messages.conversationId, conversationIds));
+            await tx
+              .delete(crossingDrafts)
+              .where(inArray(crossingDrafts.conversationId, conversationIds));
+            await tx
+              .delete(crossings)
+              .where(inArray(crossings.conversationId, conversationIds));
+            await tx
+              .delete(conversations)
+              .where(inArray(conversations.id, conversationIds));
+          }
+
+          if (userCrossingIds.length > 0) {
+            await tx.delete(crossings).where(inArray(crossings.id, userCrossingIds));
+          }
+
           await tx
             .delete(crossingDrafts)
-            .where(inArray(crossingDrafts.conversationId, conversationIds));
+            .where(eq(crossingDrafts.initiatorId, userId));
+          await tx.delete(crossingReplies).where(eq(crossingReplies.replierId, userId));
           await tx
-            .delete(crossings)
-            .where(inArray(crossings.conversationId, conversationIds));
+            .delete(crossingReplies)
+            .where(eq(crossingReplies.targetParticipantId, userId));
+
           await tx
-            .delete(conversations)
-            .where(inArray(conversations.id, conversationIds));
-        }
+            .delete(userRecommendationWeights)
+            .where(eq(userRecommendationWeights.userId, userId));
+          await tx.delete(imageGenerations).where(eq(imageGenerations.userId, userId));
+          await tx.delete(engagementEvents).where(eq(engagementEvents.userId, userId));
 
-        if (userCrossingIds.length > 0) {
-          await tx.delete(crossings).where(inArray(crossings.id, userCrossingIds));
-        }
+          if (userThoughtIds.length > 0) {
+            await tx
+              .delete(engagementEvents)
+              .where(inArray(engagementEvents.thoughtId, userThoughtIds));
+            await tx
+              .delete(failedProcessingJobs)
+              .where(inArray(failedProcessingJobs.thoughtId, userThoughtIds));
+            await tx
+              .delete(imageGenerations)
+              .where(inArray(imageGenerations.thoughtId, userThoughtIds));
+            await tx
+              .delete(replies)
+              .where(inArray(replies.thoughtId, userThoughtIds));
+            await tx.delete(thoughts).where(inArray(thoughts.id, userThoughtIds));
+          }
 
-        await tx
-          .delete(crossingDrafts)
-          .where(eq(crossingDrafts.initiatorId, userId));
-        await tx.delete(crossingReplies).where(eq(crossingReplies.replierId, userId));
-        await tx
-          .delete(crossingReplies)
-          .where(eq(crossingReplies.targetParticipantId, userId));
+          await tx.delete(replies).where(eq(replies.replierId, userId));
+          await tx.delete(users).where(eq(users.id, userId));
+        });
 
-        await tx
-          .delete(userRecommendationWeights)
-          .where(eq(userRecommendationWeights.userId, userId));
-        await tx.delete(imageGenerations).where(eq(imageGenerations.userId, userId));
-        await tx.delete(engagementEvents).where(eq(engagementEvents.userId, userId));
-
-        if (userThoughtIds.length > 0) {
-          await tx
-            .delete(engagementEvents)
-            .where(inArray(engagementEvents.thoughtId, userThoughtIds));
-          await tx
-            .delete(failedProcessingJobs)
-            .where(inArray(failedProcessingJobs.thoughtId, userThoughtIds));
-          await tx
-            .delete(imageGenerations)
-            .where(inArray(imageGenerations.thoughtId, userThoughtIds));
-          await tx
-            .delete(replies)
-            .where(inArray(replies.thoughtId, userThoughtIds));
-          await tx.delete(thoughts).where(inArray(thoughts.id, userThoughtIds));
-        }
-
-        await tx.delete(replies).where(eq(replies.replierId, userId));
-        await tx.delete(users).where(eq(users.id, userId));
-      });
-
-      return reply.status(204).send();
+        return reply.status(204).send();
+      } catch (error) {
+        request.log.error({ error, userId }, "account deletion failed");
+        return reply.status(500).send({ error: "Internal server error" });
+      }
     }
   );
 }

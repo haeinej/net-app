@@ -580,7 +580,7 @@ export const crossings = pgTable("crossings", {
     table.participantB,
     table.createdAt.desc()
   ),
-]);*** End Patch```} />
+]);
 
 // 19b. crossing_replies (replies to crossings, tagged to a participant)
 export const crossingReplies = pgTable(
