@@ -24,7 +24,7 @@ type SupabaseVerifyResponse = {
   } | null;
 };
 
-const DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL = "ohm://verify-email";
+const DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL = "https://www.ohmmmm.com/verify-email/";
 
 function readRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -45,9 +45,16 @@ function getSupabaseAnonKey(): string {
 function getRedirectUrl(): string {
   const configured = process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim();
 
-  // Only honor native app deep links here. Web redirects can strand users on the site
-  // without the token_hash/type payload the app expects for verification.
+  // Accept either the app deep link or the dedicated web handoff page.
+  // The web page immediately forwards into the app and provides a fallback button
+  // for environments where custom schemes are not clickable in the email client.
   if (configured?.startsWith("ohm://")) {
+    return configured;
+  }
+  if (
+    configured?.startsWith("https://www.ohmmmm.com/verify-email") ||
+    configured?.startsWith("https://ohmmmm.com/verify-email")
+  ) {
     return configured;
   }
 

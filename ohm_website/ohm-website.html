@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ohm. — Thoughts that find someone</title>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  if (!params.get('token_hash')) return;
+  window.location.replace('/verify-email/?' + params.toString());
+})();
+</script>
 <style>
 @font-face { font-family: 'Comico'; src: url('Fonts/OTF/Comico-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: 'Sentient'; src: url('Fonts/OTF/Sentient-Extralight.otf') format('opentype'); font-weight: 200; font-style: normal; font-display: swap; }
