@@ -127,6 +127,24 @@ async function requestVoid(
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function asNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 export interface FeedItemUser {
   id: string;
   name: string | null;
@@ -172,6 +190,117 @@ export interface NotificationItem {
   created_at: string;
 }
 
+function normalizeFeedUser(value: unknown, fallbackId = ""): FeedItemUser {
+  const record = asRecord(value);
+  return {
+    id: asString(record?.id) ?? fallbackId,
+    name: asNullableString(record?.name),
+    photo_url: asNullableString(record?.photo_url),
+  };
+}
+
+function normalizeFeedItem(value: unknown): FeedItem | null {
+  const record = asRecord(value);
+  const type = asString(record?.type);
+
+  if (type === "thought") {
+    const thought = asRecord(record?.thought);
+    const id = asString(thought?.id);
+    const sentence = asString(thought?.sentence);
+    const createdAt = asString(thought?.created_at);
+
+    if (!id || !sentence || !createdAt) return null;
+
+    return {
+      type: "thought",
+      thought: {
+        id,
+        sentence,
+        photo_url: asNullableString(thought?.photo_url),
+        image_url: asNullableString(thought?.image_url),
+        created_at: createdAt,
+        has_context: asBoolean(thought?.has_context),
+      },
+      user: normalizeFeedUser(record?.user),
+    };
+  }
+
+  if (type === "crossing") {
+    const crossing = asRecord(record?.crossing);
+    const id = asString(crossing?.id);
+    const sentence = asString(crossing?.sentence);
+    const createdAt = asString(crossing?.created_at);
+
+    if (!id || !sentence || !createdAt) return null;
+
+    return {
+      type: "crossing",
+      crossing: {
+        id,
+        sentence,
+        context: asNullableString(crossing?.context),
+        created_at: createdAt,
+      },
+      participant_a: normalizeFeedUser(record?.participant_a),
+      participant_b: normalizeFeedUser(record?.participant_b),
+    };
+  }
+
+  return null;
+}
+
+function normalizeFeedPageResponse(value: unknown): FeedPageResponse {
+  const record = asRecord(value);
+  const items = Array.isArray(record?.items)
+    ? record.items
+        .map((item) => normalizeFeedItem(item))
+        .filter((item): item is FeedItem => item !== null)
+    : [];
+
+  return {
+    items,
+    next_cursor: asNullableString(record?.next_cursor),
+  };
+}
+
+function normalizeNotificationItems(value: unknown): NotificationItem[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      const record = asRecord(item);
+      const replyId = asString(record?.reply_id);
+      const replyPreview = asString(record?.reply_preview);
+      const createdAt = asString(record?.created_at);
+
+      if (!replyId || !replyPreview || !createdAt) return null;
+
+      const replierRecord = asRecord(record?.replier);
+      const thoughtRecord = asRecord(record?.thought);
+
+      return {
+        reply_id: replyId,
+        replier: replierRecord
+          ? {
+              id: asString(replierRecord.id) ?? "",
+              name: asNullableString(replierRecord.name),
+              photo_url: asNullableString(replierRecord.photo_url),
+            }
+          : null,
+        reply_preview: replyPreview,
+        thought:
+          thoughtRecord && asString(thoughtRecord.id) && asString(thoughtRecord.sentence)
+            ? {
+                id: asString(thoughtRecord.id) ?? "",
+                sentence: asString(thoughtRecord.sentence) ?? "",
+              }
+            : null,
+        created_at: createdAt,
+      } satisfies NotificationItem;
+    })
+    .filter((item): item is NotificationItem => item !== null);
+}
+
 let cachedUserId: string | null = null;
 
 export async function getStoredUserIdForApi(): Promise<string | null> {
@@ -202,17 +331,15 @@ export async function fetchFeed(
   const query = cursor
     ? `/api/feed?limit=${limit}&cursor=${encodeURIComponent(cursor)}`
     : `/api/feed?limit=${limit}`;
-  return requestJson<FeedPageResponse>(
-    query,
-    "Feed failed",
-    { auth: true }
-  );
+  const data = await requestJson<unknown>(query, "Feed failed", { auth: true });
+  return normalizeFeedPageResponse(data);
 }
 
 export async function fetchNotifications(): Promise<NotificationItem[]> {
-  return requestJson<NotificationItem[]>("/api/notifications", "Notifications failed", {
+  const data = await requestJson<unknown>("/api/notifications", "Notifications failed", {
     auth: true,
   });
+  return normalizeNotificationItems(data);
 }
 
 export async function acceptReply(replyId: string): Promise<{ conversation_id: string }> {
@@ -333,6 +460,29 @@ export interface ConversationListItem {
   unread: boolean;
 }
 
+function normalizeConversationListItem(value: unknown): ConversationListItem | null {
+  const record = asRecord(value);
+  const id = asString(record?.id);
+  if (!id) return null;
+
+  const otherUser = asRecord(record?.other_user);
+
+  return {
+    id,
+    other_user: otherUser
+      ? {
+          id: asString(otherUser.id) ?? "",
+          name: asNullableString(otherUser.name),
+          photo_url: asNullableString(otherUser.photo_url),
+        }
+      : null,
+    last_message_preview: asString(record?.last_message_preview) ?? "",
+    last_message_at: asNullableString(record?.last_message_at),
+    is_dormant: asBoolean(record?.is_dormant),
+    unread: asBoolean(record?.unread),
+  };
+}
+
 export interface ConversationMessage {
   id: string;
   sender_id: string;
@@ -341,9 +491,14 @@ export interface ConversationMessage {
 }
 
 export async function fetchConversations(): Promise<ConversationListItem[]> {
-  return requestJson<ConversationListItem[]>("/api/conversations", "Conversations failed", {
+  const data = await requestJson<unknown>("/api/conversations", "Conversations failed", {
     auth: true,
   });
+  return Array.isArray(data)
+    ? data
+        .map((item) => normalizeConversationListItem(item))
+        .filter((item): item is ConversationListItem => item !== null)
+    : [];
 }
 
 export async function fetchConversationMessages(
@@ -505,10 +660,66 @@ export interface ProfileResponse {
   crossings?: ProfileCrossing[];
 }
 
+function normalizeProfileThought(value: unknown): ProfileThought | null {
+  const record = asRecord(value);
+  const id = asString(record?.id);
+  const sentence = asString(record?.sentence);
+  if (!id || !sentence) return null;
+
+  return {
+    id,
+    sentence,
+    photo_url: asNullableString(record?.photo_url),
+    image_url: asNullableString(record?.image_url),
+    created_at: asNullableString(record?.created_at),
+  };
+}
+
+function normalizeProfileCrossing(value: unknown): ProfileCrossing | null {
+  const record = asRecord(value);
+  const id = asString(record?.id);
+  const sentence = asString(record?.sentence);
+  if (!id || !sentence) return null;
+
+  return {
+    id,
+    sentence,
+    context: asNullableString(record?.context),
+    image_url: asNullableString(record?.image_url),
+    created_at: asNullableString(record?.created_at),
+    participant_a: record?.participant_a ? normalizeFeedUser(record.participant_a) : null,
+    participant_b: record?.participant_b ? normalizeFeedUser(record.participant_b) : null,
+  };
+}
+
+function normalizeProfileResponse(value: unknown): ProfileResponse {
+  const record = asRecord(value);
+
+  return {
+    id: asString(record?.id) ?? "",
+    name: asNullableString(record?.name),
+    photo_url: asNullableString(record?.photo_url),
+    interests: Array.isArray(record?.interests)
+      ? record.interests.filter((entry): entry is string => typeof entry === "string")
+      : [],
+    thoughts: Array.isArray(record?.thoughts)
+      ? record.thoughts
+          .map((item) => normalizeProfileThought(item))
+          .filter((item): item is ProfileThought => item !== null)
+      : [],
+    crossings: Array.isArray(record?.crossings)
+      ? record.crossings
+          .map((item) => normalizeProfileCrossing(item))
+          .filter((item): item is ProfileCrossing => item !== null)
+      : [],
+  };
+}
+
 export async function fetchProfile(userId: string): Promise<ProfileResponse> {
-  return requestJson<ProfileResponse>(`/api/users/${userId}/profile`, "Profile failed", {
+  const data = await requestJson<unknown>(`/api/users/${userId}/profile`, "Profile failed", {
     auth: true,
   });
+  return normalizeProfileResponse(data);
 }
 
 export interface UpdateProfileBody {

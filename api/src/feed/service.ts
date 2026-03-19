@@ -35,6 +35,8 @@ import type {
   RecommendationWeights,
   FeedItem,
   FeedItemThought,
+  FeedItemCrossing,
+  FeedItemUser,
   BucketLabel,
   FeedPhaseUsed,
   FeedServeTrace,
@@ -69,6 +71,94 @@ type FeedCursorPayload = {
   snapshot_id: string;
   offset: number;
 };
+
+function asStoredRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asStoredString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function asStoredNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function asStoredBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function sanitizeFeedUser(value: unknown, fallbackId = ""): FeedItemUser {
+  const record = asStoredRecord(value);
+  return {
+    id: asStoredString(record?.id) ?? fallbackId,
+    name: asStoredNullableString(record?.name),
+    photo_url: asStoredNullableString(record?.photo_url),
+  };
+}
+
+function sanitizeFeedItem(value: unknown): FeedItem | null {
+  const record = asStoredRecord(value);
+  const type = asStoredString(record?.type);
+
+  if (type === "thought") {
+    const thought = asStoredRecord(record?.thought);
+    const id = asStoredString(thought?.id);
+    const sentence = asStoredString(thought?.sentence);
+    const createdAt = asStoredString(thought?.created_at);
+
+    if (!id || !sentence || !createdAt) return null;
+
+    const item: FeedItemThought = {
+      type: "thought",
+      thought: {
+        id,
+        sentence,
+        photo_url: asStoredNullableString(thought?.photo_url),
+        image_url: asStoredNullableString(thought?.image_url),
+        created_at: createdAt,
+        has_context: asStoredBoolean(thought?.has_context),
+      },
+      user: sanitizeFeedUser(record?.user),
+    };
+
+    return item;
+  }
+
+  if (type === "crossing") {
+    const crossing = asStoredRecord(record?.crossing);
+    const id = asStoredString(crossing?.id);
+    const sentence = asStoredString(crossing?.sentence);
+    const createdAt = asStoredString(crossing?.created_at);
+
+    if (!id || !sentence || !createdAt) return null;
+
+    const item: FeedItemCrossing = {
+      type: "crossing",
+      crossing: {
+        id,
+        sentence,
+        context: asStoredNullableString(crossing?.context),
+        created_at: createdAt,
+      },
+      participant_a: sanitizeFeedUser(record?.participant_a),
+      participant_b: sanitizeFeedUser(record?.participant_b),
+    };
+
+    return item;
+  }
+
+  return null;
+}
+
+function sanitizeFeedItems(value: unknown): FeedItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => sanitizeFeedItem(item))
+    .filter((item): item is FeedItem => item !== null);
+}
 
 async function logFeedSlice(
   userId: string,
@@ -217,7 +307,7 @@ function toFeedSnapshotRecord(
   if (!row) return null;
   return {
     id: row.id,
-    items: Array.isArray(row.items) ? (row.items as FeedItem[]) : [],
+    items: sanitizeFeedItems(row.items),
     traces: Array.isArray(row.traces) ? (row.traces as FeedServeTrace[]) : [],
     hasMore: row.hasMore,
   };

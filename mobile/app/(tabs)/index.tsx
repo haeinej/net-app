@@ -338,7 +338,7 @@ export default function WorldsScreen() {
                   <SwipeableThoughtCard
                     item={item}
                     visible
-                    isOwn={myUserId === item.user.id}
+                    isOwn={Boolean(myUserId && item.user?.id && myUserId === item.user.id)}
                     onDelete={handleFeedDelete}
                     onEdit={handleFeedEdit}
                   />
