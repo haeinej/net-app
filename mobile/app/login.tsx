@@ -15,7 +15,7 @@ import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, primitives, radii, opacity } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
-import { ApiError, login } from "../lib/api";
+import { ApiError, login, loginDemo } from "../lib/api";
 import {
   setAuth,
   setOnboardingComplete,
@@ -72,6 +72,25 @@ export default function LoginScreen() {
         return;
       }
       setError(err instanceof Error ? err.message : "Incorrect email or password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    if (loading) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const { token, user_id, onboarding_complete, onboarding_step } =
+        await loginDemo();
+      await setAuth(token, user_id);
+      await setOnboardingComplete(onboarding_complete);
+      await setOnboardingStep(onboarding_step);
+      setCachedUserId(user_id);
+      router.replace("/(tabs)");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start demo mode");
     } finally {
       setLoading(false);
     }
@@ -136,6 +155,16 @@ export default function LoginScreen() {
             disabled={loading}
           >
             <Text style={styles.linkText}>Create account</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.demoLink}
+            onPress={handleDemoLogin}
+            disabled={loading}
+          >
+            <Text style={styles.demoLinkText}>Preview demo mode</Text>
+            <Text style={styles.demoHelpText}>
+              Opens the full app with sample posts, replies, conversations, and crossings.
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.tertiaryLink}
@@ -209,6 +238,22 @@ const styles = StyleSheet.create({
   tertiaryLink: {
     marginTop: 14,
     alignItems: "center",
+  },
+  demoLink: {
+    marginTop: 18,
+    alignItems: "center",
+    gap: 4,
+  },
+  demoLinkText: {
+    ...primitives.linkSubtle,
+    color: colors.OLIVE,
+  },
+  demoHelpText: {
+    ...typography.metadata,
+    color: colors.TYPE_MUTED,
+    textAlign: "center",
+    maxWidth: 280,
+    lineHeight: 16,
   },
   secondaryLinkText: {
     ...primitives.linkSubtle,

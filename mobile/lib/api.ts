@@ -3,6 +3,12 @@ import {
   getApiReachabilityMessage,
   getApiTimeoutMessage,
 } from "./api-config";
+import {
+  DemoHttpError,
+  handleDemoRequest,
+  isDemoAuthToken,
+  loginDemo as startDemoSession,
+} from "./demo-mode";
 
 const AUTH_REQUEST_TIMEOUT_MS = 8000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 12000;
@@ -57,6 +63,37 @@ async function readJson<T>(response: Response): Promise<T | null> {
   }
 }
 
+function parseRequestBody(body: BodyInit | null | undefined): unknown {
+  if (typeof body !== "string") return body;
+
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return body;
+  }
+}
+
+async function maybeHandleDemoRequest(
+  path: string,
+  {
+    auth = false,
+    method,
+    body,
+  }: ApiRequestOptions = {}
+): Promise<unknown | null> {
+  if (!auth) return null;
+
+  const token = await getAuthToken();
+  if (!isDemoAuthToken(token)) return null;
+
+  const userId = await getStoredUserIdForApi();
+  return handleDemoRequest(path, {
+    method,
+    userId,
+    body: parseRequestBody(body),
+  });
+}
+
 async function requestApi(
   path: string,
   { auth = false, headers, timeoutMs, ...init }: ApiRequestOptions = {}
@@ -104,6 +141,19 @@ async function requestJson<T>(
   fallbackMessage: string,
   { allow404 = false, ...options }: ApiRequestOptions & { allow404?: boolean } = {}
 ): Promise<T | null> {
+  try {
+    const demoData = await maybeHandleDemoRequest(path, options);
+    if (demoData !== null) {
+      return demoData as T;
+    }
+  } catch (error) {
+    if (error instanceof DemoHttpError) {
+      if (allow404 && error.status === 404) return null;
+      throw new ApiError(error.status, error.message);
+    }
+    throw error;
+  }
+
   const response = await requestApi(path, options);
   if (allow404 && response.status === 404) return null;
 
@@ -120,6 +170,18 @@ async function requestVoid(
   fallbackMessage: string,
   options: ApiRequestOptions = {}
 ): Promise<void> {
+  try {
+    const demoData = await maybeHandleDemoRequest(path, options);
+    if (demoData !== null || (options.auth && isDemoAuthToken(await getAuthToken()))) {
+      return;
+    }
+  } catch (error) {
+    if (error instanceof DemoHttpError) {
+      throw new ApiError(error.status, error.message);
+    }
+    throw error;
+  }
+
   const response = await requestApi(path, options);
   const data = await readJson<{ error?: string }>(response);
   if (!response.ok) {
@@ -829,6 +891,10 @@ export async function login(email: string, password: string): Promise<AuthRespon
     body: JSON.stringify({ email, password }),
     timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
+}
+
+export async function loginDemo(): Promise<AuthResponse> {
+  return startDemoSession();
 }
 
 export async function verifyEmail(email: string, code: string): Promise<AuthResponse> {

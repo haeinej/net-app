@@ -4,6 +4,12 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { colors, fontFamily, spacing } from "../theme";
+import { loginDemo, setCachedUserId } from "../lib/api";
+import {
+  setAuth,
+  setOnboardingComplete,
+  setOnboardingStep,
+} from "../lib/auth-store";
 import { resolveStartupRoute } from "../lib/startup-route";
 
 const INTRO_VIDEO = require("../assets/videos/intro.mp4");
@@ -11,14 +17,18 @@ const CTA_REVEAL_MS = 1800;
 
 type IntroLandingProps = {
   buttonLabel?: string;
+  secondaryLabel?: string;
   busy?: boolean;
   onContinue: () => void;
+  onSecondaryPress?: () => void;
 };
 
 export function IntroLanding({
   buttonLabel = "Onboard",
+  secondaryLabel = "Preview demo mode",
   busy = false,
   onContinue,
+  onSecondaryPress,
 }: IntroLandingProps) {
   const insets = useSafeAreaInsets();
   const [showCta, setShowCta] = useState(false);
@@ -87,6 +97,16 @@ export function IntroLanding({
               <Text style={styles.buttonText}>{buttonLabel}</Text>
             )}
           </TouchableOpacity>
+          {onSecondaryPress ? (
+            <TouchableOpacity
+              style={styles.secondaryAction}
+              onPress={onSecondaryPress}
+              activeOpacity={0.85}
+              disabled={busy}
+            >
+              <Text style={styles.secondaryActionText}>{secondaryLabel}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -114,7 +134,36 @@ export default function IntroScreen() {
     })();
   }, [busy, router]);
 
-  return <IntroLanding buttonLabel="Onboard" busy={busy} onContinue={handleContinue} />;
+  const handleDemoPreview = useCallback(() => {
+    if (busy) return;
+
+    setBusy(true);
+    void (async () => {
+      try {
+        const { token, user_id, onboarding_complete, onboarding_step } = await loginDemo();
+        await setAuth(token, user_id);
+        await setOnboardingComplete(onboarding_complete);
+        await setOnboardingStep(onboarding_step);
+        setCachedUserId(user_id);
+        router.replace("/(tabs)");
+      } catch (error) {
+        console.warn("Intro demo login failed:", error);
+        router.replace("/login");
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [busy, router]);
+
+  return (
+    <IntroLanding
+      buttonLabel="Onboard"
+      secondaryLabel="Preview demo mode"
+      busy={busy}
+      onContinue={handleContinue}
+      onSecondaryPress={handleDemoPreview}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
@@ -154,6 +203,7 @@ const styles = StyleSheet.create({
     right: spacing.screenPadding,
     bottom: 0,
     alignItems: "center",
+    gap: 14,
   },
   button: {
     minWidth: 180,
@@ -173,5 +223,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: 1.1,
     color: colors.TYPE_WHITE,
+  },
+  secondaryAction: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  secondaryActionText: {
+    fontFamily: fontFamily.sentient,
+    fontSize: 15,
+    color: colors.TYPE_WHITE,
+    textDecorationLine: "underline",
   },
 });
