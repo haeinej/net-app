@@ -4,20 +4,9 @@ import {
   db,
   users,
   thoughts,
-  replies,
-  emailVerificationCodes,
   crossings,
-  conversations,
-  messages,
-  crossingDrafts,
-  crossingReplies,
-  engagementEvents,
-  failedProcessingJobs,
-  imageGenerations,
-  reports,
-  blocks,
-  userRecommendationWeights,
 } from "../db";
+import rawSql from "../db/client";
 import { getUserId, authenticate } from "../lib/auth";
 import { verifyPassword } from "../lib/password";
 const INTERESTS_MAX = 3;
@@ -42,6 +31,18 @@ interface UpdateProfileBody {
 interface DeleteAccountBody {
   password?: string;
 }
+
+const OPTIONAL_DELETE_TABLES = [
+  "email_verification_codes",
+  "reports",
+  "blocks",
+  "crossing_replies",
+  "user_feed_profiles",
+  "feed_snapshots",
+  "push_tokens",
+  "shift_drafts",
+  "shifts",
+] as const;
 
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
@@ -258,99 +259,147 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       }
 
       try {
-        await db.transaction(async (tx) => {
-          const [userThoughtRows, conversationRows, userCrossingRows] = await Promise.all([
-            tx
-              .select({ id: thoughts.id })
-              .from(thoughts)
-              .where(eq(thoughts.userId, userId)),
-            tx
-              .select({ id: conversations.id })
-              .from(conversations)
-              .where(
-                or(
-                  eq(conversations.participantA, userId),
-                  eq(conversations.participantB, userId)
-                )
-              ),
-            tx
-              .select({ id: crossings.id })
-              .from(crossings)
-              .where(
-                or(eq(crossings.participantA, userId), eq(crossings.participantB, userId))
-              ),
-          ]);
-          const userThoughtIds = userThoughtRows.map((row) => row.id);
-          const conversationIds = conversationRows.map((row) => row.id);
-          const userCrossingIds = userCrossingRows.map((row) => row.id);
+        await rawSql.begin(async (tx) => {
+          const existingTableRows = await tx`
+            select table_name
+            from information_schema.tables
+            where table_schema = 'public'
+              and table_name = any(${[...OPTIONAL_DELETE_TABLES]})
+          `;
+          const existingTables = new Set(
+            existingTableRows.map((row) => String(row.table_name))
+          );
 
-          await tx
-            .delete(emailVerificationCodes)
-            .where(eq(emailVerificationCodes.userId, userId));
-          await tx
-            .delete(reports)
-            .where(or(eq(reports.reporterId, userId), eq(reports.targetUserId, userId)));
-          await tx
-            .delete(blocks)
-            .where(or(eq(blocks.blockerId, userId), eq(blocks.blockedId, userId)));
-
-          if (userCrossingIds.length > 0) {
-            await tx
-              .delete(crossingReplies)
-              .where(inArray(crossingReplies.crossingId, userCrossingIds));
+          if (existingTables.has("email_verification_codes")) {
+            await tx`delete from public.email_verification_codes where user_id = ${userId}`;
+          }
+          if (existingTables.has("reports")) {
+            await tx`
+              delete from public.reports
+              where reporter_id = ${userId} or target_user_id = ${userId}
+            `;
+          }
+          if (existingTables.has("blocks")) {
+            await tx`
+              delete from public.blocks
+              where blocker_id = ${userId} or blocked_id = ${userId}
+            `;
+          }
+          if (existingTables.has("push_tokens")) {
+            await tx`delete from public.push_tokens where user_id = ${userId}`;
+          }
+          if (existingTables.has("feed_snapshots")) {
+            await tx`delete from public.feed_snapshots where viewer_id = ${userId}`;
+          }
+          if (existingTables.has("user_feed_profiles")) {
+            await tx`delete from public.user_feed_profiles where user_id = ${userId}`;
+          }
+          if (existingTables.has("crossing_replies")) {
+            await tx`
+              delete from public.crossing_replies
+              where replier_id = ${userId}
+                 or target_participant_id = ${userId}
+                 or crossing_id in (
+                   select id
+                   from public.crossings
+                   where participant_a = ${userId} or participant_b = ${userId}
+                 )
+            `;
+          }
+          if (existingTables.has("shifts")) {
+            await tx`
+              delete from public.shifts
+              where participant_a = ${userId}
+                 or participant_b = ${userId}
+                 or conversation_id in (
+                   select id
+                   from public.conversations
+                   where participant_a = ${userId} or participant_b = ${userId}
+                 )
+            `;
+          }
+          if (existingTables.has("shift_drafts")) {
+            await tx`
+              delete from public.shift_drafts
+              where initiator_id = ${userId}
+                 or conversation_id in (
+                   select id
+                   from public.conversations
+                   where participant_a = ${userId} or participant_b = ${userId}
+                 )
+            `;
           }
 
-          if (conversationIds.length > 0) {
-            await tx
-              .delete(messages)
-              .where(inArray(messages.conversationId, conversationIds));
-            await tx
-              .delete(crossings)
-              .where(inArray(crossings.conversationId, conversationIds));
-            await tx
-              .delete(crossingDrafts)
-              .where(inArray(crossingDrafts.conversationId, conversationIds));
-            await tx
-              .delete(conversations)
-              .where(inArray(conversations.id, conversationIds));
-          }
-
-          if (userCrossingIds.length > 0) {
-            await tx.delete(crossings).where(inArray(crossings.id, userCrossingIds));
-          }
-
-          await tx
-            .delete(crossingDrafts)
-            .where(eq(crossingDrafts.initiatorId, userId));
-          await tx.delete(crossingReplies).where(eq(crossingReplies.replierId, userId));
-          await tx
-            .delete(crossingReplies)
-            .where(eq(crossingReplies.targetParticipantId, userId));
-
-          await tx
-            .delete(userRecommendationWeights)
-            .where(eq(userRecommendationWeights.userId, userId));
-          await tx.delete(imageGenerations).where(eq(imageGenerations.userId, userId));
-          await tx.delete(engagementEvents).where(eq(engagementEvents.userId, userId));
-
-          if (userThoughtIds.length > 0) {
-            await tx
-              .delete(engagementEvents)
-              .where(inArray(engagementEvents.thoughtId, userThoughtIds));
-            await tx
-              .delete(failedProcessingJobs)
-              .where(inArray(failedProcessingJobs.thoughtId, userThoughtIds));
-            await tx
-              .delete(imageGenerations)
-              .where(inArray(imageGenerations.thoughtId, userThoughtIds));
-            await tx
-              .delete(replies)
-              .where(inArray(replies.thoughtId, userThoughtIds));
-            await tx.delete(thoughts).where(inArray(thoughts.id, userThoughtIds));
-          }
-
-          await tx.delete(replies).where(eq(replies.replierId, userId));
-          await tx.delete(users).where(eq(users.id, userId));
+          await tx`
+            delete from public.messages
+            where conversation_id in (
+              select id
+              from public.conversations
+              where participant_a = ${userId} or participant_b = ${userId}
+            )
+          `;
+          await tx`
+            delete from public.crossings
+            where participant_a = ${userId}
+               or participant_b = ${userId}
+               or conversation_id in (
+                 select id
+                 from public.conversations
+                 where participant_a = ${userId} or participant_b = ${userId}
+               )
+          `;
+          await tx`
+            delete from public.crossing_drafts
+            where initiator_id = ${userId}
+               or conversation_id in (
+                 select id
+                 from public.conversations
+                 where participant_a = ${userId} or participant_b = ${userId}
+               )
+          `;
+          await tx`
+            delete from public.user_recommendation_weights
+            where user_id = ${userId}
+          `;
+          await tx`
+            delete from public.image_generations
+            where user_id = ${userId}
+               or thought_id in (
+                 select id from public.thoughts where user_id = ${userId}
+               )
+          `;
+          await tx`
+            delete from public.engagement_events
+            where user_id = ${userId}
+               or thought_id in (
+                 select id from public.thoughts where user_id = ${userId}
+               )
+          `;
+          await tx`
+            delete from public.failed_processing_jobs
+            where thought_id in (
+              select id from public.thoughts where user_id = ${userId}
+            )
+          `;
+          await tx`
+            delete from public.conversations
+            where participant_a = ${userId} or participant_b = ${userId}
+          `;
+          await tx`
+            delete from public.replies
+            where replier_id = ${userId}
+               or thought_id in (
+                 select id from public.thoughts where user_id = ${userId}
+               )
+          `;
+          await tx`
+            delete from public.thoughts
+            where user_id = ${userId}
+          `;
+          await tx`
+            delete from public.users
+            where id = ${userId}
+          `;
         });
 
         return reply.status(204).send();
