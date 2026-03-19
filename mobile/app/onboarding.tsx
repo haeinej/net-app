@@ -110,14 +110,21 @@ export default function OnboardingScreen() {
         getStoredUserId(),
       ]);
       if (cancelled) return;
-      if (storedUserId && savedStep >= 2 && savedStep <= 3) {
-        setStepState(savedStep as 1 | 2 | 3);
+      if (storedUserId && savedStep === 3) {
+        await setOnboardingComplete(true);
+        await setOnboardingStep(1);
+        setCachedUserId(storedUserId);
+        router.replace("/(tabs)");
+        return;
+      }
+      if (storedUserId && savedStep === 2) {
+        setStepState(2);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (step !== 3 || thoughtPhotoInitialized) return;
@@ -231,15 +238,17 @@ export default function OnboardingScreen() {
         .filter(Boolean)
         .slice(0, 3);
       await updateProfile({ interests });
-      await setOnboardingComplete(false);
-      await setOnboardingStep(3);
-      setStepState(3);
+      await setOnboardingComplete(true);
+      await setOnboardingStep(1);
+      const uid = await getStoredUserId();
+      if (uid) setCachedUserId(uid);
+      router.replace("/(tabs)");
     } catch {
       Alert.alert("Error", "Could not save. Try again.");
     } finally {
       setSendingStep2(false);
     }
-  }, [interest1, interest2, interest3, sendingStep2]);
+  }, [interest1, interest2, interest3, router, sendingStep2]);
 
   const handleStep3Post = useCallback(async () => {
     const s = sentence.trim();

@@ -19,7 +19,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing, typography } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { pickPrompt, EMPTY_STATE_PROMPTS } from "../../constants/prompts";
@@ -28,7 +27,6 @@ import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import { NotificationPanel } from "../../components/NotificationPanel";
-import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
 import {
   fetchFeed,
   fetchNotifications,
@@ -41,7 +39,6 @@ import {
   type NotificationItem,
 } from "../../lib/api";
 
-const WALKTHROUGH_SEEN_KEY = "ohm_walkthrough_seen_v2";
 const PAGE_SIZE = 20;
 const FOCUS_REFRESH_INTERVAL_MS = 60_000;
 
@@ -72,35 +69,10 @@ export default function WorldsScreen() {
 
   const inFlightFeed = useRef<Promise<void> | null>(null);
   const lastFocusRefreshAt = useRef(0);
-  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
   const postButtonRef = useRef<View>(null);
-  const feedCardRef = useRef<View>(null);
-  const conversationsTabRef = useRef<View>(null);
-  const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
-    "walkthrough-post-button": postButtonRef,
-    "walkthrough-feed-card": feedCardRef,
-    "walkthrough-conversations-tab": conversationsTabRef,
-  }).current;
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.getItem(WALKTHROUGH_SEEN_KEY)
-      .then((val) => {
-        if (val !== "true") {
-          setTimeout(() => setWalkthroughVisible(true), 800);
-        }
-      })
-      .catch(() => {
-        // Storage unavailable — skip walkthrough
-      });
-  }, []);
-
-  const handleWalkthroughComplete = useCallback(() => {
-    setWalkthroughVisible(false);
-    AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -327,9 +299,8 @@ export default function WorldsScreen() {
                 ? `crossing-${item.crossing.id}`
                 : "hidden-crossing"
           }
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <View
-              ref={index === 0 ? feedCardRef : undefined}
               collapsable={false}
               style={[styles.cardWrap, containerStyle]}
             >
@@ -368,19 +339,6 @@ export default function WorldsScreen() {
           }
         />
       )}
-
-      <View
-        ref={conversationsTabRef}
-        collapsable={false}
-        style={styles.conversationsTabAnchor}
-        pointerEvents="none"
-      />
-
-      <OnboardingWalkthrough
-        visible={walkthroughVisible}
-        onComplete={handleWalkthroughComplete}
-        targetRefs={walkthroughRefs}
-      />
 
       {/* Connection moment — the felt crossing from stranger to thinking partner */}
       {connectionVisible && (
@@ -440,13 +398,6 @@ const styles = StyleSheet.create({
   footer: {
     paddingVertical: 16,
     alignItems: "center",
-  },
-  conversationsTabAnchor: {
-    position: "absolute",
-    bottom: 0,
-    left: "33%",
-    width: "34%",
-    height: 56,
   },
   connectionOverlay: {
     zIndex: 100,

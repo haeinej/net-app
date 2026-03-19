@@ -12,7 +12,7 @@ import {
   crossings,
   feedSnapshots,
 } from "../db";
-import { getBucketedCandidates } from "./retrieve";
+import { getBucketedCandidates, getVisibleRecentCandidates } from "./retrieve";
 import { scoreThought } from "./score";
 import {
   rankScorePhase1,
@@ -514,6 +514,23 @@ async function buildFeedSnapshot(
 
   const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
   const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
+
+  if (selectedThoughts.length < targetTotal) {
+    const additionalThoughts = await getVisibleRecentCandidates(
+      userId,
+      new Set(selectedThoughts.map((item) => item.thought.id)),
+      targetTotal - selectedThoughts.length,
+      blockedUserIds
+    );
+
+    for (const thought of additionalThoughts) {
+      selectedThoughts.push({
+        thought,
+        rankScore: Number.NEGATIVE_INFINITY,
+      });
+    }
+  }
+
   const candidateMap = new Map(withRank.map((item) => [item.thought.id, item.thought]));
   const rankDebugMap = new Map(
     withRank.map((item) => [
