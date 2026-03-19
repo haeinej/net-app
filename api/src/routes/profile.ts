@@ -305,11 +305,11 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
               .delete(messages)
               .where(inArray(messages.conversationId, conversationIds));
             await tx
-              .delete(crossingDrafts)
-              .where(inArray(crossingDrafts.conversationId, conversationIds));
-            await tx
               .delete(crossings)
               .where(inArray(crossings.conversationId, conversationIds));
+            await tx
+              .delete(crossingDrafts)
+              .where(inArray(crossingDrafts.conversationId, conversationIds));
             await tx
               .delete(conversations)
               .where(inArray(conversations.id, conversationIds));
