@@ -7,6 +7,7 @@ import {
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { colors, spacing, typography } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { WarmthBar } from "./WarmthBar";
 import type { ProfileThought } from "../lib/api";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
@@ -39,14 +40,21 @@ export function ProfileThoughtCard({
   authorUserId,
 }: ProfileThoughtCardProps) {
   const router = useRouter();
+  const { contentWidth } = useResponsiveLayout();
+  const cardWidth = contentWidth - spacing.screenPadding * 2;
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { width: cardWidth }]}>
       <View style={styles.cardInner}>
         <WarmthBar height={CARD_HEIGHT} />
-        <View style={{ flex: 1 }}>
-          <View style={[styles.imageWrap, { height: IMAGE_HEIGHT }]}>
+        <View style={styles.body}>
+          <View
+            style={[
+              styles.imageWrap,
+              { width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT },
+            ]}
+          >
             <ThoughtImageFrame
               imageUrl={thought.photo_url ?? thought.image_url}
               aspectRatio={4 / 3}
@@ -95,14 +103,17 @@ export function ProfileThoughtCard({
 
 const styles = StyleSheet.create({
   card: {
-    width: "100%",
     height: CARD_HEIGHT,
     borderRadius: spacing.cardRadius,
     overflow: "hidden",
+    backgroundColor: colors.CARD_GROUND,
   },
   cardInner: {
     flexDirection: "row",
     height: CARD_HEIGHT,
+  },
+  body: {
+    flex: 1,
   },
   imageWrap: {
     position: "relative",

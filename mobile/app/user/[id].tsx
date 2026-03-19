@@ -408,6 +408,7 @@ const styles = StyleSheet.create({
     color: "rgba(235, 65, 1, 0.7)",
   },
   thoughtWrap: {
+    width: "100%",
     marginBottom: spacing.cardGap + 4,
     paddingHorizontal: spacing.screenPadding,
   },
