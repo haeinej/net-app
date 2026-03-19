@@ -24,5 +24,5 @@ export default function IndexScreen() {
     })();
   }, [busy, router]);
 
-  return <IntroLanding buttonLabel="Continue" busy={busy} onContinue={handleContinue} />;
+  return <IntroLanding buttonLabel="Onboard" busy={busy} onContinue={handleContinue} />;
 }

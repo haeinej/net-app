@@ -1,9 +1,13 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { VideoView, useVideoPlayer } from "expo-video";
 import { colors, fontFamily, spacing } from "../theme";
 import { resolveStartupRoute } from "../lib/startup-route";
+
+const INTRO_VIDEO = require("../assets/videos/intro.mp4");
+const CTA_REVEAL_MS = 1800;
 
 type IntroLandingProps = {
   buttonLabel?: string;
@@ -12,35 +16,79 @@ type IntroLandingProps = {
 };
 
 export function IntroLanding({
-  buttonLabel = "Continue",
+  buttonLabel = "Onboard",
   busy = false,
   onContinue,
 }: IntroLandingProps) {
   const insets = useSafeAreaInsets();
+  const [showCta, setShowCta] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const player = useVideoPlayer(INTRO_VIDEO, (instance) => {
+    instance.loop = false;
+    instance.muted = false;
+    instance.timeUpdateEventInterval = 0.25;
+    instance.play();
+  });
+
+  useEffect(() => {
+    const revealTimer = setTimeout(() => {
+      setShowCta(true);
+    }, CTA_REVEAL_MS);
+
+    const playToEndSubscription = player.addListener("playToEnd", () => {
+      setShowCta(true);
+    });
+
+    const statusSubscription = player.addListener("statusChange", ({ status }) => {
+      if (status === "error") {
+        setVideoFailed(true);
+        setShowCta(true);
+      }
+    });
+
+    return () => {
+      clearTimeout(revealTimer);
+      playToEndSubscription.remove();
+      statusSubscription.remove();
+    };
+  }, [player]);
 
   return (
     <View style={styles.container}>
-      <View style={styles.copyWrap}>
-        <Text style={styles.brand}>ohm.</Text>
-        <Text style={styles.copy}>
-          One honest thought can open a private conversation.
-        </Text>
-      </View>
+      {videoFailed ? (
+        <View style={styles.copyWrap}>
+          <Text style={styles.brand}>ohm.</Text>
+          <Text style={styles.copy}>
+            One honest thought can open a private conversation.
+          </Text>
+        </View>
+      ) : (
+        <VideoView
+          player={player}
+          style={styles.video}
+          contentFit="cover"
+          nativeControls={false}
+          allowsFullscreen={false}
+          allowsPictureInPicture={false}
+        />
+      )}
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
-        <TouchableOpacity
-          style={[styles.button, busy && styles.buttonDisabled]}
-          onPress={onContinue}
-          activeOpacity={0.85}
-          disabled={busy}
-        >
-          {busy ? (
-            <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
-          ) : (
-            <Text style={styles.buttonText}>{buttonLabel}</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      {showCta ? (
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
+          <TouchableOpacity
+            style={[styles.button, busy && styles.buttonDisabled]}
+            onPress={onContinue}
+            activeOpacity={0.85}
+            disabled={busy}
+          >
+            {busy ? (
+              <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+            ) : (
+              <Text style={styles.buttonText}>{buttonLabel}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -66,20 +114,26 @@ export default function IntroScreen() {
     })();
   }, [busy, router]);
 
-  return <IntroLanding buttonLabel="Continue" busy={busy} onContinue={handleContinue} />;
+  return <IntroLanding buttonLabel="Onboard" busy={busy} onContinue={handleContinue} />;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.WARM_GROUND,
-    paddingHorizontal: spacing.screenPadding,
+    backgroundColor: colors.PANEL_DEEP,
+  },
+  video: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
   },
   copyWrap: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     gap: 16,
+    paddingHorizontal: spacing.screenPadding,
+    backgroundColor: colors.WARM_GROUND,
   },
   brand: {
     fontFamily: fontFamily.comico,
@@ -95,6 +149,10 @@ const styles = StyleSheet.create({
     color: colors.TYPE_DARK,
   },
   footer: {
+    position: "absolute",
+    left: spacing.screenPadding,
+    right: spacing.screenPadding,
+    bottom: 0,
     alignItems: "center",
   },
   button: {
