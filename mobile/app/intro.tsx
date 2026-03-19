@@ -6,6 +6,8 @@ import { VideoView, useVideoPlayer } from "expo-video";
 import { colors, fontFamily, spacing } from "../theme";
 import { loginDemo, setCachedUserId } from "../lib/api";
 import {
+  dismissIntro,
+  getShouldShowIntro,
   setAuth,
   setOnboardingComplete,
   setOnboardingStep,
@@ -131,6 +133,48 @@ export function IntroLanding({
 export default function IntroScreen() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [shouldShowIntro, setShouldShowIntro] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [nextRoute, introEnabled] = await Promise.all([
+          resolveStartupRoute(),
+          getShouldShowIntro(),
+        ]);
+
+        if (cancelled) return;
+
+        if (nextRoute === "/login" && introEnabled) {
+          setShouldShowIntro(true);
+          setReady(true);
+          return;
+        }
+
+        router.replace(nextRoute);
+      } catch (error) {
+        console.warn("Intro gate resolution failed:", error);
+
+        const introEnabled = await getShouldShowIntro().catch(() => true);
+        if (cancelled) return;
+
+        if (introEnabled) {
+          setShouldShowIntro(true);
+          setReady(true);
+          return;
+        }
+
+        router.replace("/login");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const handleContinue = useCallback(() => {
     if (busy) return;
@@ -138,11 +182,12 @@ export default function IntroScreen() {
     setBusy(true);
     void (async () => {
       try {
+        await dismissIntro();
         const nextRoute = await resolveStartupRoute();
-        router.replace(nextRoute);
+        router.replace(nextRoute === "/login" ? "/onboarding" : nextRoute);
       } catch (error) {
         console.warn("Intro route resolution failed:", error);
-        router.replace("/login");
+        router.replace("/onboarding");
       } finally {
         setBusy(false);
       }
@@ -155,6 +200,7 @@ export default function IntroScreen() {
     setBusy(true);
     void (async () => {
       try {
+        await dismissIntro();
         const { token, user_id, onboarding_complete, onboarding_step } = await loginDemo();
         await setAuth(token, user_id);
         await setOnboardingComplete(onboarding_complete);
@@ -170,6 +216,18 @@ export default function IntroScreen() {
     })();
   }, [busy, router]);
 
+  if (!ready) {
+    return (
+      <View style={styles.loadingShell}>
+        <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+      </View>
+    );
+  }
+
+  if (!shouldShowIntro) {
+    return null;
+  }
+
   return (
     <IntroLanding
       buttonLabel="Onboard"
@@ -184,6 +242,12 @@ export default function IntroScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.PANEL_DEEP,
+  },
+  loadingShell: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.PANEL_DEEP,
   },
   video: {

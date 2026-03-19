@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandLockup } from "../components/BrandLockup";
 import { ScreenExitButton } from "../components/ScreenExitButton";
 import { deleteAccount, setCachedUserId } from "../lib/api";
-import { clearAuth } from "../lib/auth-store";
+import { clearAuth, resetIntroForLogout } from "../lib/auth-store";
 import { colors, spacing, typography } from "../theme";
 
 const CONFIRMATION_TEXT = "DELETE";
@@ -45,12 +45,13 @@ export default function DeleteAccountScreen() {
     try {
       await deleteAccount(password);
       await clearAuth();
+      await resetIntroForLogout();
       setCachedUserId(null);
       Alert.alert(
         "Account deleted",
         "Your account and the data tied to it have been removed from ohm.."
       );
-      router.replace("/login");
+      router.replace("/");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not delete your account."

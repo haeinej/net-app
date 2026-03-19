@@ -18,7 +18,12 @@ import {
   resendVerificationEmail,
   setCachedUserId,
 } from "../lib/api";
-import { setAuth, setOnboardingComplete, setOnboardingStep } from "../lib/auth-store";
+import {
+  dismissIntro,
+  setAuth,
+  setOnboardingComplete,
+  setOnboardingStep,
+} from "../lib/auth-store";
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
@@ -56,6 +61,7 @@ export default function VerifyEmailScreen() {
         code.trim()
       );
       await setAuth(token, user_id);
+      await dismissIntro();
       await setOnboardingComplete(onboarding_complete);
       await setOnboardingStep(onboarding_step);
       setCachedUserId(user_id);
@@ -110,6 +116,7 @@ export default function VerifyEmailScreen() {
       .then(async ({ token, user_id, onboarding_complete, onboarding_step }) => {
         if (cancelled) return;
         await setAuth(token, user_id);
+        await dismissIntro();
         await setOnboardingComplete(onboarding_complete);
         await setOnboardingStep(onboarding_step);
         setCachedUserId(user_id);

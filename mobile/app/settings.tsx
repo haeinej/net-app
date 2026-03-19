@@ -4,7 +4,7 @@ import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandLockup } from "../components/BrandLockup";
 import { ScreenExitButton } from "../components/ScreenExitButton";
-import { clearAuth } from "../lib/auth-store";
+import { clearAuth, resetIntroForLogout } from "../lib/auth-store";
 import { setCachedUserId } from "../lib/api";
 import { colors, spacing, typography, radii } from "../theme";
 
@@ -45,8 +45,9 @@ export default function SettingsScreen() {
         style: "destructive",
         onPress: async () => {
           await clearAuth();
+          await resetIntroForLogout();
           setCachedUserId(null);
-          router.replace("/login");
+          router.replace("/");
         },
       },
     ]);

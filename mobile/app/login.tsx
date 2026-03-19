@@ -17,6 +17,7 @@ import { colors, spacing, typography, primitives, radii, opacity } from "../them
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { ApiError, login, loginDemo } from "../lib/api";
 import {
+  dismissIntro,
   setAuth,
   setOnboardingComplete,
   setOnboardingStep,
@@ -62,6 +63,7 @@ export default function LoginScreen() {
       const { token, user_id, onboarding_complete, onboarding_step } =
         await login(e, p);
       await setAuth(token, user_id);
+      await dismissIntro();
       await setOnboardingComplete(onboarding_complete);
       await setOnboardingStep(onboarding_step);
       setCachedUserId(user_id);
@@ -85,6 +87,7 @@ export default function LoginScreen() {
       const { token, user_id, onboarding_complete, onboarding_step } =
         await loginDemo();
       await setAuth(token, user_id);
+      await dismissIntro();
       await setOnboardingComplete(onboarding_complete);
       await setOnboardingStep(onboarding_step);
       setCachedUserId(user_id);
