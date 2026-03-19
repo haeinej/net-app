@@ -205,6 +205,31 @@ export async function getVisibleRecentCandidates(
   return rows.map(toCandidate);
 }
 
+export async function getOwnRecentCandidates(
+  viewerId: string,
+  excludeIds: Set<string>,
+  limit: number
+): Promise<ThoughtCandidate[]> {
+  if (limit <= 0) return [];
+
+  const conditions = [eq(thoughts.userId, viewerId), isNull(thoughts.deletedAt)];
+  const excludeArr = [...excludeIds];
+
+  if (excludeArr.length > 0) {
+    conditions.push(notInArray(thoughts.id, excludeArr.slice(0, 200)));
+  }
+
+  const rows = await db
+    .select(candidateSelect)
+    .from(thoughts)
+    .innerJoin(users, eq(thoughts.userId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(thoughts.createdAt))
+    .limit(limit);
+
+  return rows.map(toCandidate);
+}
+
 /** Determine user stage from accepted conversation count. */
 async function getUserStage(
   viewerId: string,

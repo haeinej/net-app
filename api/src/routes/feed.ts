@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, notInArray } from "drizzle-orm";
 import { getFeed, getFeedWithDebug } from "../feed";
 import { db, thoughts, users } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
@@ -24,7 +24,7 @@ async function getFallbackFeed(
   limit: number,
   offset: number
 ): Promise<FeedItem[]> {
-  const rows = await db
+  const visibleRows = await db
     .select({
       thought: thoughts,
       authorId: users.id,
@@ -37,6 +37,34 @@ async function getFallbackFeed(
     .orderBy(desc(thoughts.createdAt))
     .limit(limit)
     .offset(offset);
+
+  const visibleThoughtIds = visibleRows.map((row) => row.thought.id);
+  const ownConditions = [eq(thoughts.userId, userId), isNull(thoughts.deletedAt)];
+
+  if (visibleThoughtIds.length > 0) {
+    ownConditions.push(notInArray(thoughts.id, visibleThoughtIds));
+  }
+
+  const rows =
+    visibleRows.length >= limit
+      ? visibleRows
+      : [
+          ...visibleRows,
+          ...(
+            await db
+              .select({
+                thought: thoughts,
+                authorId: users.id,
+                authorName: users.name,
+                authorPhotoUrl: users.photoUrl,
+              })
+              .from(thoughts)
+              .innerJoin(users, eq(thoughts.userId, users.id))
+              .where(and(...ownConditions))
+              .orderBy(desc(thoughts.createdAt))
+              .limit(limit - visibleRows.length)
+          ),
+        ];
 
   return rows.map((row) => ({
     type: "thought",

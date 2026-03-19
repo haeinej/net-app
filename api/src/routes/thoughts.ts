@@ -82,7 +82,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         code: err?.code,
       });
     });
-    void invalidateFeedCache(userId);
+    void invalidateFeedCache();
     void invalidateViewerFeedProfile(userId);
 
     return reply.status(201).send({
@@ -103,7 +103,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (!t) return reply.status(404).send();
     if (t.userId !== userId) return reply.status(403).send();
     await db.update(thoughts).set({ deletedAt: new Date() }).where(eq(thoughts.id, id));
-    void invalidateFeedCache(userId);
+    void invalidateFeedCache();
     void invalidateViewerFeedProfile(userId);
     return reply.status(200).send();
   });
@@ -132,7 +132,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
 
     if (Object.keys(updates).length > 0) {
       await db.update(thoughts).set(updates).where(eq(thoughts.id, id));
-      void invalidateFeedCache(userId);
+      void invalidateFeedCache();
       void invalidateViewerFeedProfile(userId);
       if (sentence !== undefined || context !== undefined) {
         processNewThought(id).catch((err: any) => {

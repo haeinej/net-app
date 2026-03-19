@@ -93,7 +93,7 @@ async function runPipeline(thoughtId: string): Promise<void> {
 
   await Promise.all([
     invalidateViewerFeedProfile(row.userId),
-    invalidateFeedCache(row.userId),
+    invalidateFeedCache(),
   ]);
 }
 
@@ -125,7 +125,7 @@ export async function processNewThought(thoughtId: string): Promise<void> {
       if (thought?.userId) {
         await Promise.all([
           invalidateViewerFeedProfile(thought.userId),
-          invalidateFeedCache(thought.userId),
+          invalidateFeedCache(),
         ]);
       }
       await db.insert(failedProcessingJobs).values({

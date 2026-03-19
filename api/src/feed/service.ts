@@ -12,7 +12,11 @@ import {
   crossings,
   feedSnapshots,
 } from "../db";
-import { getBucketedCandidates, getVisibleRecentCandidates } from "./retrieve";
+import {
+  getBucketedCandidates,
+  getOwnRecentCandidates,
+  getVisibleRecentCandidates,
+} from "./retrieve";
 import { scoreThought } from "./score";
 import {
   rankScorePhase1,
@@ -524,6 +528,21 @@ async function buildFeedSnapshot(
     );
 
     for (const thought of additionalThoughts) {
+      selectedThoughts.push({
+        thought,
+        rankScore: Number.NEGATIVE_INFINITY,
+      });
+    }
+  }
+
+  if (selectedThoughts.length < targetTotal) {
+    const ownThoughts = await getOwnRecentCandidates(
+      userId,
+      new Set(selectedThoughts.map((item) => item.thought.id)),
+      targetTotal - selectedThoughts.length
+    );
+
+    for (const thought of ownThoughts) {
       selectedThoughts.push({
         thought,
         rankScore: Number.NEGATIVE_INFINITY,
