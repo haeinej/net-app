@@ -530,6 +530,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
   const p2 = detailData?.panel_2;
   const p3 = detailData?.panel_3;
+  const canInlineReply = !isOwn && (p3 ? p3.can_reply : true);
 
   const openUserProfile = useCallback(
     (userId?: string | null) => {
@@ -697,7 +698,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
             ) : null}
           </ScrollView>
           {/* Reply input — only for other people's cards */}
-          {!isOwn && (
+          {canInlineReply && (
             <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : undefined}
               style={styles.inputWrap}

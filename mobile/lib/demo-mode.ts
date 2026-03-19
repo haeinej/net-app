@@ -465,7 +465,7 @@ function thoughtDetailFor(userId: string, thoughtId: string) {
     .filter((reply) => {
       if (reply.thought_id !== thoughtId) return false;
       if (viewerIsAuthor) return reply.status !== "deleted";
-      return reply.status === "accepted";
+      return reply.status === "accepted" || reply.replier_id === userId;
     })
     .sort((a, b) => compareNewest(b.created_at, a.created_at));
 

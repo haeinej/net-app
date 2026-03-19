@@ -252,6 +252,12 @@ export interface NotificationItem {
   created_at: string;
 }
 
+function normalizeReplyStatus(value: unknown): ThoughtPanel3Reply["status"] {
+  return value === "accepted" || value === "deleted" || value === "pending"
+    ? value
+    : "pending";
+}
+
 function normalizeFeedUser(value: unknown, fallbackId = ""): FeedItemUser {
   const record = asRecord(value);
   return {
@@ -449,10 +455,62 @@ export interface ThoughtDetailResponse {
   };
 }
 
+function normalizeThoughtDetailReply(value: unknown): ThoughtPanel3Reply | null {
+  const record = asRecord(value);
+  const id = asString(record?.id);
+  const text = asString(record?.text);
+
+  if (!id || !text) return null;
+
+  return {
+    id,
+    user: record?.user ? normalizeFeedUser(record.user) : null,
+    text,
+    status: normalizeReplyStatus(record?.status),
+    can_delete: asBoolean(record?.can_delete),
+    created_at: asNullableString(record?.created_at),
+  };
+}
+
+function normalizeThoughtDetailResponse(value: unknown): ThoughtDetailResponse {
+  const record = asRecord(value);
+  const panel1 = asRecord(record?.panel_1);
+  const panel2 = asRecord(record?.panel_2);
+  const panel3 = asRecord(record?.panel_3);
+  const sentence =
+    asString(panel1?.sentence) ??
+    asString(panel2?.sentence) ??
+    "";
+
+  return {
+    panel_1: {
+      sentence,
+      photo_url: asNullableString(panel1?.photo_url),
+      image_url: asNullableString(panel1?.image_url),
+      user: panel1?.user ? normalizeFeedUser(panel1.user) : null,
+      created_at: asNullableString(panel1?.created_at),
+    },
+    panel_2: {
+      sentence: asString(panel2?.sentence) ?? sentence,
+      context: asString(panel2?.context) ?? "",
+    },
+    panel_3: {
+      viewer_is_author: asBoolean(panel3?.viewer_is_author),
+      replies: Array.isArray(panel3?.replies)
+        ? panel3.replies
+            .map((reply) => normalizeThoughtDetailReply(reply))
+            .filter((reply): reply is ThoughtPanel3Reply => reply !== null)
+        : [],
+      can_reply: asBoolean(panel3?.can_reply),
+    },
+  };
+}
+
 export async function fetchThought(id: string): Promise<ThoughtDetailResponse> {
-  return requestJson<ThoughtDetailResponse>(`/api/thoughts/${id}`, "Thought not found", {
+  const data = await requestJson<unknown>(`/api/thoughts/${id}`, "Thought not found", {
     auth: true,
   });
+  return normalizeThoughtDetailResponse(data);
 }
 
 export async function postReply(thoughtId: string, text: string): Promise<{ id: string; status: string; created_at: string }> {
