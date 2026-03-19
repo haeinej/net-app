@@ -37,6 +37,7 @@ const OPTIONAL_DELETE_TABLES = [
   "reports",
   "blocks",
   "crossing_replies",
+  "feed_serves",
   "user_feed_profiles",
   "feed_snapshots",
   "push_tokens",
@@ -288,6 +289,16 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
           if (existingTables.has("push_tokens")) {
             await tx`delete from public.push_tokens where user_id = ${userId}`;
           }
+          if (existingTables.has("feed_serves")) {
+            await tx`
+              delete from public.feed_serves
+              where viewer_id = ${userId}
+                 or author_id = ${userId}
+                 or thought_id in (
+                   select id from public.thoughts where user_id = ${userId}
+                 )
+            `;
+          }
           if (existingTables.has("feed_snapshots")) {
             await tx`delete from public.feed_snapshots where viewer_id = ${userId}`;
           }
@@ -337,6 +348,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
               from public.conversations
               where participant_a = ${userId} or participant_b = ${userId}
             )
+               or sender_id = ${userId}
           `;
           await tx`
             delete from public.crossings
