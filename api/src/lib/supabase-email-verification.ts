@@ -24,6 +24,8 @@ type SupabaseVerifyResponse = {
   } | null;
 };
 
+const DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL = "ohm://verify-email";
+
 function readRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -41,7 +43,15 @@ function getSupabaseAnonKey(): string {
 }
 
 function getRedirectUrl(): string {
-  return process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim() || "ohm://verify-email";
+  const configured = process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim();
+
+  // Only honor native app deep links here. Web redirects can strand users on the site
+  // without the token_hash/type payload the app expects for verification.
+  if (configured?.startsWith("ohm://")) {
+    return configured;
+  }
+
+  return DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL;
 }
 
 function getHeaders(): Record<string, string> {
