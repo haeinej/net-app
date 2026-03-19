@@ -13,7 +13,8 @@ import {
 import { resolveStartupRoute } from "../lib/startup-route";
 
 const INTRO_VIDEO = require("../assets/videos/intro.mp4");
-const CTA_REVEAL_MS = 1800;
+const CTA_REVEAL_WINDOW_SECONDS = 3;
+const CTA_POLL_INTERVAL_MS = 200;
 
 type IntroLandingProps = {
   buttonLabel?: string;
@@ -41,9 +42,23 @@ export function IntroLanding({
   });
 
   useEffect(() => {
-    const revealTimer = setTimeout(() => {
-      setShowCta(true);
-    }, CTA_REVEAL_MS);
+    const revealInterval = setInterval(() => {
+      const duration = player.duration;
+      const currentTime = player.currentTime;
+
+      if (!Number.isFinite(duration) || duration <= 0) {
+        return;
+      }
+
+      if (duration <= CTA_REVEAL_WINDOW_SECONDS) {
+        setShowCta(true);
+        return;
+      }
+
+      if (currentTime >= duration - CTA_REVEAL_WINDOW_SECONDS) {
+        setShowCta(true);
+      }
+    }, CTA_POLL_INTERVAL_MS);
 
     const playToEndSubscription = player.addListener("playToEnd", () => {
       setShowCta(true);
@@ -57,7 +72,7 @@ export function IntroLanding({
     });
 
     return () => {
-      clearTimeout(revealTimer);
+      clearInterval(revealInterval);
       playToEndSubscription.remove();
       statusSubscription.remove();
     };
