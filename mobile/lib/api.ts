@@ -318,6 +318,15 @@ function normalizeFeedItem(value: unknown): FeedItem | null {
 }
 
 function normalizeFeedPageResponse(value: unknown): FeedPageResponse {
+  if (Array.isArray(value)) {
+    return {
+      items: value
+        .map((item) => normalizeFeedItem(item))
+        .filter((item): item is FeedItem => item !== null),
+      next_cursor: null,
+    };
+  }
+
   const record = asRecord(value);
   const items = Array.isArray(record?.items)
     ? record.items
