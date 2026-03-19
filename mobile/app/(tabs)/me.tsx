@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.TYPE_DARK,
   },
   content: {
-    paddingBottom: 48,
+    paddingBottom: 64,
     alignItems: "center",
     paddingTop: 16,
   },

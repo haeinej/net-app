@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 import { View, StyleSheet, useWindowDimensions, Image } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { colors } from "../../theme";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -34,22 +35,44 @@ function MeIcon({ focused }: { focused: boolean }) {
   );
 }
 
-const WAVE_HEIGHT = 18;
+const WAVE_HEIGHT = 22;
+const TAB_BAR_HEIGHT = 74;
 
 function WavyTabBackground() {
   const { width } = useWindowDimensions();
+  const svgW = width;
+  const svgH = WAVE_HEIGHT;
+
+  // Organic wave path — gentle asymmetric curve
+  const wavePath = `
+    M0,${svgH}
+    L0,${svgH * 0.55}
+    C${svgW * 0.12},${svgH * 0.15}
+     ${svgW * 0.28},0
+     ${svgW * 0.42},${svgH * 0.08}
+    C${svgW * 0.52},${svgH * 0.14}
+     ${svgW * 0.58},${svgH * 0.28}
+     ${svgW * 0.68},${svgH * 0.12}
+    C${svgW * 0.8},${svgH * -0.06}
+     ${svgW * 0.92},${svgH * 0.1}
+     ${svgW},${svgH * 0.4}
+    L${svgW},${svgH}
+    Z
+  `;
+
   return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.WARM_GROUND }]}>
-      <View
-        style={[
-          styles.waveLip,
-          {
-            width: width + 24,
-            left: -12,
-            top: -WAVE_HEIGHT,
-          },
-        ]}
-      />
+    <View style={StyleSheet.absoluteFill}>
+      {/* Wave curve sits above the flat bar */}
+      <Svg
+        width={svgW}
+        height={svgH}
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        style={{ position: "absolute", top: -WAVE_HEIGHT + 2 }}
+      >
+        <Path d={wavePath} fill={colors.WARM_GROUND} />
+      </Svg>
+      {/* Flat fill below the wave */}
+      <View style={{ flex: 1, backgroundColor: colors.WARM_GROUND }} />
     </View>
   );
 }
@@ -131,16 +154,6 @@ const iconStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  waveLip: {
-    position: "absolute",
-    height: WAVE_HEIGHT + 8,
-    backgroundColor: colors.WARM_GROUND,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 42,
-    borderBottomLeftRadius: 36,
-    borderBottomRightRadius: 24,
-    transform: [{ rotate: "-1.2deg" }],
-  },
   tabBar: {
     backgroundColor: "transparent",
     borderTopWidth: 0,
@@ -148,7 +161,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     paddingTop: 6,
     paddingBottom: 18,
-    height: 74,
+    height: TAB_BAR_HEIGHT,
     overflow: "visible",
   },
   tabBarItem: {

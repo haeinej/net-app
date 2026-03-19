@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { View, StyleSheet, useWindowDimensions } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { colors, spacing, shadows, glass } from "../theme";
+import { View, StyleSheet } from "react-native";
+import { colors, spacing } from "../theme";
 
 interface CardDeckProps {
   children: ReactNode;
@@ -10,60 +9,48 @@ interface CardDeckProps {
 }
 
 /**
- * Wraps a card to give it a "deck" / stacked-folder appearance
- * with stereoscopic depth: layered shadows, inner glass rim,
- * and warm light gradient on each backing layer.
+ * Wraps a card to give it a clean "stacked deck" appearance —
+ * cards peeking out neatly below the main card, centered and
+ * progressively smaller to create depth.
  */
 export function CardDeck({ children, layers = 2 }: CardDeckProps) {
-  const { width } = useWindowDimensions();
-  const cardWidth = width - spacing.screenPadding * 2;
-
   return (
     <View style={styles.container} pointerEvents="box-none">
-      {/* Back layer (deepest) — faintest, most offset */}
+      {/* Back layer (deepest) — smallest, lowest peek */}
       {layers >= 2 && (
         <View
           pointerEvents="none"
           style={[
             styles.layer,
-            shadows.cardAmbient,
             {
-              width: cardWidth - 14,
-              height: spacing.compactCardHeight,
-              top: 7,
-              left: 7,
-              transform: [{ rotate: "0.6deg" }],
+              bottom: -8,
+              left: 10,
+              right: 10,
+              height: 20,
               backgroundColor: colors.CARD_GROUND,
-              opacity: 0.35,
+              opacity: 0.25,
             },
           ]}
-        >
-          {/* Inner highlight rim */}
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.innerRim]} />
-        </View>
+        />
       )}
-      {/* Middle layer — slightly visible, slight offset */}
+      {/* Middle layer — slightly closer, slightly wider */}
       {layers >= 1 && (
         <View
           pointerEvents="none"
           style={[
             styles.layer,
-            shadows.cardAmbient,
             {
-              width: cardWidth - 7,
-              height: spacing.compactCardHeight,
-              top: 3.5,
-              left: 3.5,
-              transform: [{ rotate: "-0.3deg" }],
+              bottom: -4,
+              left: 5,
+              right: 5,
+              height: 16,
               backgroundColor: colors.CARD_GROUND,
-              opacity: 0.55,
+              opacity: 0.45,
             },
           ]}
-        >
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.innerRim]} />
-        </View>
+        />
       )}
-      {/* Main card — flat, no shadow */}
+      {/* Main card */}
       <View style={styles.mainCardWrap} pointerEvents="box-none">
         {children}
       </View>
@@ -78,19 +65,8 @@ const styles = StyleSheet.create({
   layer: {
     position: "absolute",
     borderRadius: spacing.cardRadius,
-    overflow: "hidden",
-  },
-  innerRim: {
-    borderRadius: spacing.cardRadius,
   },
   mainCardWrap: {
-    borderRadius: spacing.cardRadius,
-    overflow: "hidden",
-  },
-  glassRim: {
-    borderRadius: spacing.cardRadius,
-  },
-  glassGradientWrap: {
     borderRadius: spacing.cardRadius,
     overflow: "hidden",
   },
