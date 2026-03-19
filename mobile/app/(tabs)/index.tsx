@@ -304,7 +304,7 @@ export default function WorldsScreen() {
               collapsable={false}
               style={[styles.cardWrap, containerStyle]}
             >
-              <CardDeck layers={3}>
+              <CardDeck>
                 {item.type === "thought" ? (
                   <SwipeableThoughtCard
                     item={item}
@@ -367,8 +367,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cardWrap: {
-    marginBottom: spacing.cardGap + 4,
-    paddingHorizontal: spacing.screenPadding,
+    marginBottom: spacing.cardGap + 6,
+    paddingHorizontal: 12,
     paddingBottom: 6,
   },
   centered: {

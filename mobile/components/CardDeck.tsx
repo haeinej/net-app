@@ -9,43 +9,42 @@ interface CardDeckProps {
 }
 
 /**
- * Wraps a card to give it a clean "stacked deck" appearance —
- * cards peeking out neatly below the main card, centered and
- * progressively smaller to create depth.
+ * Clean stacked-deck effect — thin card edges peek below the main card,
+ * centered and progressively narrower to create depth.
  */
 export function CardDeck({ children, layers = 2 }: CardDeckProps) {
   return (
     <View style={styles.container} pointerEvents="box-none">
-      {/* Back layer (deepest) — smallest, lowest peek */}
+      {/* Deepest layer — barely visible, subtle depth cue */}
       {layers >= 2 && (
         <View
           pointerEvents="none"
           style={[
             styles.layer,
             {
-              bottom: -8,
-              left: 10,
-              right: 10,
-              height: 20,
+              bottom: -6,
+              left: 6,
+              right: 6,
+              height: 14,
               backgroundColor: colors.CARD_GROUND,
-              opacity: 0.25,
+              opacity: 0.2,
             },
           ]}
         />
       )}
-      {/* Middle layer — slightly closer, slightly wider */}
+      {/* Middle layer — slightly more visible */}
       {layers >= 1 && (
         <View
           pointerEvents="none"
           style={[
             styles.layer,
             {
-              bottom: -4,
-              left: 5,
-              right: 5,
-              height: 16,
+              bottom: -3,
+              left: 3,
+              right: 3,
+              height: 10,
               backgroundColor: colors.CARD_GROUND,
-              opacity: 0.45,
+              opacity: 0.4,
             },
           ]}
         />

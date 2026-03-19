@@ -542,8 +542,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   thoughtWrap: {
-    marginBottom: spacing.cardGap + 4,
-    paddingHorizontal: spacing.screenPadding,
+    marginBottom: spacing.cardGap + 6,
+    paddingHorizontal: 12,
+    width: "100%",
   },
   emptyDeck: {
     ...typography.body,

@@ -35,43 +35,36 @@ function MeIcon({ focused }: { focused: boolean }) {
   );
 }
 
-const WAVE_HEIGHT = 22;
+const WAVE_HEIGHT = 16;
 const TAB_BAR_HEIGHT = 74;
 
 function WavyTabBackground() {
   const { width } = useWindowDimensions();
-  const svgW = width;
-  const svgH = WAVE_HEIGHT;
+  const w = width;
+  const h = WAVE_HEIGHT;
 
-  // Organic wave path — gentle asymmetric curve
+  // Single smooth asymmetric curve — gentle, organic, not busy
   const wavePath = `
-    M0,${svgH}
-    L0,${svgH * 0.55}
-    C${svgW * 0.12},${svgH * 0.15}
-     ${svgW * 0.28},0
-     ${svgW * 0.42},${svgH * 0.08}
-    C${svgW * 0.52},${svgH * 0.14}
-     ${svgW * 0.58},${svgH * 0.28}
-     ${svgW * 0.68},${svgH * 0.12}
-    C${svgW * 0.8},${svgH * -0.06}
-     ${svgW * 0.92},${svgH * 0.1}
-     ${svgW},${svgH * 0.4}
-    L${svgW},${svgH}
+    M0,${h}
+    L0,${h * 0.6}
+    Q${w * 0.25},${-h * 0.15}
+     ${w * 0.52},${h * 0.35}
+    Q${w * 0.78},${h * 0.85}
+     ${w},${h * 0.2}
+    L${w},${h}
     Z
   `;
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      {/* Wave curve sits above the flat bar */}
       <Svg
-        width={svgW}
-        height={svgH}
-        viewBox={`0 0 ${svgW} ${svgH}`}
-        style={{ position: "absolute", top: -WAVE_HEIGHT + 2 }}
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        style={{ position: "absolute", top: -h + 1 }}
       >
         <Path d={wavePath} fill={colors.WARM_GROUND} />
       </Svg>
-      {/* Flat fill below the wave */}
       <View style={{ flex: 1, backgroundColor: colors.WARM_GROUND }} />
     </View>
   );
