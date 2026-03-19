@@ -145,9 +145,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       const tokenHash = readOptionalTrimmedString(body.token_hash);
       const verifyType = readOptionalTrimmedString(body.type);
 
-      if (!tokenHash && (!email || !/^\d{6}$/.test(code))) {
+      if (!tokenHash && (!email || !/^\d{6,8}$/.test(code))) {
         return reply.status(400).send({
-          error: "Tap the email link or enter your email and 6-digit code",
+          error: "Tap the email link or enter your email and verification code",
         });
       }
 

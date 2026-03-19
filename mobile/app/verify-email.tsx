@@ -48,8 +48,8 @@ export default function VerifyEmailScreen() {
   const handledTokenHashRef = useRef<string | null>(null);
 
   const handleVerify = useCallback(async () => {
-    if (!cleanEmail || !/^\d{6}$/.test(code.trim())) {
-      setError("Enter your email and the 6-digit code");
+    if (!cleanEmail || !/^\d{6,8}$/.test(code.trim())) {
+      setError("Enter your email and the verification code");
       return;
     }
 
@@ -145,7 +145,7 @@ export default function VerifyEmailScreen() {
     >
       <View style={styles.content}>
         <Text style={styles.title}>Verify your email</Text>
-        <Text style={styles.copy}>Tap the link in your email, or enter the 6-digit code.</Text>
+        <Text style={styles.copy}>Tap the link in your email, or enter the verification code.</Text>
 
         <TextInput
           style={styles.input}
@@ -164,12 +164,12 @@ export default function VerifyEmailScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="6-digit code"
+          placeholder="Verification code"
           placeholderTextColor={colors.TYPE_MUTED}
           keyboardType="number-pad"
           value={code}
           onChangeText={(value) => {
-            setCode(value.replace(/\D/g, "").slice(0, 6));
+            setCode(value.replace(/\D/g, "").slice(0, 8));
             setError(null);
           }}
           editable={!verifying && !resending}
