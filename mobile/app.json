@@ -2,7 +2,7 @@
   "expo": {
     "name": "ohm.",
     "slug": "ohm-app",
-    "version": "1.1",
+    "version": "1.2",
     "description": "Share one thought at a time and let it open private conversations.",
     "scheme": "ohm",
     "runtimeVersion": {
