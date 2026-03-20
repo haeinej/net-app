@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -44,6 +44,7 @@ const HALF_HEIGHT = CARD_HEIGHT / 2; // 95
 const PROFILE_SIZE = 28;
 const SEND_READY_PROGRESS = 0.78;
 const SEND_VELOCITY_THRESHOLD = -650;
+const EXPANDED_HEIGHT = 340;
 
 interface CrossingCardProps {
   item: FeedItemCrossing;
@@ -87,6 +88,10 @@ export function CrossingCard({
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
+  const swipeSendQueuedRef = useRef(false);
+  const replyLengthValue = useSharedValue(0);
+  const canReplyValue = useSharedValue(0);
+  const sendingValue = useSharedValue(0);
 
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
 
@@ -204,9 +209,9 @@ export function CrossingCard({
         } else {
           const canOverswipeSend =
             !isParticipant &&
-            !sending &&
-            replyText.trim().length >= REPLY_MIN_LENGTH &&
-            Boolean(detailData?.panel_3.can_reply);
+            sendingValue.value === 0 &&
+            replyLengthValue.value >= REPLY_MIN_LENGTH &&
+            canReplyValue.value === 1;
 
           if (canOverswipeSend) {
             const overswipe = Math.max(0, -tx);
@@ -217,15 +222,6 @@ export function CrossingCard({
               sendHapticArmed.value = 1;
             } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
               sendHapticArmed.value = 0;
-            }
-
-            if (progress >= SEND_READY_PROGRESS && sendTriggered.value === 0) {
-              sendTriggered.value = 1;
-              sendSwipeProgress.value = withTiming(1, { duration: 80 });
-              panel3X.value = withTiming(-cardWidth * 0.1, { duration: 80 });
-              indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
-              runOnJS(handleSendReply)();
-              return;
             }
 
             panel3X.value = -rubberBand(overswipe, cardWidth * 0.22);
@@ -272,9 +268,9 @@ export function CrossingCard({
         }
         const canOverswipeSend =
           !isParticipant &&
-          !sending &&
-          replyText.trim().length >= REPLY_MIN_LENGTH &&
-          Boolean(detailData?.panel_3.can_reply);
+          sendingValue.value === 0 &&
+          replyLengthValue.value >= REPLY_MIN_LENGTH &&
+          canReplyValue.value === 1;
         const shouldSend =
           canOverswipeSend &&
           e.translationX < 0 &&
@@ -282,11 +278,12 @@ export function CrossingCard({
             e.velocityX <= SEND_VELOCITY_THRESHOLD);
 
         if (shouldSend) {
+          sendTriggered.value = 1;
           sendSwipeProgress.value = withTiming(0, { duration: 120 });
           sendHapticArmed.value = 0;
           panel3X.value = withSpring(0, SNAP_SPRING);
           indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
-          runOnJS(handleSendReply)();
+          runOnJS(queueSwipeSend)();
         } else if (e.translationX < 0) {
           sendSwipeProgress.value = withTiming(0, { duration: 120 });
           sendHapticArmed.value = 0;
@@ -314,6 +311,29 @@ export function CrossingCard({
   const warmthBarHeightStyle = useAnimatedStyle(() => ({ height: cardHeightAnim.value }));
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulseOpacity.value }));
 
+  useEffect(() => {
+    const shouldExpand = displayPanel === 2 && !isParticipant;
+    cardHeightAnim.value = withSpring(shouldExpand ? EXPANDED_HEIGHT : CARD_HEIGHT, {
+      damping: 24,
+      stiffness: 220,
+      mass: 0.8,
+    });
+  }, [cardHeightAnim, displayPanel, isParticipant]);
+
+  const trimmedReplyLength = replyText.trim().length;
+
+  useEffect(() => {
+    replyLengthValue.value = trimmedReplyLength;
+  }, [replyLengthValue, trimmedReplyLength]);
+
+  useEffect(() => {
+    canReplyValue.value = detailData?.panel_3.can_reply ? 1 : 0;
+  }, [canReplyValue, detailData?.panel_3.can_reply]);
+
+  useEffect(() => {
+    sendingValue.value = sending ? 1 : 0;
+  }, [sending, sendingValue]);
+
   // Animated expanding indicator dots (match SwipeableThoughtCard exactly)
   const dot0Style = useAnimatedStyle(() => {
     const active = interpolate(indicatorProgress.value, [-0.5, 0, 0.5], [0, 1, 0], Extrapolation.CLAMP);
@@ -338,7 +358,7 @@ export function CrossingCard({
   });
 
   // Reply handlers
-  const handleSendReply = useCallback(async () => {
+  const submitReply = useCallback(async () => {
     const text = replyText.trim();
     if (!text || text.length < REPLY_MIN_LENGTH || sending || !detailData?.panel_3.can_reply) {
       sendTriggered.value = 0;
@@ -347,6 +367,7 @@ export function CrossingCard({
       snapTo(2, 2);
       return;
     }
+    sendingValue.value = 1;
     setSending(true);
     try {
       await postCrossingReply(crossing.id, text, replyTarget);
@@ -365,9 +386,11 @@ export function CrossingCard({
       sendHapticArmed.value = 0;
       snapTo(2, 2);
     } finally {
+      sendingValue.value = 0;
       setSending(false);
     }
   }, [
+    sendingValue,
     crossing.id,
     replyText,
     replyTarget,
@@ -380,6 +403,14 @@ export function CrossingCard({
     snapTo,
     loadDetail,
   ]);
+
+  const queueSwipeSend = useCallback(() => {
+    if (swipeSendQueuedRef.current) return;
+    swipeSendQueuedRef.current = true;
+    void submitReply().finally(() => {
+      swipeSendQueuedRef.current = false;
+    });
+  }, [submitReply]);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
@@ -578,13 +609,13 @@ export function CrossingCard({
                 multiline={false}
                 maxLength={REPLY_MAX_LENGTH}
               />
-              <Text style={styles.replyHintText}>
-                {sending
-                  ? "sending..."
-                  : replyText.trim().length < REPLY_MIN_LENGTH
-                    ? `${replyText.trim().length}/${REPLY_MIN_LENGTH} min`
+                <Text style={styles.replyHintText}>
+                  {sending
+                    ? "sending..."
+                  : trimmedReplyLength < REPLY_MIN_LENGTH
+                    ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
                     : "← swipe left to send"}
-              </Text>
+                </Text>
             </KeyboardAvoidingView>
           )}
         </Animated.View>
@@ -776,24 +807,29 @@ const styles = StyleSheet.create({
 
   /* ── Reply input ── */
   replyInputWrap: {
-    paddingTop: 6,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.18)",
   },
   replyInputLabel: {
     ...typography.replyInput,
     fontSize: 9.5,
+    lineHeight: 14,
     color: colors.TYPE_WHITE,
     marginBottom: 4,
   },
   replyInput: {
     ...typography.replyInput,
     fontSize: 12.5,
+    lineHeight: 18,
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.35)",
-    paddingVertical: 6,
+    minHeight: 34,
+    paddingHorizontal: 0,
+    paddingTop: Platform.OS === "ios" ? 8 : 6,
+    paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
   replyHintText: {
     ...typography.metadata,

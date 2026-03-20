@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -94,6 +94,10 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
+  const swipeSendQueuedRef = useRef(false);
+  const replyLengthValue = useSharedValue(0);
+  const canReplyValue = useSharedValue(0);
+  const sendingValue = useSharedValue(0);
 
   // Card height animation for reply expansion
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
@@ -258,9 +262,9 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
         } else {
           const canOverswipeSend =
             !isOwn &&
-            !sending &&
-            replyText.trim().length >= REPLY_MIN_LENGTH &&
-            Boolean(detailData?.panel_3.can_reply);
+            sendingValue.value === 0 &&
+            replyLengthValue.value >= REPLY_MIN_LENGTH &&
+            canReplyValue.value === 1;
 
           if (canOverswipeSend) {
             const overswipe = Math.max(0, -tx);
@@ -271,15 +275,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
               sendHapticArmed.value = 1;
             } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
               sendHapticArmed.value = 0;
-            }
-
-            if (progress >= SEND_READY_PROGRESS && sendTriggered.value === 0) {
-              sendTriggered.value = 1;
-              sendSwipeProgress.value = withTiming(1, { duration: 80 });
-              panel3X.value = withTiming(-cardWidth * 0.1, { duration: 80 });
-              indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
-              runOnJS(handleSendReply)();
-              return;
             }
 
             panel3X.value = -rubberBand(overswipe, cardWidth * 0.22);
@@ -329,9 +324,9 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
         }
         const canOverswipeSend =
           !isOwn &&
-          !sending &&
-          replyText.trim().length >= REPLY_MIN_LENGTH &&
-          Boolean(detailData?.panel_3.can_reply);
+          sendingValue.value === 0 &&
+          replyLengthValue.value >= REPLY_MIN_LENGTH &&
+          canReplyValue.value === 1;
         const shouldSend =
           canOverswipeSend &&
           e.translationX < 0 &&
@@ -339,11 +334,12 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
             vx <= SEND_VELOCITY_THRESHOLD);
 
         if (shouldSend) {
+          sendTriggered.value = 1;
           sendSwipeProgress.value = withTiming(0, { duration: 120 });
           sendHapticArmed.value = 0;
           panel3X.value = withSpring(0, SNAP_SPRING);
           indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
-          runOnJS(handleSendReply)();
+          runOnJS(queueSwipeSend)();
         } else if (e.translationX < 0) {
           sendSwipeProgress.value = withTiming(0, { duration: 120 });
           sendHapticArmed.value = 0;
@@ -410,8 +406,33 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     opacity: pulseOpacity.value,
   }));
 
-  // Reply handlers
-  const handleSendReply = useCallback(async () => {
+  const p2 = detailData?.panel_2;
+  const p3 = detailData?.panel_3;
+  const canInlineReply = !isOwn && (p3 ? p3.can_reply : true);
+  const trimmedReplyLength = replyText.trim().length;
+
+  useEffect(() => {
+    replyLengthValue.value = trimmedReplyLength;
+  }, [replyLengthValue, trimmedReplyLength]);
+
+  useEffect(() => {
+    canReplyValue.value = p3?.can_reply ? 1 : 0;
+  }, [canReplyValue, p3?.can_reply]);
+
+  useEffect(() => {
+    sendingValue.value = sending ? 1 : 0;
+  }, [sending, sendingValue]);
+
+  useEffect(() => {
+    const shouldExpand = displayPanel === 2 && canInlineReply;
+    cardHeightAnim.value = withSpring(shouldExpand ? EXPANDED_HEIGHT : CARD_HEIGHT, {
+      damping: 24,
+      stiffness: 220,
+      mass: 0.8,
+    });
+  }, [canInlineReply, cardHeightAnim, displayPanel]);
+
+  const submitReply = useCallback(async () => {
     const text = replyText.trim();
     if (!text || text.length < REPLY_MIN_LENGTH || sending || !detailData?.panel_3.can_reply) {
       sendTriggered.value = 0;
@@ -420,6 +441,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       snapTo(2, 2);
       return;
     }
+    sendingValue.value = 1;
     setSending(true);
     try {
       await postReply(thought.id, text);
@@ -439,9 +461,11 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       sendHapticArmed.value = 0;
       snapTo(2, 2);
     } finally {
+      sendingValue.value = 0;
       setSending(false);
     }
   }, [
+    sendingValue,
     thought.id,
     replyText,
     sending,
@@ -454,6 +478,14 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     snapTo,
     refreshDetail,
   ]);
+
+  const queueSwipeSend = useCallback(() => {
+    if (swipeSendQueuedRef.current) return;
+    swipeSendQueuedRef.current = true;
+    void submitReply().finally(() => {
+      swipeSendQueuedRef.current = false;
+    });
+  }, [submitReply]);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
@@ -507,10 +539,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   );
 
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
-  const p2 = detailData?.panel_2;
-  const p3 = detailData?.panel_3;
-  const canInlineReply = !isOwn && (p3 ? p3.can_reply : true);
-
   const openUserProfile = useCallback(
     (userId?: string | null) => {
       if (!userId) return;
@@ -695,13 +723,13 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 multiline={false}
                 maxLength={REPLY_MAX_LENGTH}
               />
-              <Text style={styles.replyHintText}>
-                {sending
-                  ? "sending..."
-                  : replyText.trim().length < REPLY_MIN_LENGTH
-                    ? `${replyText.trim().length}/${REPLY_MIN_LENGTH} min`
+                <Text style={styles.replyHintText}>
+                  {sending
+                    ? "sending..."
+                  : trimmedReplyLength < REPLY_MIN_LENGTH
+                    ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
                     : "← swipe left to send"}
-              </Text>
+                </Text>
             </KeyboardAvoidingView>
           )}
         </Animated.View>
@@ -900,7 +928,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   repliesContentContainer: {
-    paddingBottom: 4,
+    paddingBottom: 8,
   },
   replyRow: {
     flexDirection: "row",
@@ -948,24 +976,29 @@ const styles = StyleSheet.create({
     color: colors.VERMILLION,
   },
   inputWrap: {
-    paddingTop: 6,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.1)",
   },
   replyInputLabel: {
     ...typography.replyInput,
     fontSize: 9.5,
+    lineHeight: 14,
     color: colors.VERMILLION,
     marginBottom: 4,
   },
   replyInput: {
     ...typography.replyInput,
     fontSize: 12.5,
+    lineHeight: 18,
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.2)",
-    paddingVertical: 6,
+    minHeight: 34,
+    paddingHorizontal: 0,
+    paddingTop: Platform.OS === "ios" ? 8 : 6,
+    paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
   replyHintText: {
     ...typography.metadata,

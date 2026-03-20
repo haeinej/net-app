@@ -23,7 +23,6 @@ import Animated, {
   withSequence,
   runOnJS,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily, shadows, glass } from "../../theme";
@@ -65,6 +64,11 @@ export default function ThoughtDetailScreen() {
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
+  const swipeSendQueuedRef = useRef(false);
+  const replyLengthValue = useSharedValue(0);
+  const canReplyValue = useSharedValue(0);
+  const sendingValue = useSharedValue(0);
+  const panelIndexValue = useSharedValue(0);
 
   const translateX = useSharedValue(0);
   const gestureStartX = useSharedValue(0);
@@ -111,8 +115,9 @@ export default function ThoughtDetailScreen() {
     (index: number) => {
       lastPanelIndex.current = index;
       setCurrentPanelIndex(index);
+      panelIndexValue.value = index;
     },
-    []
+    [panelIndexValue]
   );
 
   const handleSwipeToPanel = useCallback(
@@ -129,12 +134,6 @@ export default function ThoughtDetailScreen() {
   const handleBack = useCallback(() => {
     router.back();
   }, [router]);
-
-  const triggerSendReadyHaptic = useCallback(() => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch {}
-  }, []);
 
   const snapToPanel = useCallback(
     (targetIndex: number) => {
@@ -168,12 +167,12 @@ export default function ThoughtDetailScreen() {
       const sendDistance = screenWidth * 0.22;
       const rawNext = gestureStartX.value + e.translationX;
       const canOverswipeSend =
-        currentPanelIndex === 2 &&
-        !sending &&
-        replyText.trim().length >= REPLY_MIN_LENGTH &&
-        Boolean(data?.panel_3.can_reply);
+        panelIndexValue.value === 2 &&
+        sendingValue.value === 0 &&
+        replyLengthValue.value >= REPLY_MIN_LENGTH &&
+        canReplyValue.value === 1;
 
-      if (currentPanelIndex === 2 && sendTriggered.value === 1) {
+      if (panelIndexValue.value === 2 && sendTriggered.value === 1) {
         return;
       }
 
@@ -186,17 +185,8 @@ export default function ThoughtDetailScreen() {
 
         if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
           sendHapticArmed.value = 1;
-          runOnJS(triggerSendReadyHaptic)();
         } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
           sendHapticArmed.value = 0;
-        }
-
-        if (progress >= SEND_READY_PROGRESS && sendTriggered.value === 0) {
-          sendTriggered.value = 1;
-          sendSwipeProgress.value = withTiming(1, { duration: 80 });
-          translateX.value = withTiming(min - screenWidth * 0.08, { duration: 80 });
-          runOnJS(handleSendReply)();
-          return;
         }
 
         translateX.value = min - resisted;
@@ -214,12 +204,12 @@ export default function ThoughtDetailScreen() {
       const min = -2 * screenWidth;
       const overswipe = Math.max(0, min - current);
       const canOverswipeSend =
-        currentPanelIndex === 2 &&
-        !sending &&
-        replyText.trim().length >= REPLY_MIN_LENGTH &&
-        Boolean(data?.panel_3.can_reply);
+        panelIndexValue.value === 2 &&
+        sendingValue.value === 0 &&
+        replyLengthValue.value >= REPLY_MIN_LENGTH &&
+        canReplyValue.value === 1;
 
-      if (currentPanelIndex === 2 && sendTriggered.value === 1) {
+      if (panelIndexValue.value === 2 && sendTriggered.value === 1) {
         return;
       }
 
@@ -230,10 +220,11 @@ export default function ThoughtDetailScreen() {
           velocity <= SEND_VELOCITY_THRESHOLD);
 
       if (shouldSend) {
+        sendTriggered.value = 1;
         sendSwipeProgress.value = withTiming(0, { duration: 120 });
         sendHapticArmed.value = 0;
         translateX.value = withTiming(min, { duration: 120 });
-        runOnJS(handleSendReply)();
+        runOnJS(queueSwipeSend)();
         return;
       }
 
@@ -260,8 +251,21 @@ export default function ThoughtDetailScreen() {
   const panelWidth = screenWidth;
   const imageHeight = panelWidth / IMAGE_ASPECT_RATIO;
   const fullPanelHeight = screenHeight - insets.top - insets.bottom;
+  const trimmedReplyLength = replyText.trim().length;
 
-  const handleSendReply = useCallback(async () => {
+  useEffect(() => {
+    replyLengthValue.value = trimmedReplyLength;
+  }, [replyLengthValue, trimmedReplyLength]);
+
+  useEffect(() => {
+    canReplyValue.value = data?.panel_3.can_reply ? 1 : 0;
+  }, [canReplyValue, data?.panel_3.can_reply]);
+
+  useEffect(() => {
+    sendingValue.value = sending ? 1 : 0;
+  }, [sending, sendingValue]);
+
+  const submitReply = useCallback(async () => {
     const text = replyText.trim();
     if (
       !text ||
@@ -276,13 +280,11 @@ export default function ThoughtDetailScreen() {
       snapToPanel(2);
       return;
     }
+    sendingValue.value = 1;
     setSending(true);
     try {
       await postReply(id, text);
       recordReplySent({ reply_length_chars: text.length });
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch {}
       pulseOpacity.value = withSequence(
         withTiming(0.25, { duration: 100 }),
         withTiming(0, { duration: 300 })
@@ -302,9 +304,11 @@ export default function ThoughtDetailScreen() {
       snapToPanel(2);
       setSending(false);
     } finally {
+      sendingValue.value = 0;
       setSending(false);
     }
   }, [
+    sendingValue,
     id,
     replyText,
     data?.panel_3.can_reply,
@@ -319,6 +323,14 @@ export default function ThoughtDetailScreen() {
     snapToPanel,
     refreshThought,
   ]);
+
+  const queueSwipeSend = useCallback(() => {
+    if (swipeSendQueuedRef.current) return;
+    swipeSendQueuedRef.current = true;
+    void submitReply().finally(() => {
+      swipeSendQueuedRef.current = false;
+    });
+  }, [submitReply]);
 
   const handleDeleteReply = useCallback(
     (replyId: string) => {
@@ -629,8 +641,8 @@ export default function ThoughtDetailScreen() {
                 <Text style={styles.replyHintText}>
                   {sending
                     ? "sending..."
-                    : replyText.trim().length < REPLY_MIN_LENGTH
-                      ? `${replyText.trim().length}/${REPLY_MIN_LENGTH} min`
+                    : trimmedReplyLength < REPLY_MIN_LENGTH
+                      ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
                       : "← swipe left to send"}
                 </Text>
               </KeyboardAvoidingView>
@@ -877,20 +889,28 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 0,
-    paddingBottom: 24,
+    paddingTop: 8,
+    paddingBottom: 26,
     backgroundColor: colors.PANEL_DEEP,
   },
   replyLabel: {
     ...typography.replyInput,
+    fontSize: 9.5,
+    lineHeight: 14,
     color: colors.VERMILLION,
     marginBottom: 6,
   },
   replyInput: {
     ...typography.replyInput,
+    fontSize: 12.5,
+    lineHeight: 18,
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.2)",
-    paddingVertical: 8,
+    minHeight: 34,
+    paddingHorizontal: 0,
+    paddingTop: Platform.OS === "ios" ? 8 : 6,
+    paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
   replySafety: {
     ...typography.metadata,
