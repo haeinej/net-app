@@ -8,7 +8,9 @@
 (function () {
   var params = new URLSearchParams(window.location.search);
   if (!params.get('token_hash')) return;
-  window.location.replace('/verify-email/?' + params.toString());
+  var type = (params.get('type') || '').toLowerCase();
+  var target = type === 'recovery' ? '/reset-password/' : '/verify-email/';
+  window.location.replace(target + '?' + params.toString());
 })();
 </script>
 <style>

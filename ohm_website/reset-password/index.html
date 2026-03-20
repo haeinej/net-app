@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ohm. Reset Password</title>
+  <style>
+    :root {
+      --vermillion: #eb4101;
+      --olive: #979c5b;
+      --warm-ground: #f5f0ea;
+      --card-ground: rgba(255, 255, 255, 0.54);
+      --deep: #080604;
+      --type-dark: #1a1a16;
+      --type-muted: #7d7a72;
+      --line: rgba(12, 12, 10, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(151, 156, 91, 0.18), transparent 32%),
+        linear-gradient(180deg, #f7f2eb 0%, var(--warm-ground) 100%);
+      color: var(--type-dark);
+      font-family: Georgia, "Times New Roman", serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .shell {
+      width: min(560px, 100%);
+      background: var(--card-ground);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 32px 28px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 48px rgba(12, 12, 10, 0.08);
+    }
+
+    .brand {
+      color: var(--deep);
+      text-decoration: none;
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      display: inline-block;
+      margin-bottom: 28px;
+    }
+
+    .brand span {
+      color: var(--vermillion);
+    }
+
+    .eyebrow {
+      color: var(--olive);
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin: 0 0 10px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(34px, 8vw, 52px);
+      line-height: 0.94;
+      letter-spacing: -0.05em;
+    }
+
+    p {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--type-muted);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .button {
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 15px 22px;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.18s ease, opacity 0.18s ease;
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+      opacity: 0.95;
+    }
+
+    .button-primary {
+      background: var(--deep);
+      color: white;
+    }
+
+    .button-secondary {
+      background: rgba(8, 6, 4, 0.06);
+      color: var(--type-dark);
+    }
+
+    .detail {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      font-size: 15px;
+      color: var(--type-muted);
+    }
+
+    .detail strong {
+      color: var(--type-dark);
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var tokenHash = params.get("token_hash");
+      var type = params.get("type") || "recovery";
+      var error = params.get("error");
+      var errorDescription = params.get("error_description");
+
+      function buildAppUrl() {
+        var appParams = new URLSearchParams();
+        if (tokenHash) appParams.set("token_hash", tokenHash);
+        if (type) appParams.set("type", type);
+        if (error) appParams.set("error", error);
+        if (errorDescription) appParams.set("error_description", errorDescription);
+        return "ohm://reset-password" + (appParams.toString() ? "?" + appParams.toString() : "");
+      }
+
+      window.__OHM_RESET_HANDOFF__ = {
+        appUrl: buildAppUrl(),
+        hasToken: !!tokenHash,
+      };
+
+      if (window.__OHM_RESET_HANDOFF__.hasToken) {
+        window.location.replace(window.__OHM_RESET_HANDOFF__.appUrl);
+        setTimeout(function () {
+          window.location.href = window.__OHM_RESET_HANDOFF__.appUrl;
+        }, 900);
+      }
+    })();
+  </script>
+</head>
+<body>
+  <main class="shell">
+    <a class="brand" href="https://www.ohmmmm.com">ohm<span>.</span></a>
+    <p class="eyebrow">Password Reset</p>
+    <h1 id="title">Opening the app...</h1>
+    <p id="copy">
+      We are sending you back into ohm. so you can choose a new password.
+    </p>
+
+    <div class="actions">
+      <a id="openApp" class="button button-primary" href="ohm://reset-password">Open ohm.</a>
+      <a class="button button-secondary" href="https://www.ohmmmm.com/support.html">Need help?</a>
+    </div>
+
+    <p id="detail" class="detail hidden">
+      If the app does not open automatically, tap <strong>Open ohm.</strong> above and return to the app.
+    </p>
+  </main>
+  <script>
+    (function () {
+      var handoff = window.__OHM_RESET_HANDOFF__ || { appUrl: "ohm://reset-password", hasToken: false };
+      var title = document.getElementById("title");
+      var copy = document.getElementById("copy");
+      var openApp = document.getElementById("openApp");
+      var detail = document.getElementById("detail");
+
+      openApp.href = handoff.appUrl;
+
+      if (!handoff.hasToken) {
+        title.textContent = "Reset link is incomplete";
+        copy.textContent = "This link is missing the password reset token. Please return to the latest password reset email and try again.";
+        detail.classList.remove("hidden");
+        return;
+      }
+
+      detail.classList.remove("hidden");
+    })();
+  </script>
+</body>
+</html>

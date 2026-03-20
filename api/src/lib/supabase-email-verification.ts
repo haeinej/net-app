@@ -4,6 +4,10 @@ type SendVerificationEmailParams = {
   userId: string;
 };
 
+type SendPasswordRecoveryEmailParams = {
+  email: string;
+};
+
 type VerifyEmailParams =
   | {
       email: string;
@@ -25,6 +29,7 @@ type SupabaseVerifyResponse = {
 };
 
 const DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL = "https://www.ohmmmm.com/verify-email/";
+const DEFAULT_PASSWORD_RESET_REDIRECT_URL = "https://www.ohmmmm.com/reset-password/";
 
 function readRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -59,6 +64,22 @@ function getRedirectUrl(): string {
   }
 
   return DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL;
+}
+
+function getPasswordResetRedirectUrl(): string {
+  const configured = process.env.PASSWORD_RESET_REDIRECT_URL?.trim();
+
+  if (configured?.startsWith("ohm://")) {
+    return configured;
+  }
+  if (
+    configured?.startsWith("https://www.ohmmmm.com/reset-password") ||
+    configured?.startsWith("https://ohmmmm.com/reset-password")
+  ) {
+    return configured;
+  }
+
+  return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
 }
 
 function getHeaders(): Record<string, string> {
@@ -134,6 +155,19 @@ export async function sendSupabaseVerificationEmail(
   );
 }
 
+export async function sendSupabasePasswordRecoveryEmail(
+  params: SendPasswordRecoveryEmailParams
+): Promise<void> {
+  await postSupabaseAuth<unknown>(
+    "/recover",
+    {
+      email: params.email,
+      redirect_to: getPasswordResetRedirectUrl(),
+    },
+    "Could not send password reset email"
+  );
+}
+
 export async function verifySupabaseEmail(
   params: VerifyEmailParams
 ): Promise<{ email: string }> {
@@ -155,6 +189,32 @@ export async function verifySupabaseEmail(
   const email = payload.user?.email?.trim().toLowerCase();
   if (!email) {
     throw new Error("Could not verify email");
+  }
+
+  return { email };
+}
+
+export async function verifySupabaseRecovery(
+  params: VerifyEmailParams
+): Promise<{ email: string }> {
+  const payload = await postSupabaseAuth<SupabaseVerifyResponse>(
+    "/verify",
+    params.tokenHash
+      ? {
+          token_hash: params.tokenHash,
+          type: "recovery",
+        }
+      : {
+          email: params.email,
+          token: params.code,
+          type: "recovery",
+        },
+    "Could not verify password reset"
+  );
+
+  const email = payload.user?.email?.trim().toLowerCase();
+  if (!email) {
+    throw new Error("Could not verify password reset");
   }
 
   return { email };

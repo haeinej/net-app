@@ -9,7 +9,9 @@ import { getOnboardingStateForUser } from "../lib/onboarding";
 import { normalizeEmail, validateStrongPassword } from "../lib/auth-policy";
 import {
   sendSupabaseVerificationEmail,
+  sendSupabasePasswordRecoveryEmail,
   verifySupabaseEmail,
+  verifySupabaseRecovery,
 } from "../lib/supabase-email-verification";
 import { hashPassword, verifyPassword } from "../lib/password";
 
@@ -250,6 +252,125 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       }
 
       return reply.status(202).send({ ok: true });
+    }
+  );
+
+  app.post<{
+    Body: { email?: string };
+  }>(
+    "/api/auth/request-password-reset",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => `ip:${req.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body ?? {};
+      const emailRaw = readOptionalTrimmedString(body.email);
+      const email = emailRaw ? normalizeEmail(emailRaw) : "";
+      if (!email) {
+        return reply.status(400).send({ error: "email required" });
+      }
+
+      const [user] = await db
+        .select({
+          email: users.email,
+          emailVerifiedAt: users.emailVerifiedAt,
+        })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      if (!user?.email || !user.emailVerifiedAt) {
+        return reply.status(202).send({ ok: true });
+      }
+
+      try {
+        await sendSupabasePasswordRecoveryEmail({
+          email: user.email,
+        });
+      } catch (error) {
+        return reply.status(503).send({
+          error:
+            error instanceof Error ? error.message : "Could not send password reset email",
+        });
+      }
+
+      return reply.status(202).send({ ok: true });
+    }
+  );
+
+  app.post<{
+    Body: { email?: string; code?: string; token_hash?: string; type?: string; password?: string };
+  }>(
+    "/api/auth/reset-password",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => `ip:${req.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body ?? {};
+      const emailRaw = readOptionalTrimmedString(body.email);
+      const email = emailRaw ? normalizeEmail(emailRaw) : "";
+      const code = readTrimmedString(body.code);
+      const tokenHash = readOptionalTrimmedString(body.token_hash);
+      const password = typeof body.password === "string" ? body.password : "";
+
+      const passwordError = validateStrongPassword(password);
+      if (passwordError) {
+        return reply.status(400).send({ error: passwordError });
+      }
+
+      if (!tokenHash && (!email || !/^\d{6,8}$/.test(code))) {
+        return reply.status(400).send({
+          error: "Open the reset link or enter your email and reset code",
+        });
+      }
+
+      try {
+        const verified = tokenHash
+          ? await verifySupabaseRecovery({
+              tokenHash,
+              type: body.type,
+            })
+          : await verifySupabaseRecovery({
+              email,
+              code,
+            });
+
+        const [user] = await db
+          .select({
+            id: users.id,
+          })
+          .from(users)
+          .where(eq(users.email, verified.email))
+          .limit(1);
+
+        if (!user) {
+          return reply.status(400).send({ error: "Could not reset password" });
+        }
+
+        const passwordHash = await hashPassword(password);
+        await db
+          .update(users)
+          .set({ passwordHash })
+          .where(eq(users.id, user.id));
+
+        return reply.status(200).send({ ok: true });
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : "Could not reset password",
+        });
+      }
     }
   );
 

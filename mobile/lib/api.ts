@@ -997,6 +997,52 @@ export async function resendVerificationEmail(email: string): Promise<void> {
   });
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  await requestVoid("/api/auth/request-password-reset", "Could not send password reset email", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ email }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
+type ResetPasswordPayload =
+  | {
+      password: string;
+      tokenHash: string;
+      type?: string;
+      email?: never;
+      code?: never;
+    }
+  | {
+      password: string;
+      email: string;
+      code: string;
+      tokenHash?: never;
+      type?: never;
+    };
+
+export async function resetPassword(payload: ResetPasswordPayload): Promise<void> {
+  const body = "tokenHash" in payload
+    ? {
+        password: payload.password,
+        token_hash: payload.tokenHash,
+        type: payload.type,
+      }
+    : {
+        password: payload.password,
+        email: payload.email,
+        code: payload.code,
+      };
+
+  await requestVoid("/api/auth/reset-password", "Could not reset password", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
 export async function deleteAccount(password: string): Promise<void> {
   await requestVoid("/api/me/account", "Account deletion failed", {
     method: "DELETE",

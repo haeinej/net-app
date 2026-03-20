@@ -13,18 +13,15 @@ import {
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, primitives, radii, opacity } from "../theme";
+import { colors, spacing, typography, primitives, opacity } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
-import { ApiError, login, loginDemo } from "../lib/api";
+import { ApiError, login, loginDemo, setCachedUserId } from "../lib/api";
 import {
   dismissIntro,
   setAuth,
   setOnboardingComplete,
   setOnboardingStep,
 } from "../lib/auth-store";
-import { setCachedUserId } from "../lib/api";
-
-/* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../assets/images/ohm-logo.png");
 
 export default function LoginScreen() {
@@ -158,6 +155,19 @@ export default function LoginScreen() {
             disabled={loading}
           >
             <Text style={styles.linkText}>Create account</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tertiaryLink}
+            onPress={() =>
+              router.push(
+                email.trim()
+                  ? { pathname: "/reset-password", params: { email: email.trim() } }
+                  : "/reset-password"
+              )
+            }
+            disabled={loading}
+          >
+            <Text style={styles.secondaryLinkText}>Forgot password?</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.demoLink}
