@@ -20,7 +20,7 @@ import {
   radii,
 } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
+import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import {
@@ -33,6 +33,7 @@ import {
   checkBlockStatus,
   getMyUserId,
   type ProfileResponse,
+  type FeedItemThought,
   type FeedItemCrossing,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
@@ -286,15 +287,26 @@ export default function UserProfileScreen() {
         deckItems.map((item) => {
           if (item.kind === "thought") {
             const thought = item.data;
+            const feedItem: FeedItemThought = {
+              type: "thought",
+              thought: {
+                id: thought.id,
+                sentence: thought.sentence,
+                photo_url: thought.photo_url,
+                image_url: thought.image_url,
+                created_at: thought.created_at ?? new Date().toISOString(),
+                has_context: false,
+              },
+              user: {
+                id: profile.id,
+                name: profile.name,
+                photo_url: profile.photo_url,
+              },
+            };
             return (
               <View key={`t-${thought.id}`} style={[styles.thoughtWrap, containerStyle]}>
                 <CardDeck layers={3}>
-                  <ProfileThoughtCard
-                    thought={thought}
-                    authorName={profile.name ?? undefined}
-                    authorPhotoUrl={profile.photo_url}
-                    authorUserId={null}
-                  />
+                  <SwipeableThoughtCard item={feedItem} visible isOwn={isOwnProfile} />
                 </CardDeck>
               </View>
             );
@@ -409,8 +421,8 @@ const styles = StyleSheet.create({
   },
   thoughtWrap: {
     width: "100%",
+    alignItems: "center",
     marginBottom: spacing.cardGap + 4,
-    paddingHorizontal: spacing.screenPadding,
   },
   emptyDeck: {
     ...typography.body,

@@ -543,8 +543,8 @@ const styles = StyleSheet.create({
   },
   thoughtWrap: {
     marginBottom: spacing.cardGap + 6,
-    paddingHorizontal: 12,
     width: "100%",
+    alignItems: "center",
   },
   emptyDeck: {
     ...typography.body,

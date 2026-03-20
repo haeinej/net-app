@@ -60,12 +60,14 @@ export function CardDeck({ children, layers = 2 }: CardDeckProps) {
 const styles = StyleSheet.create({
   container: {
     position: "relative",
+    alignSelf: "center",
   },
   layer: {
     position: "absolute",
     borderRadius: spacing.cardRadius,
   },
   mainCardWrap: {
+    alignSelf: "center",
     borderRadius: spacing.cardRadius,
     overflow: "hidden",
   },
