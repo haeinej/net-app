@@ -59,6 +59,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const termsAccepted = body.terms_accepted === true;
 
     if (!name) return reply.status(400).send({ error: "name required" });
+    if (!photoUrl) {
+      return reply.status(400).send({ error: "profile photo required" });
+    }
     if (!termsAccepted) return reply.status(400).send({ error: "You must accept the Terms of Use" });
     if (!email) return reply.status(400).send({ error: "email required" });
     const passwordError = validateStrongPassword(password);

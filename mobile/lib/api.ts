@@ -924,7 +924,7 @@ export async function createThought(
 // Auth (onboarding + login)
 export interface RegisterBody {
   name: string;
-  photo_url?: string;
+  photo_url: string;
   email: string;
   password: string;
   terms_accepted: boolean;

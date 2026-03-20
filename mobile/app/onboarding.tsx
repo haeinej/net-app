@@ -183,6 +183,7 @@ export default function OnboardingScreen() {
 
   const canContinueStep1 =
     name.trim().length > 0 &&
+    Boolean(selectedProfilePhoto) &&
     email.trim().length > 0 &&
     password.length >= 10 &&
     confirmPassword.length > 0 &&
@@ -190,6 +191,10 @@ export default function OnboardingScreen() {
 
   const handleStep1Continue = useCallback(async () => {
     if (!canContinueStep1 || sendingStep1) return;
+    if (!selectedProfilePhoto) {
+      setRegError("Profile photo required");
+      return;
+    }
     const passwordError = validateStrongPassword(password);
     if (passwordError) {
       setRegError(passwordError);
@@ -204,7 +209,7 @@ export default function OnboardingScreen() {
     try {
       const body: RegisterBody = {
         name: name.trim(),
-        photo_url: selectedProfilePhoto ?? undefined,
+        photo_url: selectedProfilePhoto,
         email: email.trim(),
         password,
         terms_accepted: true,
@@ -342,7 +347,7 @@ export default function OnboardingScreen() {
             )}
           </TouchableOpacity>
           <Text style={styles.photoGuide}>
-            Make sure your full face is visible and clear.
+            Add a clear profile photo with your full face visible. This is required.
           </Text>
           <TextInput
             style={styles.input}
