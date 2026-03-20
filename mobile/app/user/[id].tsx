@@ -305,7 +305,7 @@ export default function UserProfileScreen() {
             };
             return (
               <View key={`t-${thought.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                <CardDeck layers={3}>
+                <CardDeck>
                   <SwipeableThoughtCard item={feedItem} visible isOwn={isOwnProfile} />
                 </CardDeck>
               </View>
@@ -327,7 +327,7 @@ export default function UserProfileScreen() {
 
           return (
             <View key={`c-${crossing.id}`} style={[styles.thoughtWrap, containerStyle]}>
-              <CardDeck layers={3}>
+              <CardDeck>
                 <CrossingCard item={crossingItem} visible ignoreUserId={profile.id} />
               </CardDeck>
             </View>
