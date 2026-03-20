@@ -397,6 +397,7 @@ async function flushPendingFeedServes(): Promise<void> {
   feedServeFlushPromise = db
     .insert(feedServes)
     .values(rows)
+    .then(() => undefined)
     .catch((error) => {
       console.error("feed serve batch insert failed", {
         count: rows.length,

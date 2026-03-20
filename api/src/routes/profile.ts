@@ -261,36 +261,37 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         await rawSql.begin(async (tx) => {
-          const existingTableRows = await tx`
+          const sqlTx = tx as unknown as typeof rawSql;
+          const existingTableRows = await sqlTx<{ table_name: string }[]>`
             select table_name
             from information_schema.tables
             where table_schema = 'public'
               and table_name = any(${[...OPTIONAL_DELETE_TABLES]})
           `;
           const existingTables = new Set(
-            existingTableRows.map((row) => String(row.table_name))
+            existingTableRows.map((row: { table_name: string }) => String(row.table_name))
           );
 
           if (existingTables.has("email_verification_codes")) {
-            await tx`delete from public.email_verification_codes where user_id = ${userId}`;
+            await sqlTx`delete from public.email_verification_codes where user_id = ${userId}`;
           }
           if (existingTables.has("reports")) {
-            await tx`
+            await sqlTx`
               delete from public.reports
               where reporter_id = ${userId} or target_user_id = ${userId}
             `;
           }
           if (existingTables.has("blocks")) {
-            await tx`
+            await sqlTx`
               delete from public.blocks
               where blocker_id = ${userId} or blocked_id = ${userId}
             `;
           }
           if (existingTables.has("push_tokens")) {
-            await tx`delete from public.push_tokens where user_id = ${userId}`;
+            await sqlTx`delete from public.push_tokens where user_id = ${userId}`;
           }
           if (existingTables.has("feed_serves")) {
-            await tx`
+            await sqlTx`
               delete from public.feed_serves
               where viewer_id = ${userId}
                  or author_id = ${userId}
@@ -300,13 +301,13 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
             `;
           }
           if (existingTables.has("feed_snapshots")) {
-            await tx`delete from public.feed_snapshots where viewer_id = ${userId}`;
+            await sqlTx`delete from public.feed_snapshots where viewer_id = ${userId}`;
           }
           if (existingTables.has("user_feed_profiles")) {
-            await tx`delete from public.user_feed_profiles where user_id = ${userId}`;
+            await sqlTx`delete from public.user_feed_profiles where user_id = ${userId}`;
           }
           if (existingTables.has("crossing_replies")) {
-            await tx`
+            await sqlTx`
               delete from public.crossing_replies
               where replier_id = ${userId}
                  or target_participant_id = ${userId}
@@ -318,7 +319,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
             `;
           }
           if (existingTables.has("shifts")) {
-            await tx`
+            await sqlTx`
               delete from public.shifts
               where participant_a = ${userId}
                  or participant_b = ${userId}
@@ -330,7 +331,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
             `;
           }
           if (existingTables.has("shift_drafts")) {
-            await tx`
+            await sqlTx`
               delete from public.shift_drafts
               where initiator_id = ${userId}
                  or conversation_id in (
@@ -341,7 +342,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
             `;
           }
 
-          await tx`
+          await sqlTx`
             delete from public.messages
             where conversation_id in (
               select id
@@ -350,7 +351,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
             )
                or sender_id = ${userId}
           `;
-          await tx`
+          await sqlTx`
             delete from public.crossings
             where participant_a = ${userId}
                or participant_b = ${userId}
@@ -360,7 +361,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
                  where participant_a = ${userId} or participant_b = ${userId}
                )
           `;
-          await tx`
+          await sqlTx`
             delete from public.crossing_drafts
             where initiator_id = ${userId}
                or conversation_id in (
@@ -369,46 +370,46 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
                  where participant_a = ${userId} or participant_b = ${userId}
                )
           `;
-          await tx`
+          await sqlTx`
             delete from public.user_recommendation_weights
             where user_id = ${userId}
           `;
-          await tx`
+          await sqlTx`
             delete from public.image_generations
             where user_id = ${userId}
                or thought_id in (
                  select id from public.thoughts where user_id = ${userId}
                )
           `;
-          await tx`
+          await sqlTx`
             delete from public.engagement_events
             where user_id = ${userId}
                or thought_id in (
                  select id from public.thoughts where user_id = ${userId}
                )
           `;
-          await tx`
+          await sqlTx`
             delete from public.failed_processing_jobs
             where thought_id in (
               select id from public.thoughts where user_id = ${userId}
             )
           `;
-          await tx`
+          await sqlTx`
             delete from public.conversations
             where participant_a = ${userId} or participant_b = ${userId}
           `;
-          await tx`
+          await sqlTx`
             delete from public.replies
             where replier_id = ${userId}
                or thought_id in (
                  select id from public.thoughts where user_id = ${userId}
                )
           `;
-          await tx`
+          await sqlTx`
             delete from public.thoughts
             where user_id = ${userId}
           `;
-          await tx`
+          await sqlTx`
             delete from public.users
             where id = ${userId}
           `;

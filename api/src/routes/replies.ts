@@ -181,7 +181,7 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Update materialized reply stats for this thought
-      const [author, replier] = await Promise.all([
+      const [[author], [replier]] = await Promise.all([
         tx
           .select({ concentration: users.concentration })
           .from(users)

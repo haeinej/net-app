@@ -32,6 +32,8 @@ interface ConversationListQuery {
   before_id?: string;
 }
 
+type ConversationRow = typeof conversations.$inferSelect;
+
 async function markConversationRead(
   conv: typeof conversations.$inferSelect,
   userId: string
@@ -69,7 +71,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 50;
     const beforeId = request.query.before_id;
 
-    let allConvs;
+    let allConvs: ConversationRow[] = [];
     if (beforeId) {
       const [before] = await db
         .select({
