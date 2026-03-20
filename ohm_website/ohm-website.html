@@ -110,7 +110,12 @@ nav.scrolled {
 .hero-sub {
   font-family: 'Comico', serif; font-style: normal;
   font-size: clamp(13px, 1.54vw, 19px); color: rgba(255,255,255,0.55);
-  letter-spacing: 0.5px; opacity: 0; animation: fadeUp 1s 0.65s forwards;
+  letter-spacing: 0.35px;
+  line-height: 1.3;
+  max-width: 23ch;
+  margin: 0 auto;
+  text-wrap: balance;
+  opacity: 0; animation: fadeUp 1s 0.65s forwards;
 }
 
 .scroll-arrow {
@@ -175,29 +180,34 @@ nav.scrolled {
   font-family: 'Comico', serif;
   line-height: 1.08;
   letter-spacing: -1px;
+  text-wrap: balance;
 }
 
 .m-1 {
   font-size: clamp(26px, 3.84vw, 50px);
   color: var(--type-muted);
   text-align: left;
+  max-width: 8ch;
 }
 .m-2 {
   font-size: clamp(29px, 4.03vw, 54px);
   color: var(--type-dark);
   text-align: right;
+  max-width: 12ch;
+  margin-left: auto;
 }
 .m-3 {
   font-size: clamp(31px, 4.32vw, 58px);
   color: var(--type-dark);
   text-align: left;
   padding-left: 10%;
+  max-width: 14ch;
 }
 .m-result {
   font-size: clamp(35px, 5.28vw, 70px);
   color: var(--vermillion);
   text-align: center;
-  max-width: 780px;
+  max-width: 11ch;
   margin: 0 auto;
   letter-spacing: -2px;
   line-height: 1.05;
@@ -755,13 +765,16 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   nav { padding: 16px 24px; }
   .hero-content { padding: 0 24px; }
   .hero-tagline { letter-spacing: -2.5px; }
+  .hero-sub { max-width: 19ch; font-size: clamp(14px, 4vw, 18px); }
   .scroll-arrow { bottom: 140px; }
   .mechanic { padding: 160px 24px 140px; }
   .what-wave-top { height: 60px; }
   .thread-divider { padding: 28px 0; }
   .section-indicator { margin-bottom: 80px; }
+  .m-1, .m-2, .m-3 { max-width: 12ch; }
   .m-2 { text-align: left; }
   .m-3 { padding-left: 0; }
+  .m-result { max-width: 10ch; font-size: clamp(32px, 10vw, 56px); }
   .mech-arrow { padding: 20px 0; }
   .mech-arrow svg { width: clamp(160px, 60vw, 280px); }
   .why, .what { padding-left: 24px; padding-right: 24px; }
@@ -815,7 +828,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   <div class="hero-content">
     <img src="images/logo_nobackground.png" class="hero-mark" alt="">
     <h1 class="hero-tagline">OHM.</h1>
-    <p class="hero-sub">Thoughts that find someone.</p>
+    <p class="hero-sub">Find the right minds for your thinking.</p>
   </div>
   <div class="scroll-arrow" aria-hidden="true">
     <svg viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
