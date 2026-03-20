@@ -25,7 +25,6 @@ import Animated, {
   runOnJS,
   Easing,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
@@ -98,14 +97,6 @@ export function CrossingCard({
   const SNAP_SPRING = { damping: 28, stiffness: 320, mass: 0.8 };
   const RUBBER_SPRING = { damping: 22, stiffness: 180, mass: 0.6 };
 
-  const triggerSnapHaptic = useCallback(() => {
-    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
-  }, []);
-
-  const triggerSendReadyHaptic = useCallback(() => {
-    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
-  }, []);
-
   const rememberPanel = useCallback(
     (panel: number) => {
       setSavedCardPanel(cardKey, panel);
@@ -147,9 +138,6 @@ export function CrossingCard({
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
       runOnJS(rememberPanel)(target);
-      if (target !== from) {
-        runOnJS(triggerSnapHaptic)();
-      }
       if (from === 0 && target === 1) runOnJS(loadDetail)();
     },
     [
@@ -163,7 +151,6 @@ export function CrossingCard({
       sendHapticArmed,
       sendTriggered,
       sendSwipeProgress,
-      triggerSnapHaptic,
     ]
   );
 
@@ -228,7 +215,6 @@ export function CrossingCard({
 
             if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
               sendHapticArmed.value = 1;
-              runOnJS(triggerSendReadyHaptic)();
             } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
               sendHapticArmed.value = 0;
             }
@@ -364,7 +350,6 @@ export function CrossingCard({
     setSending(true);
     try {
       await postCrossingReply(crossing.id, text, replyTarget);
-      try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       pulseOpacity.value = withSequence(
         withTiming(0.2, { duration: 80, easing: Easing.out(Easing.ease) }),
         withTiming(0, { duration: 400, easing: Easing.inOut(Easing.ease) })

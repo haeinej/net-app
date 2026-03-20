@@ -27,7 +27,6 @@ import Animated, {
   runOnJS,
   Easing,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
@@ -135,18 +134,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   // Softer spring for rubber-band release
   const RUBBER_SPRING = { damping: 22, stiffness: 180, mass: 0.6 };
 
-  const triggerSnapHaptic = useCallback(() => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {}
-  }, []);
-
-  const triggerSendReadyHaptic = useCallback(() => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch {}
-  }, []);
-
   const rememberPanel = useCallback(
     (panel: number) => {
       setSavedCardPanel(cardKey, panel);
@@ -181,11 +168,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       runOnJS(setDisplayPanel)(target);
       runOnJS(rememberPanel)(target);
 
-      // Haptic on panel change
-      if (target !== from) {
-        runOnJS(triggerSnapHaptic)();
-      }
-
       if (from === 0 && target === 1) {
         runOnJS(recordSwipeP2)();
         runOnJS(loadDetail)();
@@ -204,7 +186,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       sendHapticArmed,
       sendTriggered,
       sendSwipeProgress,
-      triggerSnapHaptic,
     ]
   );
 
@@ -288,7 +269,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
 
             if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
               sendHapticArmed.value = 1;
-              runOnJS(triggerSendReadyHaptic)();
             } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
               sendHapticArmed.value = 0;
             }
@@ -444,7 +424,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     try {
       await postReply(thought.id, text);
       recordReplySent({ reply_length_chars: text.length });
-      try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       pulseOpacity.value = withSequence(
         withTiming(0.2, { duration: 80, easing: Easing.out(Easing.ease) }),
         withTiming(0, { duration: 400, easing: Easing.inOut(Easing.ease) })
