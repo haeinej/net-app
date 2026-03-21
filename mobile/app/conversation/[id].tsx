@@ -17,6 +17,7 @@ import {
   type AppStateStatus,
 } from "react-native";
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, primitives, opacity } from "../../theme";
@@ -118,6 +119,7 @@ export default function ConversationThreadScreen() {
   const [crossingSentence, setCrossingSentence] = useState("");
   const [crossingContext, setCrossingContext] = useState("");
   const [crossingSubmitting, setCrossingSubmitting] = useState(false);
+  const crossingSubmittingRef = useRef(false);
   const [reportVisible, setReportVisible] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -310,6 +312,8 @@ export default function ConversationThreadScreen() {
             try {
               await abandonCrossing(id);
               setCrossingOpen(false);
+              setCrossingSentence("");
+              setCrossingContext("");
               await loadDetail();
             } catch (error) {
               Alert.alert(
@@ -324,7 +328,8 @@ export default function ConversationThreadScreen() {
   }, [id, loadDetail]);
 
   const handleCreateCrossing = useCallback(async () => {
-    if (!id || crossingSubmitting) return;
+    if (!id || crossingSubmittingRef.current) return;
+    crossingSubmittingRef.current = true;
     setCrossingSubmitting(true);
     try {
       if (!canApproveCrossing) {
@@ -335,16 +340,10 @@ export default function ConversationThreadScreen() {
         context: canApproveCrossing ? undefined : crossingContext.trim() || undefined,
       });
       setCrossingOpen(false);
-      await loadDetail();
-      if (result.status === "awaiting_other") {
-        const autoPostLabel = formatShortDateTime(result.auto_post_at);
-        Alert.alert(
-          "Crossing submitted",
-          autoPostLabel
-            ? `If they do not make it shared by ${autoPostLabel}, it will post as your thought.`
-            : "If they do not make it shared in time, it will post as your thought."
-        );
+      if (result.status === "complete") {
+        try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       }
+      await loadDetail();
     } catch (error) {
       Alert.alert(
         "Could not create crossing",
@@ -352,12 +351,12 @@ export default function ConversationThreadScreen() {
       );
     } finally {
       setCrossingSubmitting(false);
+      crossingSubmittingRef.current = false;
     }
   }, [
     canApproveCrossing,
     crossingContext,
     crossingSentence,
-    crossingSubmitting,
     id,
     loadDetail,
     saveCrossingDraft,
@@ -422,6 +421,15 @@ export default function ConversationThreadScreen() {
   }
 
   const renderCrossingBanner = () => {
+    if (crossingDraft?.status === "complete") {
+      return (
+        <View style={styles.crossingWrap}>
+          <Text style={styles.crossingCompletedTitle}>Crossing matched</Text>
+          <Text style={styles.crossingHint}>Find it in your feed.</Text>
+        </View>
+      );
+    }
+
     if (!canCreateCrossing) {
       if (messageCount < nextCrossingMessageCount) {
         return (
@@ -912,6 +920,12 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     color: colors.TYPE_MUTED,
     marginBottom: 8,
+  },
+  crossingCompletedTitle: {
+    ...typography.label,
+    fontSize: 14,
+    color: colors.OLIVE,
+    marginBottom: 4,
   },
   ignoreRow: {
     paddingVertical: 8,
