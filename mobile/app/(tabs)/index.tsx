@@ -62,6 +62,8 @@ export default function WorldsScreen() {
   const connectionOpacity = useSharedValue(0);
   const [connectionVisible, setConnectionVisible] = useState(false);
   const pendingNavRef = useRef<(() => void) | null>(null);
+  const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [acceptingReplyId, setAcceptingReplyId] = useState<string | null>(null);
 
   const connectionOverlayStyle = useAnimatedStyle(() => ({
     opacity: connectionOpacity.value,
@@ -74,6 +76,17 @@ export default function WorldsScreen() {
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
+  }, []);
+
+  // Clean up connection timer on unmount to prevent navigation after screen is gone
+  useEffect(() => {
+    return () => {
+      if (connectionTimerRef.current) {
+        clearTimeout(connectionTimerRef.current);
+        connectionTimerRef.current = null;
+      }
+      pendingNavRef.current = null;
+    };
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -223,6 +236,9 @@ export default function WorldsScreen() {
   }, [loadNotifications]);
 
   const handleAccept = useCallback(async (item: NotificationItem) => {
+    if (acceptingReplyId) return;
+    setAcceptingReplyId(item.reply_id);
+
     try {
       const result = await acceptReply(item.reply_id);
       setNotificationPanelOpen(false);
@@ -259,14 +275,24 @@ export default function WorldsScreen() {
         setConnectionVisible(false);
         router.push(navParams);
       };
-      setTimeout(() => {
+      if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
+      connectionTimerRef.current = setTimeout(() => {
         pendingNavRef.current?.();
         pendingNavRef.current = null;
+        connectionTimerRef.current = null;
       }, 850);
-    } catch {
-      // keep in list; user can retry
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.includes("timeout")
+          ? "Network timeout — check your connection and try again."
+          : err instanceof Error && err.message.includes("reachable")
+            ? "Can't reach the server — check your connection."
+            : "Something went wrong. Try again.";
+      Alert.alert("Couldn't connect", message);
+    } finally {
+      setAcceptingReplyId(null);
     }
-  }, [router, connectionOpacity]);
+  }, [router, connectionOpacity, acceptingReplyId]);
 
   const handleIgnore = useCallback(async (replyId: string) => {
     try {
@@ -308,6 +334,7 @@ export default function WorldsScreen() {
         <NotificationPanel
           items={notifications}
           loading={notificationsLoading}
+          acceptingReplyId={acceptingReplyId}
           onAccept={handleAccept}
           onIgnore={handleIgnore}
         />

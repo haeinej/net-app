@@ -7,6 +7,7 @@ import type { NotificationItem } from "../lib/api";
 interface NotificationPanelProps {
   items: NotificationItem[];
   loading?: boolean;
+  acceptingReplyId?: string | null;
   onAccept: (item: NotificationItem) => void;
   onIgnore: (replyId: string) => void;
 }
@@ -14,6 +15,7 @@ interface NotificationPanelProps {
 export function NotificationPanel({
   items,
   loading,
+  acceptingReplyId,
   onAccept,
   onIgnore,
 }: NotificationPanelProps) {
@@ -67,13 +69,19 @@ export function NotificationPanel({
             )}
             <View style={styles.actions}>
               <TouchableOpacity
-                style={styles.acceptBtn}
+                style={[styles.acceptBtn, acceptingReplyId === n.reply_id && styles.acceptBtnDisabled]}
+                disabled={acceptingReplyId != null}
                 onPress={() => onAccept(n)}
               >
-                <Text style={styles.acceptText}>Reply in chat</Text>
+                {acceptingReplyId === n.reply_id ? (
+                  <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+                ) : (
+                  <Text style={styles.acceptText}>Reply in chat</Text>
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.ignoreBtn}
+                disabled={acceptingReplyId != null}
                 onPress={() => onIgnore(n.reply_id)}
               >
                 <Text style={styles.ignoreText}>Ignore</Text>
@@ -143,7 +151,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     backgroundColor: colors.OLIVE,
     borderRadius: radii.button,
+    minWidth: 100,
+    alignItems: "center" as const,
     ...shadows.raised,
+  },
+  acceptBtnDisabled: {
+    opacity: 0.6,
   },
   acceptText: {
     ...typography.metadata,
