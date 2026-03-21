@@ -17,6 +17,7 @@ const DEV_CORS_ORIGINS = [
 const PUBLIC_WEB_ORIGINS = [
   "https://www.ohmmmm.com",
   "https://ohmmmm.com",
+  "https://api.ohmmmm.com",
   "https://haeinej.github.io",
 ];
 
