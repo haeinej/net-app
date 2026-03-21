@@ -3,437 +3,290 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>you've been invited to ohm.</title>
+<title>an invitation to wander.</title>
 
 <!-- Open Graph -->
 <meta property="og:type" content="website">
-<meta property="og:title" content="you've been invited to ohm.">
+<meta property="og:title" content="an invitation to wander.">
 <meta property="og:description" content="your mind caught our attention.">
 <meta property="og:image" content="https://www.ohmmmm.com/images/og-invite.png">
 <meta property="og:url" content="https://www.ohmmmm.com/invite">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="you've been invited to ohm.">
+<meta name="twitter:title" content="an invitation to wander.">
 <meta name="twitter:description" content="your mind caught our attention.">
 <meta name="twitter:image" content="https://www.ohmmmm.com/images/og-invite.png">
 
 <style>
-@font-face { font-family: 'Comico'; src: url('../Fonts/OTF/Comico-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Sentient'; src: url('../Fonts/OTF/Sentient-Light.otf') format('opentype'); font-weight: 300; font-display: swap; }
 @font-face { font-family: 'Sentient'; src: url('../Fonts/OTF/Sentient-LightItalic.otf') format('opentype'); font-weight: 300; font-style: italic; font-display: swap; }
 @font-face { font-family: 'Sentient'; src: url('../Fonts/OTF/Sentient-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
 
 :root {
-  --vermillion: #EB4101;
-  --warm-ground: #F5F0EA;
-  --dark: #0C0C0A;
-  --type-dark: #1A1A16;
-  --type-muted: #9A9A98;
-  --card-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+  --ink: #0A0A0A;
+  --faded: #D0D0D0;
+  --muted: rgba(255,255,255,0.25);
+  --ember: #C4622D;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html, body {
-  height: 100%;
-  overflow: hidden;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
 
 body {
-  background: var(--dark);
-  color: var(--type-dark);
+  background: var(--ink);
+  color: var(--faded);
   font-family: 'Sentient', Georgia, serif;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  cursor: default;
 }
 
-/* ── State 1: Sealed card scene ── */
+/* ─── Grain overlay ─── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.035;
+  background-image: url('../images/grain.png');
+  background-size: 120px 120px;
+  background-repeat: repeat;
+}
 
-.scene {
+/* ═══ STATE 1: tap to open ═══ */
+
+.gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.8s ease;
+}
+.gate.hidden { opacity: 0; pointer-events: none; }
+
+.gate-text {
+  font-weight: 300;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-transform: lowercase;
+  animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.6; }
+}
+
+/* ═══ STATE 2: the letter ═══ */
+
+.letter {
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  transition: opacity 0.5s ease;
-}
-
-.scene.hidden {
+  padding: 48px 32px;
   opacity: 0;
   pointer-events: none;
-}
-
-.wordmark {
-  font-family: 'Comico', serif;
-  font-size: 28px;
-  color: white;
-  letter-spacing: -0.03em;
-  margin-bottom: 40px;
-  opacity: 0.9;
-}
-
-.wordmark .dot {
-  color: var(--vermillion);
-}
-
-.sealed-prompt {
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 300;
-  font-size: 15px;
-  color: rgba(255, 255, 255, 0.4);
-  margin-bottom: 20px;
-  letter-spacing: 0.02em;
-}
-
-/* ── Card container (3D) ── */
-
-.card-container {
-  perspective: 1200px;
-  width: min(380px, calc(100vw - 48px));
-  height: min(260px, 45vh);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.card {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.card.flipped {
-  transform: rotateY(180deg);
-}
-
-.card-front,
-.card-back {
-  position: absolute;
-  inset: 0;
-  border-radius: 20px;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-}
-
-/* Front: sealed side */
-.card-front {
-  background: var(--warm-ground);
-  box-shadow: var(--card-shadow);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.card-front-watermark {
-  font-family: 'Comico', serif;
-  font-size: 64px;
-  color: rgba(26, 26, 22, 0.06);
-  letter-spacing: -0.03em;
-  user-select: none;
-}
-
-.card-front-watermark .dot {
-  color: rgba(235, 65, 1, 0.12);
-}
-
-.card-front-dot {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: var(--vermillion);
-  border-radius: 50%;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0.6;
-}
-
-/* Breathing pulse on sealed card */
-@keyframes breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.012); }
-}
-
-.card-container:not(.opened) .card {
-  animation: breathe 3.5s ease-in-out infinite;
-}
-
-.card-container.opened .card {
-  animation: none;
-}
-
-/* Back: blank (hidden during flip) */
-.card-back {
-  background: var(--warm-ground);
-  box-shadow: var(--card-shadow);
-  transform: rotateY(180deg);
-}
-
-.tap-hint {
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 300;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.25);
-  margin-top: 24px;
-  letter-spacing: 0.02em;
-}
-
-/* ── State 3: Open card (full experience) ── */
-
-.open-scene {
-  position: fixed;
-  inset: 0;
-  background: var(--warm-ground);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.5s ease 0.3s;
+  transition: opacity 1.2s ease;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
-
-.open-scene.visible {
+.letter.visible {
   opacity: 1;
   pointer-events: auto;
 }
 
-.open-content {
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 60px 28px 80px;
+.letter-inner {
+  max-width: 420px;
+  width: 100%;
 }
 
-/* Part 1: The Compliment */
-.compliment {
-  text-align: center;
+/* ohm. mark */
+.letter-mark {
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--faded);
   margin-bottom: 56px;
-}
-
-.compliment p {
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 400;
-  font-size: clamp(18px, 4.5vw, 22px);
-  line-height: 1.65;
-  color: var(--type-dark);
   opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.compliment p.visible {
-  opacity: 1;
-  transform: none;
-}
-
-/* Part 2: Glimpse snippets */
-.glimpses {
-  margin-bottom: 56px;
-}
-
-.glimpse {
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 14px;
-  padding: 24px;
-  margin-bottom: 16px;
-  opacity: 0;
-  transform: translateX(-8px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.glimpse.visible {
-  opacity: 1;
-  transform: none;
-}
-
-.glimpse p {
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 300;
-  font-style: italic;
-  font-size: clamp(15px, 3.8vw, 17px);
-  line-height: 1.7;
-  color: var(--type-muted);
-}
-
-/* Part 3: Your Key */
-.your-key {
-  text-align: center;
-  margin-bottom: 48px;
-}
-
-.your-key .lead {
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 400;
-  font-size: clamp(16px, 4vw, 19px);
-  line-height: 1.6;
-  color: var(--type-dark);
-  margin-bottom: 32px;
-  opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.your-key .lead.visible {
-  opacity: 1;
-  transform: none;
-}
-
-.invite-code {
-  font-family: 'Comico', serif;
-  font-size: clamp(40px, 10vw, 52px);
-  letter-spacing: 0.15em;
-  color: var(--type-dark);
-  margin-bottom: 12px;
-  opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.invite-code.visible {
-  opacity: 1;
-  transform: none;
-}
-
-.key-hint {
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 300;
-  font-size: 15px;
-  color: var(--type-muted);
-  margin-bottom: 36px;
-  opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-
-.key-hint.visible {
-  opacity: 1;
-  transform: none;
-}
-
-.cta-button {
-  display: inline-block;
-  background: var(--vermillion);
-  color: white;
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 400;
-  font-size: 16px;
-  letter-spacing: 0.04em;
-  padding: 16px 40px;
-  border-radius: 999px;
-  text-decoration: none;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  opacity: 0;
-  transform: translateY(12px);
-}
-
-.cta-button.visible {
-  opacity: 1;
-  transform: none;
-}
-
-.cta-button:hover {
-  transform: translateY(-1px);
-  opacity: 0.92;
-}
-
-.cta-button:active {
-  transform: scale(0.97);
-}
-
-/* Footer line */
-.footer-line {
-  text-align: center;
-  margin-top: 56px;
-  padding-top: 32px;
-  border-top: 1px solid rgba(26, 26, 22, 0.08);
-}
-
-.footer-line p {
-  font-family: 'Sentient', Georgia, serif;
-  font-weight: 300;
-  font-size: 13px;
-  color: var(--type-muted);
   letter-spacing: 0.02em;
 }
+.letter-mark.typed { opacity: 1; }
 
-.footer-line .dot {
-  color: var(--vermillion);
-}
-
-/* ── Reveal utility ── */
-
-.reveal {
+/* Each line of the letter */
+.line {
+  font-weight: 300;
+  font-size: clamp(16px, 4.2vw, 19px);
+  line-height: 1.85;
+  color: var(--faded);
   opacity: 0;
-  transform: translateY(12px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  display: block;
+  overflow: hidden;
+}
+.line.typed { opacity: 1; }
+
+.line.break {
+  height: 28px;
 }
 
-.reveal.visible {
-  opacity: 1;
-  transform: none;
+.line.italic {
+  font-style: italic;
+  color: rgba(255,255,255,0.45);
+}
+
+/* The code */
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 48px;
+  margin-bottom: 12px;
+  opacity: 0;
+}
+.code-row.typed { opacity: 1; }
+
+.code-label {
+  font-weight: 300;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.3);
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.code-value {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: clamp(22px, 6vw, 30px);
+  letter-spacing: 0.2em;
+  color: var(--ember);
+  text-shadow: 0 0 24px rgba(196,98,45,0.3);
+}
+
+/* Enter button */
+.enter-row {
+  margin-top: 40px;
+  opacity: 0;
+}
+.enter-row.typed { opacity: 1; }
+
+.enter-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--ember);
+  text-decoration: none;
+  text-transform: lowercase;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(196,98,45,0.3);
+  transition: border-color 0.3s ease, color 0.3s ease;
+}
+.enter-link:hover {
+  border-color: var(--ember);
+}
+.enter-link svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.3s ease;
+}
+.enter-link:hover svg {
+  transform: translateX(4px);
+}
+
+/* Typing cursor */
+.cursor {
+  display: inline-block;
+  width: 1px;
+  height: 1.1em;
+  background: var(--faded);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.9s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Responsive */
+@media (max-height: 700px) {
+  .letter { padding: 32px 24px; }
+  .letter-mark { margin-bottom: 36px; }
+  .line.break { height: 20px; }
+  .code-row { margin-top: 36px; }
+  .enter-row { margin-top: 32px; }
 }
 </style>
 </head>
 <body>
 
-<!-- State 1: Sealed card -->
-<div class="scene" id="sealedScene">
-  <div class="wordmark">ohm<span class="dot">.</span></div>
-  <p class="sealed-prompt">this is for you</p>
-  <div class="card-container" id="cardContainer">
-    <div class="card" id="card">
-      <div class="card-front">
-        <span class="card-front-watermark">ohm<span class="dot">.</span></span>
-        <span class="card-front-dot"></span>
-      </div>
-      <div class="card-back"></div>
-    </div>
-  </div>
-  <p class="tap-hint">tap to open</p>
+<!-- ═══ STATE 1: The gate ═══ -->
+<div class="gate" id="gate">
+  <span class="gate-text">tap to open</span>
 </div>
 
-<!-- State 3: Open card content -->
-<div class="open-scene" id="openScene">
-  <div class="open-content">
+<!-- ═══ STATE 2: The letter ═══ -->
+<div class="letter" id="letter">
+  <div class="letter-inner" id="letterInner">
 
-    <!-- Part 1: The Compliment -->
-    <div class="compliment">
-      <p class="reveal" data-delay="0">
-        we've been paying attention.<br>
-        not to your resume. not to your feed.<br>
-        to the way your mind moves.
-      </p>
+    <div class="letter-mark" id="mark">ohm.</div>
+
+    <span class="line" data-text="not everyone needs another platform."></span>
+    <span class="line" data-text="some people need a different kind of room."></span>
+
+    <span class="line break"></span>
+
+    <span class="line italic" data-text="a quieter one."></span>
+    <span class="line italic" data-text="a sharper one."></span>
+    <span class="line italic" data-text="a place where people are not reduced to"></span>
+    <span class="line italic" data-text="titles, bios, or categories too quickly."></span>
+
+    <span class="line break"></span>
+
+    <span class="line" data-text="we care less about what you do"></span>
+    <span class="line" data-text="and more about the questions"></span>
+    <span class="line" data-text="that keep returning to you."></span>
+
+    <span class="line break"></span>
+
+    <span class="line italic" data-text="the unfinished thoughts."></span>
+    <span class="line italic" data-text="the private obsessions."></span>
+    <span class="line italic" data-text="the ideas still looking for their counterpart."></span>
+
+    <span class="line break"></span>
+
+    <span class="line" data-text="ohm. is a space for minds in motion."></span>
+    <span class="line" data-text="and yours came to mind."></span>
+
+    <span class="line break"></span>
+
+    <span class="line" data-text="we are opening this slowly,"></span>
+    <span class="line" data-text="with a small number of invitations."></span>
+
+    <span class="line break"></span>
+
+    <span class="line" data-text="if this speaks to you, step inside."></span>
+
+    <div class="code-row" id="codeRow">
+      <span class="code-label">invitation code</span>
+      <span class="code-value" id="codeValue"></span>
     </div>
 
-    <!-- Part 2: The Possibility -->
-    <div class="glimpses">
-      <div class="glimpse reveal" data-delay="0">
-        <p>"last week, a filmmaker in seoul and a physicist in london discovered they'd been circling the same question for years."</p>
-      </div>
-      <div class="glimpse reveal" data-delay="100">
-        <p>"a thought posted at 3am found its resonance 6,000 miles away by morning."</p>
-      </div>
-      <div class="glimpse reveal" data-delay="200">
-        <p>"on ohm., your rawest thought finds the one person who was already thinking it."</p>
-      </div>
-    </div>
-
-    <!-- Part 3: Your Key -->
-    <div class="your-key">
-      <p class="lead reveal" data-delay="0">you're one of the first minds we're inviting in.</p>
-      <div class="invite-code reveal" data-delay="100">OHMFAM</div>
-      <p class="key-hint reveal" data-delay="200">this is your key. enter it when you arrive.</p>
-      <a class="cta-button reveal" data-delay="300" href="https://apps.apple.com/us/app/ohm/id6760516231">open the door</a>
-    </div>
-
-    <!-- Footer -->
-    <div class="footer-line">
-      <p>ohm<span class="dot">.</span> — where thoughts meet before people do.</p>
+    <div class="enter-row" id="enterRow">
+      <a class="enter-link" href="https://apps.apple.com/us/app/ohm/id6760516231">
+        enter
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
     </div>
 
   </div>
@@ -441,59 +294,116 @@ body {
 
 <script>
 (function () {
-  var card = document.getElementById('card');
-  var cardContainer = document.getElementById('cardContainer');
-  var sealedScene = document.getElementById('sealedScene');
-  var openScene = document.getElementById('openScene');
-  var flipped = false;
+  var gate = document.getElementById('gate');
+  var letter = document.getElementById('letter');
+  var mark = document.getElementById('mark');
+  var lines = document.querySelectorAll('.line[data-text]');
+  var codeRow = document.getElementById('codeRow');
+  var codeValue = document.getElementById('codeValue');
+  var enterRow = document.getElementById('enterRow');
+  var opened = false;
 
-  // Card flip on click/tap
-  cardContainer.addEventListener('click', function () {
-    if (flipped) return;
-    flipped = true;
-    cardContainer.classList.add('opened');
-    card.classList.add('flipped');
+  // Typing speed: ms per character
+  var CHAR_SPEED = 32;
+  var LINE_PAUSE = 180;
+  var BREAK_PAUSE = 350;
+  var CODE_TEXT = 'ohmfam';
 
-    // After flip animation, transition to open scene
+  gate.addEventListener('click', function () {
+    if (opened) return;
+    opened = true;
+
+    gate.classList.add('hidden');
+
     setTimeout(function () {
-      sealedScene.classList.add('hidden');
-      openScene.classList.add('visible');
-      document.body.style.background = 'var(--warm-ground)';
+      letter.classList.add('visible');
       document.documentElement.style.overflow = 'auto';
       document.body.style.overflow = 'auto';
 
-      // Trigger compliment fade-in
-      var compliment = document.querySelector('.compliment .reveal');
-      if (compliment) {
-        setTimeout(function () {
-          compliment.classList.add('visible');
-        }, 300);
-      }
-
-      // Set up Intersection Observer for remaining reveals
-      initScrollReveals();
-    }, 650);
+      // Start the typewriter sequence
+      setTimeout(startSequence, 600);
+    }, 400);
   });
 
-  function initScrollReveals() {
-    var reveals = openScene.querySelectorAll('.glimpses .reveal, .your-key .reveal');
+  function typeText(element, text, callback) {
+    var i = 0;
+    element.classList.add('typed');
 
-    var observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          var el = entry.target;
-          var delay = parseInt(el.getAttribute('data-delay') || '0', 10);
-          setTimeout(function () {
-            el.classList.add('visible');
-          }, delay);
-          observer.unobserve(el);
-        }
-      });
-    }, { threshold: 0.1 });
+    // Add cursor
+    var cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    element.appendChild(cursor);
 
-    reveals.forEach(function (el) {
-      observer.observe(el);
+    function tick() {
+      if (i < text.length) {
+        // Insert character before cursor
+        var char = document.createTextNode(text[i]);
+        element.insertBefore(char, cursor);
+        i++;
+        setTimeout(tick, CHAR_SPEED + (Math.random() * 18 - 9));
+      } else {
+        // Remove cursor when line is done
+        if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+        if (callback) callback();
+      }
+    }
+    tick();
+  }
+
+  function startSequence() {
+    // Type the mark first
+    mark.textContent = '';
+    typeText(mark, 'ohm.', function () {
+      setTimeout(function () { typeLines(0); }, 500);
     });
+  }
+
+  function typeLines(index) {
+    if (index >= lines.length) {
+      // All lines typed — show code and enter
+      setTimeout(showCode, 400);
+      return;
+    }
+
+    var line = lines[index];
+    var text = line.getAttribute('data-text');
+
+    // Check if previous sibling is a break
+    var prev = line.previousElementSibling;
+    var isAfterBreak = prev && prev.classList.contains('break');
+    var pause = isAfterBreak ? BREAK_PAUSE : LINE_PAUSE;
+
+    // Show breaks
+    if (isAfterBreak) {
+      prev.classList.add('typed');
+      prev.style.opacity = '1';
+    }
+
+    setTimeout(function () {
+      typeText(line, text, function () {
+        typeLines(index + 1);
+      });
+    }, pause);
+  }
+
+  function showCode() {
+    codeRow.classList.add('typed');
+
+    // Type the code character by character in ember color
+    var i = 0;
+    function tickCode() {
+      if (i < CODE_TEXT.length) {
+        codeValue.textContent += CODE_TEXT[i];
+        i++;
+        setTimeout(tickCode, 80);
+      } else {
+        // Show enter link
+        setTimeout(function () {
+          enterRow.classList.add('typed');
+        }, 500);
+      }
+    }
+    tickCode();
   }
 })();
 </script>
