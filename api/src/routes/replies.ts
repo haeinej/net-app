@@ -90,7 +90,14 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
       ]).catch(() => {});
 
       // Push notification to thought author
-      notifyNewReply(t.userId, userId, t.sentence, text, thoughtId).catch(() => {});
+      notifyNewReply(t.userId, userId, t.sentence, text, thoughtId).catch((err) => {
+        console.error("[push] notifyNewReply failed:", {
+          thoughtAuthorId: t.userId,
+          replierId: userId,
+          thoughtId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
 
       return reply.status(201).send({
         id: row.id,
@@ -235,7 +242,7 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
     void invalidateFeedCache(accepted.authorId);
     void invalidateFeedCache(accepted.replierId);
 
-    // Check if this thought hit the 10+ accepted-reply milestone
+    // Check if this thought hit the 10 accepted-reply milestone
     if (accepted.trackAcceptance) {
       (async () => {
         try {
@@ -245,11 +252,25 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
             .where(eq(thoughtFeedStats.thoughtId, accepted.thoughtId))
             .limit(1);
           const count = stats?.count ?? 0;
-          if (count === 10) {
+          if (count >= 10 && count <= 12) {
             const [t] = await db.select({ sentence: thoughts.sentence }).from(thoughts).where(eq(thoughts.id, accepted.thoughtId)).limit(1);
-            if (t) notifyResonanceMilestone(accepted.authorId, t.sentence, count, accepted.thoughtId).catch(() => {});
+            if (t) {
+              notifyResonanceMilestone(accepted.authorId, t.sentence, count, accepted.thoughtId).catch((err) => {
+                console.error("[push] notifyResonanceMilestone failed:", {
+                  authorId: accepted.authorId,
+                  thoughtId: accepted.thoughtId,
+                  count,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              });
+            }
           }
-        } catch {}
+        } catch (err) {
+          console.error("[push] Resonance milestone check failed:", {
+            thoughtId: accepted.thoughtId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       })();
     }
 

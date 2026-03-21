@@ -428,7 +428,14 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       // Push notification to the other participant
       const recipientId = conv.participantA === userId ? conv.participantB : conv.participantA;
-      notifyNewMessage(recipientId, userId, text, convId).catch(() => {});
+      notifyNewMessage(recipientId, userId, text, convId).catch((err) => {
+        console.error("[push] notifyNewMessage failed:", {
+          recipientId,
+          senderId: userId,
+          conversationId: convId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
       if ([5, 10, 20].includes(newCount)) {
         trackEngagementEvents(userId, [{
           event_type: "reply_sent",

@@ -15,6 +15,8 @@ interface RouteTarget {
   params?: Record<string, string>;
 }
 
+const FALLBACK_ROUTE: RouteTarget = { pathname: "/(tabs)" };
+
 export function resolveNotificationRoute(data?: NotificationData | null): RouteTarget | null {
   if (!data?.type) return null;
 
@@ -22,19 +24,20 @@ export function resolveNotificationRoute(data?: NotificationData | null): RouteT
     case "reply":
       return data.thought_id
         ? { pathname: "/thought/[id]", params: { id: data.thought_id } }
-        : null;
+        : FALLBACK_ROUTE;
 
     case "message":
       return data.conversation_id
         ? { pathname: "/conversation/[id]", params: { id: data.conversation_id } }
-        : null;
+        : FALLBACK_ROUTE;
 
     case "resonance_milestone":
       return data.thought_id
         ? { pathname: "/thought/[id]", params: { id: data.thought_id } }
-        : null;
+        : FALLBACK_ROUTE;
 
     default:
-      return null;
+      console.warn("[notification] Unknown notification type:", data.type);
+      return FALLBACK_ROUTE;
   }
 }

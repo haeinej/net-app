@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
+import * as Haptics from "expo-haptics";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { registerPushToken as apiRegisterToken, unregisterPushToken as apiUnregisterToken } from "./api";
@@ -26,6 +27,11 @@ export function setupForegroundHandler(): void {
       shouldSetBadge: false,
     }),
   });
+
+  // Haptic feedback when a notification arrives while app is in foreground
+  Notifications.addNotificationReceivedListener(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  });
 }
 
 /**
@@ -51,7 +57,7 @@ export async function requestPushPermissionIfNeeded(): Promise<boolean> {
 
     const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
     if (!projectId) {
-      console.warn("Push: missing EAS projectId");
+      console.warn("[push] Missing EAS projectId");
       return false;
     }
 
@@ -63,7 +69,9 @@ export async function requestPushPermissionIfNeeded(): Promise<boolean> {
 
     return true;
   } catch (error) {
-    console.warn("Push registration failed:", error);
+    console.error("[push] Registration failed:", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }
@@ -77,8 +85,8 @@ export async function unregisterPushToken(): Promise<void> {
     if (token) {
       await apiUnregisterToken(token);
     }
-  } catch {
-    // best-effort
+  } catch (err) {
+    console.warn("[push] Unregister API call failed:", err instanceof Error ? err.message : String(err));
   } finally {
     await SecureStore.deleteItemAsync(KEY_PUSH_TOKEN).catch(() => {});
   }

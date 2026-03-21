@@ -4,6 +4,7 @@ import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 import { colors } from "../theme";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import {
@@ -39,7 +40,10 @@ export default function RootLayout() {
     const unsub = addNotificationResponseListener((response) => {
       const data = response.notification.request.content.data as Record<string, unknown> | undefined;
       const route = resolveNotificationRoute(data);
-      if (route) router.push(route as never);
+      if (route) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        router.push(route as never);
+      }
     });
 
     return unsub;
