@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>you've been invited to ohm.</title>
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="you've been invited to ohm.">
+<meta property="og:description" content="your mind caught our attention.">
+<meta property="og:image" content="https://www.ohmmmm.com/images/og-invite.png">
+<meta property="og:url" content="https://www.ohmmmm.com/invite">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="you've been invited to ohm.">
+<meta name="twitter:description" content="your mind caught our attention.">
+<meta name="twitter:image" content="https://www.ohmmmm.com/images/og-invite.png">
+
+<style>
+@font-face { font-family: 'Comico'; src: url('../Fonts/OTF/Comico-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Sentient'; src: url('../Fonts/OTF/Sentient-Light.otf') format('opentype'); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'Sentient'; src: url('../Fonts/OTF/Sentient-LightItalic.otf') format('opentype'); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Sentient'; src: url('../Fonts/OTF/Sentient-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+
+:root {
+  --vermillion: #EB4101;
+  --warm-ground: #F5F0EA;
+  --dark: #0C0C0A;
+  --type-dark: #1A1A16;
+  --type-muted: #9A9A98;
+  --card-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--dark);
+  color: var(--type-dark);
+  font-family: 'Sentient', Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── State 1: Sealed card scene ── */
+
+.scene {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  transition: opacity 0.5s ease;
+}
+
+.scene.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wordmark {
+  font-family: 'Comico', serif;
+  font-size: 28px;
+  color: white;
+  letter-spacing: -0.03em;
+  margin-bottom: 40px;
+  opacity: 0.9;
+}
+
+.wordmark .dot {
+  color: var(--vermillion);
+}
+
+.sealed-prompt {
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 300;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 20px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Card container (3D) ── */
+
+.card-container {
+  perspective: 1200px;
+  width: min(380px, calc(100vw - 48px));
+  height: min(260px, 45vh);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Front: sealed side */
+.card-front {
+  background: var(--warm-ground);
+  box-shadow: var(--card-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.card-front-watermark {
+  font-family: 'Comico', serif;
+  font-size: 64px;
+  color: rgba(26, 26, 22, 0.06);
+  letter-spacing: -0.03em;
+  user-select: none;
+}
+
+.card-front-watermark .dot {
+  color: rgba(235, 65, 1, 0.12);
+}
+
+.card-front-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--vermillion);
+  border-radius: 50%;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0.6;
+}
+
+/* Breathing pulse on sealed card */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.012); }
+}
+
+.card-container:not(.opened) .card {
+  animation: breathe 3.5s ease-in-out infinite;
+}
+
+.card-container.opened .card {
+  animation: none;
+}
+
+/* Back: blank (hidden during flip) */
+.card-back {
+  background: var(--warm-ground);
+  box-shadow: var(--card-shadow);
+  transform: rotateY(180deg);
+}
+
+.tap-hint {
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 300;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.25);
+  margin-top: 24px;
+  letter-spacing: 0.02em;
+}
+
+/* ── State 3: Open card (full experience) ── */
+
+.open-scene {
+  position: fixed;
+  inset: 0;
+  background: var(--warm-ground);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease 0.3s;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.open-scene.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.open-content {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 60px 28px 80px;
+}
+
+/* Part 1: The Compliment */
+.compliment {
+  text-align: center;
+  margin-bottom: 56px;
+}
+
+.compliment p {
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(18px, 4.5vw, 22px);
+  line-height: 1.65;
+  color: var(--type-dark);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.compliment p.visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Part 2: Glimpse snippets */
+.glimpses {
+  margin-bottom: 56px;
+}
+
+.glimpse {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 16px;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.glimpse.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.glimpse p {
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 300;
+  font-style: italic;
+  font-size: clamp(15px, 3.8vw, 17px);
+  line-height: 1.7;
+  color: var(--type-muted);
+}
+
+/* Part 3: Your Key */
+.your-key {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.your-key .lead {
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(16px, 4vw, 19px);
+  line-height: 1.6;
+  color: var(--type-dark);
+  margin-bottom: 32px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.your-key .lead.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.invite-code {
+  font-family: 'Comico', serif;
+  font-size: clamp(40px, 10vw, 52px);
+  letter-spacing: 0.15em;
+  color: var(--type-dark);
+  margin-bottom: 12px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.invite-code.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.key-hint {
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 300;
+  font-size: 15px;
+  color: var(--type-muted);
+  margin-bottom: 36px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.key-hint.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.cta-button {
+  display: inline-block;
+  background: var(--vermillion);
+  color: white;
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 400;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  padding: 16px 40px;
+  border-radius: 999px;
+  text-decoration: none;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.cta-button.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.cta-button:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.cta-button:active {
+  transform: scale(0.97);
+}
+
+/* Footer line */
+.footer-line {
+  text-align: center;
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(26, 26, 22, 0.08);
+}
+
+.footer-line p {
+  font-family: 'Sentient', Georgia, serif;
+  font-weight: 300;
+  font-size: 13px;
+  color: var(--type-muted);
+  letter-spacing: 0.02em;
+}
+
+.footer-line .dot {
+  color: var(--vermillion);
+}
+
+/* ── Reveal utility ── */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: none;
+}
+</style>
+</head>
+<body>
+
+<!-- State 1: Sealed card -->
+<div class="scene" id="sealedScene">
+  <div class="wordmark">ohm<span class="dot">.</span></div>
+  <p class="sealed-prompt">this is for you</p>
+  <div class="card-container" id="cardContainer">
+    <div class="card" id="card">
+      <div class="card-front">
+        <span class="card-front-watermark">ohm<span class="dot">.</span></span>
+        <span class="card-front-dot"></span>
+      </div>
+      <div class="card-back"></div>
+    </div>
+  </div>
+  <p class="tap-hint">tap to open</p>
+</div>
+
+<!-- State 3: Open card content -->
+<div class="open-scene" id="openScene">
+  <div class="open-content">
+
+    <!-- Part 1: The Compliment -->
+    <div class="compliment">
+      <p class="reveal" data-delay="0">
+        we've been paying attention.<br>
+        not to your resume. not to your feed.<br>
+        to the way your mind moves.
+      </p>
+    </div>
+
+    <!-- Part 2: The Possibility -->
+    <div class="glimpses">
+      <div class="glimpse reveal" data-delay="0">
+        <p>"last week, a filmmaker in seoul and a physicist in london discovered they'd been circling the same question for years."</p>
+      </div>
+      <div class="glimpse reveal" data-delay="100">
+        <p>"a thought posted at 3am found its resonance 6,000 miles away by morning."</p>
+      </div>
+      <div class="glimpse reveal" data-delay="200">
+        <p>"on ohm., your rawest thought finds the one person who was already thinking it."</p>
+      </div>
+    </div>
+
+    <!-- Part 3: Your Key -->
+    <div class="your-key">
+      <p class="lead reveal" data-delay="0">you're one of the first minds we're inviting in.</p>
+      <div class="invite-code reveal" data-delay="100">OHMFAM</div>
+      <p class="key-hint reveal" data-delay="200">this is your key. enter it when you arrive.</p>
+      <a class="cta-button reveal" data-delay="300" href="https://apps.apple.com/us/app/ohm/id6760516231">open the door</a>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer-line">
+      <p>ohm<span class="dot">.</span> — where thoughts meet before people do.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var card = document.getElementById('card');
+  var cardContainer = document.getElementById('cardContainer');
+  var sealedScene = document.getElementById('sealedScene');
+  var openScene = document.getElementById('openScene');
+  var flipped = false;
+
+  // Card flip on click/tap
+  cardContainer.addEventListener('click', function () {
+    if (flipped) return;
+    flipped = true;
+    cardContainer.classList.add('opened');
+    card.classList.add('flipped');
+
+    // After flip animation, transition to open scene
+    setTimeout(function () {
+      sealedScene.classList.add('hidden');
+      openScene.classList.add('visible');
+      document.body.style.background = 'var(--warm-ground)';
+      document.documentElement.style.overflow = 'auto';
+      document.body.style.overflow = 'auto';
+
+      // Trigger compliment fade-in
+      var compliment = document.querySelector('.compliment .reveal');
+      if (compliment) {
+        setTimeout(function () {
+          compliment.classList.add('visible');
+        }, 300);
+      }
+
+      // Set up Intersection Observer for remaining reveals
+      initScrollReveals();
+    }, 650);
+  });
+
+  function initScrollReveals() {
+    var reveals = openScene.querySelectorAll('.glimpses .reveal, .your-key .reveal');
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          var el = entry.target;
+          var delay = parseInt(el.getAttribute('data-delay') || '0', 10);
+          setTimeout(function () {
+            el.classList.add('visible');
+          }, delay);
+          observer.unobserve(el);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    reveals.forEach(function (el) {
+      observer.observe(el);
+    });
+  }
+})();
+</script>
+</body>
+</html>
