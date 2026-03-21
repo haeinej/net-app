@@ -163,13 +163,14 @@ export async function internalMatchmakerRoutes(
       }
 
       // Insert boost
+      const trimmedReason = reason?.trim() || null;
       const [boost] = await db
         .insert(manualBoosts)
         .values({
           targetUserId,
           thoughtId,
           createdBy: createdBy.trim(),
-          reason: reason?.trim() || null,
+          ...(trimmedReason ? { reason: trimmedReason } : {}),
         })
         .returning();
 
