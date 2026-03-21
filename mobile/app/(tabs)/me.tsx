@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
@@ -48,6 +49,7 @@ export default function MeScreen() {
   const photoSize = 170;
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
@@ -110,6 +112,16 @@ export default function MeScreen() {
   useEffect(() => {
     if (myUserId) load();
   }, [myUserId, load]);
+
+  const onRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshing]);
 
   const startEdit = useCallback(() => {
     if (profile) {
@@ -346,6 +358,14 @@ export default function MeScreen() {
         style={styles.container}
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.TYPE_MUTED}
+            progressViewOffset={insets.top + 8}
+          />
+        }
       >
         {/* Profile photo — organic asymmetric round shape */}
         <View style={styles.photoOuter}>
@@ -396,65 +416,68 @@ export default function MeScreen() {
           </View>
         )}
 
-        {deckItems.length === 0 ? (
-          <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
-        ) : (
-          deckItems.map((item) => {
-            if (item.kind === "thought") {
-              const t = item.data;
-              const feedItem: FeedItemThought = {
-                type: "thought",
-                thought: {
-                  id: t.id,
-                  sentence: t.sentence,
-                  photo_url: t.photo_url,
-                  image_url: t.image_url,
-                  created_at: t.created_at ?? new Date().toISOString(),
-                  has_context: false,
-                },
-                user: {
-                  id: myUserId ?? "",
-                  name: profile.name,
-                  photo_url: profile.photo_url,
-                },
-              };
-              return (
-                <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                  <CardDeck>
-                    <SwipeableThoughtCard
-                      item={feedItem}
-                      visible
-                      isOwn
-                      onDelete={handleDeleteThought}
-                      onEdit={handleEditThought}
-                    />
-                  </CardDeck>
-                </View>
-              );
-            }
-            if (item.kind === "crossing") {
-              const c = item.data;
-              const crossingItem: FeedItemCrossing = {
-                type: "crossing",
-                crossing: {
-                  id: c.id,
-                  sentence: c.sentence,
-                  context: c.context,
-                  created_at: c.created_at ?? new Date().toISOString(),
-                },
-                participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
-                participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
-              };
-              return (
-                <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                  <CardDeck>
-                    <CrossingCard item={crossingItem} visible myUserId={myUserId} />
-                  </CardDeck>
-                </View>
-              );
-            }
-          })
-        )}
+        <View style={styles.deckSection}>
+          {deckItems.length === 0 ? (
+            <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
+          ) : (
+            deckItems.map((item) => {
+              if (item.kind === "thought") {
+                const t = item.data;
+                const feedItem: FeedItemThought = {
+                  type: "thought",
+                  thought: {
+                    id: t.id,
+                    sentence: t.sentence,
+                    photo_url: t.photo_url,
+                    image_url: t.image_url,
+                    created_at: t.created_at ?? new Date().toISOString(),
+                    has_context: false,
+                  },
+                  user: {
+                    id: myUserId ?? "",
+                    name: profile.name,
+                    photo_url: profile.photo_url,
+                  },
+                };
+                return (
+                  <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                    <CardDeck layers={0}>
+                      <SwipeableThoughtCard
+                        item={feedItem}
+                        visible
+                        isOwn
+                        onDelete={handleDeleteThought}
+                        onEdit={handleEditThought}
+                      />
+                    </CardDeck>
+                  </View>
+                );
+              }
+              if (item.kind === "crossing") {
+                const c = item.data;
+                const crossingItem: FeedItemCrossing = {
+                  type: "crossing",
+                  crossing: {
+                    id: c.id,
+                    sentence: c.sentence,
+                    context: c.context,
+                    created_at: c.created_at ?? new Date().toISOString(),
+                  },
+                  participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
+                  participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
+                };
+                return (
+                  <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                    <CardDeck layers={0}>
+                      <CrossingCard item={crossingItem} visible myUserId={myUserId} />
+                    </CardDeck>
+                  </View>
+                );
+              }
+              return null;
+            })
+          )}
+        </View>
       </ScrollView>
 
       {/* ─── Bottom sheet menu ─── */}
@@ -707,6 +730,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: spacing.screenPadding,
     marginBottom: 12,
+  },
+  deckSection: {
+    width: "100%",
+    marginTop: 24,
   },
   thoughtWrap: {
     marginBottom: spacing.cardGap + 6,

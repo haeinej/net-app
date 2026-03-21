@@ -9,16 +9,6 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSequence,
-  Easing,
-  runOnJS,
-} from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import { colors, spacing, typography } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { pickPrompt, EMPTY_STATE_PROMPTS } from "../../constants/prompts";
@@ -32,6 +22,7 @@ import {
   fetchNotifications,
   acceptReply,
   ignoreReply,
+  ApiError,
   getMyUserId,
   deleteThought,
   editThought,
@@ -57,18 +48,7 @@ export default function WorldsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
-
-  // Connection moment — the felt move from stranger to thinking partner
-  const connectionOpacity = useSharedValue(0);
-  const [connectionVisible, setConnectionVisible] = useState(false);
-  const pendingNavRef = useRef<(() => void) | null>(null);
-  const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [acceptingReplyId, setAcceptingReplyId] = useState<string | null>(null);
-
-  const connectionOverlayStyle = useAnimatedStyle(() => ({
-    opacity: connectionOpacity.value,
-    pointerEvents: connectionOpacity.value > 0 ? "auto" as const : "none" as const,
-  }));
 
   const inFlightFeed = useRef<Promise<void> | null>(null);
   const lastFocusRefreshAt = useRef(0);
@@ -76,17 +56,6 @@ export default function WorldsScreen() {
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
-  }, []);
-
-  // Clean up connection timer on unmount to prevent navigation after screen is gone
-  useEffect(() => {
-    return () => {
-      if (connectionTimerRef.current) {
-        clearTimeout(connectionTimerRef.current);
-        connectionTimerRef.current = null;
-      }
-      pendingNavRef.current = null;
-    };
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -255,44 +224,41 @@ export default function WorldsScreen() {
           thoughtSentence: item.thought?.sentence ?? "",
         },
       };
-
-      // The connection moment — a felt crossing, not a celebration
-      setConnectionVisible(true);
-      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
-
-      // Fade in warmth, hold, then navigate on fade out
-      connectionOpacity.value = withSequence(
-        // Rise: warmth arrives
-        withTiming(1, { duration: 350, easing: Easing.out(Easing.ease) }),
-        // Hold: the felt moment
-        withTiming(1, { duration: 400 }),
-        // Dissolve: transition to what comes next
-        withTiming(0, { duration: 300, easing: Easing.in(Easing.ease) })
-      );
-
-      // Navigate during the dissolve phase
-      pendingNavRef.current = () => {
-        setConnectionVisible(false);
-        router.push(navParams);
-      };
-      if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
-      connectionTimerRef.current = setTimeout(() => {
-        pendingNavRef.current?.();
-        pendingNavRef.current = null;
-        connectionTimerRef.current = null;
-      }, 850);
+      router.push(navParams);
     } catch (err) {
+      console.error("[handleAccept] failed:", err);
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          Alert.alert("Session expired", "Please log in again.");
+          router.replace("/login");
+          return;
+        }
+
+        const message =
+          err.code === "REPLY_FORBIDDEN" || err.status === 403
+            ? "You can only accept replies to your own thoughts."
+            : err.code === "REPLY_NOT_FOUND" || err.status === 404
+              ? "This reply is no longer available."
+              : err.code === "REPLY_ALREADY_HANDLED" || err.status === 409
+                ? "This reply was already handled."
+                : err.code === "ACCEPT_REPLY_FAILED" || err.status >= 500
+                  ? "Couldn't open chat right now. Please try again."
+                  : err.message || "Couldn't open chat right now. Please try again.";
+        Alert.alert("Couldn't open chat", message);
+        return;
+      }
+
       const message =
         err instanceof Error && err.message.includes("timeout")
           ? "Network timeout — check your connection and try again."
           : err instanceof Error && err.message.includes("reachable")
             ? "Can't reach the server — check your connection."
-            : "Something went wrong. Try again.";
+            : "Couldn't open chat right now. Please try again.";
       Alert.alert("Couldn't connect", message);
     } finally {
       setAcceptingReplyId(null);
     }
-  }, [router, connectionOpacity, acceptingReplyId]);
+  }, [router, acceptingReplyId]);
 
   const handleIgnore = useCallback(async (replyId: string) => {
     try {
@@ -403,17 +369,6 @@ export default function WorldsScreen() {
         />
       )}
 
-      {/* Connection moment — the felt crossing from stranger to thinking partner */}
-      {connectionVisible && (
-        <Animated.View style={[StyleSheet.absoluteFill, styles.connectionOverlay, connectionOverlayStyle]}>
-          <LinearGradient
-            colors={[colors.VERMILLION, colors.PANEL_DEEP]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-      )}
     </View>
   );
 }
@@ -461,8 +416,5 @@ const styles = StyleSheet.create({
   footer: {
     paddingVertical: 16,
     alignItems: "center",
-  },
-  connectionOverlay: {
-    zIndex: 100,
   },
 });

@@ -22,11 +22,13 @@ interface ApiRequestOptions extends Omit<RequestInit, "headers"> {
 
 export class ApiError extends Error {
   status: number;
+  code: string | null;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -53,6 +55,20 @@ function getErrorMessage(
   }
 
   return fallbackMessage;
+}
+
+function getErrorCode(data: unknown): string | null {
+  if (
+    data &&
+    typeof data === "object" &&
+    "code" in data &&
+    typeof data.code === "string" &&
+    data.code.trim()
+  ) {
+    return data.code;
+  }
+
+  return null;
 }
 
 async function readJson<T>(response: Response): Promise<T | null> {
@@ -157,9 +173,13 @@ async function requestJson<T>(
   const response = await requestApi(path, options);
   if (allow404 && response.status === 404) return null;
 
-  const data = await readJson<T | { error?: string }>(response);
+  const data = await readJson<T | { error?: string; code?: string }>(response);
   if (!response.ok) {
-    throw new ApiError(response.status, getErrorMessage(data, fallbackMessage));
+    throw new ApiError(
+      response.status,
+      getErrorMessage(data, fallbackMessage),
+      getErrorCode(data)
+    );
   }
 
   return data as T;
@@ -183,9 +203,13 @@ async function requestVoid(
   }
 
   const response = await requestApi(path, options);
-  const data = await readJson<{ error?: string }>(response);
+  const data = await readJson<{ error?: string; code?: string }>(response);
   if (!response.ok) {
-    throw new ApiError(response.status, getErrorMessage(data, fallbackMessage));
+    throw new ApiError(
+      response.status,
+      getErrorMessage(data, fallbackMessage),
+      getErrorCode(data)
+    );
   }
 }
 
@@ -438,7 +462,7 @@ export async function acceptReply(replyId: string): Promise<{ conversation_id: s
   return requestJson<{ conversation_id: string }>(
     `/api/replies/${replyId}/accept`,
     "Accept failed",
-    { method: "POST", auth: true }
+    { method: "POST", auth: true, headers: JSON_HEADERS, body: JSON.stringify({}) }
   );
 }
 
