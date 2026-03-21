@@ -80,8 +80,30 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  invitedByUserId: uuid("invited_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
+
+// 1b. invite_codes
+export const inviteCodes = pgTable(
+  "invite_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    redeemedByUserId: uuid("redeemed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("invite_codes_code_unique").on(table.code),
+    index("invite_codes_created_by_idx").on(table.createdByUserId),
+  ]
+);
 
 export const emailVerificationCodes = pgTable(
   "email_verification_codes",

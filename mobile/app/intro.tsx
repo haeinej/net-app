@@ -184,10 +184,10 @@ export default function IntroScreen() {
       try {
         await dismissIntro();
         const nextRoute = await resolveStartupRoute();
-        router.replace(nextRoute === "/login" ? "/onboarding" : nextRoute);
+        router.replace(nextRoute === "/login" ? "/enter-invite" : nextRoute);
       } catch (error) {
         console.warn("Intro route resolution failed:", error);
-        router.replace("/onboarding");
+        router.replace("/enter-invite");
       } finally {
         setBusy(false);
       }

@@ -151,7 +151,7 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             style={styles.link}
-            onPress={() => router.replace("/onboarding")}
+            onPress={() => router.replace("/enter-invite")}
             disabled={loading}
           >
             <Text style={styles.linkText}>Create account</Text>

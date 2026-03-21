@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Share,
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -29,6 +30,8 @@ import {
   updateProfile,
   deleteThought,
   editThought,
+  fetchMyInvites,
+  generateInvite,
   type ProfileResponse,
   type FeedItemThought,
   type FeedItemCrossing,
@@ -47,6 +50,7 @@ export default function MeScreen() {
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
 
   const resetBrokenSession = useCallback(async () => {
     await clearAuth();
@@ -67,10 +71,14 @@ export default function MeScreen() {
     }
     try {
       setLoading(true);
-      const data = await fetchProfile(uid);
+      const [data, invites] = await Promise.all([
+        fetchProfile(uid),
+        fetchMyInvites().catch(() => ({ remaining: 0 })),
+      ]);
       setProfile(data);
       setEditName(data.name ?? "");
       setEditPhotoUrl(data.photo_url ?? "");
+      setInviteRemaining(invites.remaining);
     } catch (error) {
       if (isSessionInvalidError(error)) {
         await resetBrokenSession();
@@ -134,6 +142,24 @@ export default function MeScreen() {
       setSaving(false);
     }
   }, [profile, editName, editPhotoUrl, saving]);
+
+  const handleInvite = useCallback(async () => {
+    if (inviteRemaining === 0) {
+      Alert.alert("No invites left", "You've used all your invite codes.");
+      return;
+    }
+    try {
+      const { code, remaining } = await generateInvite();
+      setInviteRemaining(remaining);
+      await Share.share({
+        message: `Join me on ohm. — an app for honest, async conversation.\n\nUse my invite code: ${code}\n\nohm://invite/${code}`,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message !== "User did not share") {
+        Alert.alert("Error", err.message);
+      }
+    }
+  }, [inviteRemaining]);
 
   const handleDeleteThought = useCallback(
     async (thoughtId: string) => {
@@ -339,6 +365,14 @@ export default function MeScreen() {
             <TouchableOpacity style={styles.glassBtn} onPress={startEdit}>
               <Text style={styles.glassBtnText}>Edit Profile</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.glassBtn} onPress={handleInvite}>
+              <Text style={styles.glassBtnText}>Invite</Text>
+              {inviteRemaining !== null && (
+                <Text style={styles.glassBtnSub}>
+                  {inviteRemaining > 0 ? `${inviteRemaining} left` : "No invites"}
+                </Text>
+              )}
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.glassBtn}
               onPress={() => router.push("/settings" as Href)}
@@ -490,6 +524,11 @@ const styles = StyleSheet.create({
   },
   glassBtnText: {
     ...primitives.buttonGlassText,
+  },
+  glassBtnSub: {
+    ...typography.metadataSmall,
+    color: warmAlpha(0.4),
+    marginTop: 2,
   },
 
   /* ── Edit mode ── */

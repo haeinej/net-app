@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter, type Href } from "expo-router";
+import { useRouter, useLocalSearchParams, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO, primitives, radii, opacity } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
@@ -54,6 +54,7 @@ function validateStrongPassword(password: string): string | null {
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { invite_code } = useLocalSearchParams<{ invite_code?: string }>();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { containerStyle, contentWidth } = useResponsiveLayout();
@@ -212,6 +213,7 @@ export default function OnboardingScreen() {
         email: email.trim(),
         password,
         terms_accepted: true,
+        invite_code: invite_code || undefined,
       };
       const { verification_email } = await register(body);
       router.replace({
@@ -231,6 +233,7 @@ export default function OnboardingScreen() {
     email,
     password,
     confirmPassword,
+    invite_code,
     router,
   ]);
 

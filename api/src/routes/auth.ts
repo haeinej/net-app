@@ -3,8 +3,8 @@
  * JWT payload: { sub: user.id }
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { eq } from "drizzle-orm";
-import { db, users } from "../db";
+import { eq, and, isNull } from "drizzle-orm";
+import { db, users, inviteCodes } from "../db";
 import { getOnboardingStateForUser } from "../lib/onboarding";
 import { normalizeEmail, validateStrongPassword } from "../lib/auth-policy";
 import {
@@ -14,6 +14,7 @@ import {
   verifySupabaseRecovery,
 } from "../lib/supabase-email-verification";
 import { hashPassword, verifyPassword } from "../lib/password";
+import { generateInviteCode, isAdminInviteCode, MAX_INVITES_PER_USER } from "../lib/invite";
 
 function readTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -39,6 +40,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       email?: string;
       password?: string;
       terms_accepted?: boolean;
+      invite_code?: string;
     };
   }>(
     "/api/auth/register",
@@ -59,6 +61,28 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const email = emailRaw ? normalizeEmail(emailRaw) : null;
     const password = typeof body.password === "string" ? body.password : "";
     const termsAccepted = body.terms_accepted === true;
+    const inviteCode = readTrimmedString(body.invite_code).toUpperCase();
+
+    // Validate invite code
+    if (!inviteCode) {
+      return reply.status(400).send({ error: "Invite code required" });
+    }
+
+    const isAdmin = isAdminInviteCode(inviteCode);
+    let inviteCodeRow: { id: string; createdByUserId: string } | null = null;
+
+    if (!isAdmin) {
+      const [row] = await db
+        .select({ id: inviteCodes.id, createdByUserId: inviteCodes.createdByUserId })
+        .from(inviteCodes)
+        .where(and(eq(inviteCodes.code, inviteCode), isNull(inviteCodes.redeemedByUserId)))
+        .limit(1);
+
+      if (!row) {
+        return reply.status(400).send({ error: "Invalid or already used invite code" });
+      }
+      inviteCodeRow = row;
+    }
 
     if (!name) return reply.status(400).send({ error: "name required" });
     if (!photoUrl) {
@@ -88,6 +112,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           photoUrl,
           passwordHash,
           termsAcceptedAt: new Date(),
+          invitedByUserId: inviteCodeRow?.createdByUserId ?? null,
         })
         .where(eq(users.id, user.id))
         .returning({ id: users.id });
@@ -106,11 +131,40 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           email,
           passwordHash,
           termsAcceptedAt: new Date(),
+          invitedByUserId: inviteCodeRow?.createdByUserId ?? null,
         })
         .returning({ id: users.id });
 
       if (!user) return reply.status(500).send();
       userId = user.id;
+    }
+
+    // Redeem the invite code (non-admin only)
+    if (inviteCodeRow) {
+      await db
+        .update(inviteCodes)
+        .set({ redeemedByUserId: userId, redeemedAt: new Date() })
+        .where(eq(inviteCodes.id, inviteCodeRow.id));
+    }
+
+    // Seed invite codes for the new user
+    for (let i = 0; i < MAX_INVITES_PER_USER; i++) {
+      let attempts = 0;
+      while (true) {
+        const code = generateInviteCode();
+        try {
+          await db.insert(inviteCodes).values({ code, createdByUserId: userId });
+          break;
+        } catch (err: unknown) {
+          attempts++;
+          const isUniqueViolation =
+            err &&
+            typeof err === "object" &&
+            "code" in err &&
+            (err as { code: string }).code === "23505";
+          if (!isUniqueViolation || attempts >= 5) break;
+        }
+      }
     }
 
       try {
