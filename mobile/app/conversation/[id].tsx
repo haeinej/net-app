@@ -20,7 +20,7 @@ import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, primitives, opacity } from "../../theme";
+import { colors, spacing, typography, primitives, opacity, radii } from "../../theme";
 import { fontFamily } from "../../theme/typography";
 import {
   fetchConversationMessages,
@@ -38,8 +38,6 @@ import {
 import { ReportModal } from "../../components/ReportModal";
 
 const CROSSING_MESSAGE_STEP = 10;
-
-const COLLABORATIVE_CARD_MESSAGE_STEP = 8;
 
 function formatMessageTime(iso: string | null): string {
   if (!iso) return "";
@@ -757,7 +755,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(26,26,22,0.06)",
+    borderBottomColor: colors.CARD_BORDER,
     backgroundColor: colors.WARM_GROUND,
   },
   backBtn: {
@@ -814,7 +812,7 @@ const styles = StyleSheet.create({
   },
   thoughtCard: {
     backgroundColor: colors.CARD_GROUND,
-    borderRadius: 14,
+    borderRadius: radii.card,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 14,
@@ -833,7 +831,7 @@ const styles = StyleSheet.create({
     color: colors.TYPE_DARK,
   },
   historyNotice: {
-    borderRadius: 14,
+    borderRadius: radii.card,
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: "rgba(235, 65, 1, 0.08)",
@@ -858,7 +856,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     paddingBottom: 6,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(26,26,22,0.08)",
+    borderBottomColor: colors.CARD_BORDER,
   },
   firstMessageLabelText: {
     ...typography.metadata,
@@ -911,7 +909,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     backgroundColor: colors.WARM_GROUND,
     borderTopWidth: 1,
-    borderTopColor: "rgba(26,26,22,0.06)",
+    borderTopColor: colors.CARD_BORDER,
   },
   crossingWrap: {
     marginBottom: 10,
@@ -944,7 +942,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   waitingCard: {
-    borderRadius: 16,
+    borderRadius: radii.card,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 10,
@@ -964,14 +962,13 @@ const styles = StyleSheet.create({
   },
   completeLabel: {
     ...typography.metadata,
-    fontSize: 11,
-    color: colors.OLIVE,
+    color: colors.TYPE_MUTED,
     marginBottom: 8,
   },
   crossingPanel: {
     maxHeight: 420,
     borderTopWidth: 1,
-    borderTopColor: "rgba(26,26,22,0.06)",
+    borderTopColor: colors.CARD_BORDER,
   },
   crossingPanelContent: {
     paddingTop: 16,
@@ -1046,16 +1043,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     backgroundColor: colors.CARD_GROUND,
-    borderRadius: 8,
+    borderRadius: radii.input,
   },
   sendBtn: {
     paddingVertical: 12,
     paddingHorizontal: 18,
-    borderRadius: 8,
+    borderRadius: radii.input,
     backgroundColor: colors.OLIVE,
   },
   sendBtnDisabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   sendBtnText: {
     ...typography.label,
