@@ -42,8 +42,6 @@ const REPLY_MAX_LENGTH = 300;
 const CARD_HEIGHT = spacing.compactCardHeight; // 190
 const HALF_HEIGHT = CARD_HEIGHT / 2; // 95
 const PROFILE_SIZE = 28;
-const SEND_READY_PROGRESS = 0.78;
-const SEND_VELOCITY_THRESHOLD = -650;
 const EXPANDED_HEIGHT = 340;
 
 interface CrossingCardProps {
@@ -88,8 +86,6 @@ export function CrossingCard({
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
-  const swipeSendQueuedRef = useRef(false);
-  const submitReplyRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replyLengthValue = useSharedValue(0);
   const canReplyValue = useSharedValue(0);
   const sendingValue = useSharedValue(0);
@@ -208,38 +204,15 @@ export function CrossingCard({
           panel2X.value = Math.max(0, Math.min(cardWidth, tx));
         }
       } else if (ci === 2) {
-        if (sendTriggered.value === 1) {
-          return;
-        }
         if (tx > 0) {
           panel3X.value = Math.max(0, Math.min(cardWidth, tx));
           sendSwipeProgress.value = 0;
           sendHapticArmed.value = 0;
         } else {
-          const canOverswipeSend =
-            !isParticipant &&
-            sendingValue.value === 0 &&
-            replyLengthValue.value >= REPLY_MIN_LENGTH &&
-            canReplyValue.value === 1;
-
-          if (canOverswipeSend) {
-            const overswipe = Math.max(0, -tx);
-            const progress = Math.max(0, Math.min(1, overswipe / sendDistance));
-            sendSwipeProgress.value = progress;
-
-            if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
-              sendHapticArmed.value = 1;
-            } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
-              sendHapticArmed.value = 0;
-            }
-
-            panel3X.value = -rubberBand(overswipe, cardWidth * 0.22);
-          } else {
-            sendSwipeProgress.value = 0;
-            sendHapticArmed.value = 0;
-            // Rubber band on last panel
-            panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
-          }
+          sendSwipeProgress.value = 0;
+          sendHapticArmed.value = 0;
+          // Swiping left on the reply panel only rubber-bands.
+          panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
         }
       }
     })
@@ -272,28 +245,7 @@ export function CrossingCard({
           }
         }
       } else if (ci === 2) {
-        if (sendTriggered.value === 1) {
-          return;
-        }
-        const canOverswipeSend =
-          !isParticipant &&
-          sendingValue.value === 0 &&
-          replyLengthValue.value >= REPLY_MIN_LENGTH &&
-          canReplyValue.value === 1;
-        const shouldSend =
-          canOverswipeSend &&
-          e.translationX < 0 &&
-          (sendSwipeProgress.value >= SEND_READY_PROGRESS ||
-            e.velocityX <= SEND_VELOCITY_THRESHOLD);
-
-        if (shouldSend) {
-          sendTriggered.value = 1;
-          sendSwipeProgress.value = withTiming(0, { duration: 120 });
-          sendHapticArmed.value = 0;
-          panel3X.value = withSpring(0, SNAP_SPRING);
-          indicatorProgress.value = withSpring(2, { damping: 20, stiffness: 200 });
-          runOnJS(queueSwipeSend)();
-        } else if (e.translationX < 0) {
+        if (e.translationX < 0) {
           sendSwipeProgress.value = withTiming(0, { duration: 120 });
           sendHapticArmed.value = 0;
           snapTo(2, 2);
@@ -412,18 +364,6 @@ export function CrossingCard({
     snapTo,
     loadDetail,
   ]);
-
-  submitReplyRef.current = submitReply;
-
-  // Stable identity — safe for runOnJS even when submitReply is recreated by React
-  const queueSwipeSend = useCallback(() => {
-    if (swipeSendQueuedRef.current) return;
-    swipeSendQueuedRef.current = true;
-    void submitReplyRef.current().finally(() => {
-      swipeSendQueuedRef.current = false;
-    });
-  }, []);
-
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
   }, []);
@@ -621,13 +561,31 @@ export function CrossingCard({
                 multiline={false}
                 maxLength={REPLY_MAX_LENGTH}
               />
+              <View style={styles.replyActionRow}>
                 <Text style={styles.replyHintText}>
                   {sending
                     ? "sending..."
-                  : trimmedReplyLength < REPLY_MIN_LENGTH
-                    ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
-                    : "← swipe left to send"}
+                    : trimmedReplyLength < REPLY_MIN_LENGTH
+                      ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
+                      : "ready to send"}
                 </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.replySendButton,
+                    (sending || trimmedReplyLength < REPLY_MIN_LENGTH || !detailData?.panel_3.can_reply) &&
+                      styles.replySendButtonDisabled,
+                  ]}
+                  onPress={() => {
+                    void submitReply();
+                  }}
+                  disabled={sending || trimmedReplyLength < REPLY_MIN_LENGTH || !detailData?.panel_3.can_reply}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.replySendButtonText}>
+                    {sending ? "POSTING" : "POST"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </KeyboardAvoidingView>
           )}
         </Animated.View>
@@ -843,12 +801,36 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === "ios" ? 8 : 6,
     paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
+  replyActionRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   replyHintText: {
     ...typography.metadata,
     fontSize: 11,
     color: "rgba(245,240,234,0.45)",
-    marginTop: 6,
-    textAlign: "center",
+    textAlign: "left",
+    flex: 1,
+  },
+  replySendButton: {
+    minWidth: 84,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  replySendButtonDisabled: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  replySendButtonText: {
+    ...typography.label,
+    fontSize: 8.5,
+    color: colors.TYPE_WHITE,
   },
 
   /* ── Pulse overlay ── */

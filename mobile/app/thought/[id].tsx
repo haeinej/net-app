@@ -44,8 +44,6 @@ import { pickPrompt, REPLY_PROMPTS, REPLY_SAFETY_TEXT } from "../../constants/pr
 
 const REPLY_MIN_LENGTH = 30;
 const REPLY_MAX_LENGTH = 300;
-const SEND_READY_PROGRESS = 0.78;
-const SEND_VELOCITY_THRESHOLD = -650;
 
 export default function ThoughtDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,8 +62,6 @@ export default function ThoughtDetailScreen() {
   const sendSwipeProgress = useSharedValue(0);
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
-  const swipeSendQueuedRef = useRef(false);
-  const submitReplyRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replyLengthValue = useSharedValue(0);
   const canReplyValue = useSharedValue(0);
   const sendingValue = useSharedValue(0);
@@ -173,35 +169,7 @@ export default function ThoughtDetailScreen() {
     .onUpdate((e) => {
       const min = -2 * screenWidth;
       const max = 0;
-      const sendDistance = screenWidth * 0.22;
       const rawNext = gestureStartX.value + e.translationX;
-      const canOverswipeSend =
-        panelIndexValue.value === 2 &&
-        sendingValue.value === 0 &&
-        replyLengthValue.value >= REPLY_MIN_LENGTH &&
-        canReplyValue.value === 1;
-
-      if (panelIndexValue.value === 2 && sendTriggered.value === 1) {
-        return;
-      }
-
-      if (canOverswipeSend && rawNext < min) {
-        const overswipe = Math.max(0, min - rawNext);
-        const progress = Math.max(0, Math.min(1, overswipe / sendDistance));
-        const resisted = sendDistance * (1 - Math.exp((-0.35 * overswipe) / sendDistance));
-
-        sendSwipeProgress.value = progress;
-
-        if (progress >= SEND_READY_PROGRESS && sendHapticArmed.value === 0) {
-          sendHapticArmed.value = 1;
-        } else if (progress < SEND_READY_PROGRESS && sendHapticArmed.value === 1) {
-          sendHapticArmed.value = 0;
-        }
-
-        translateX.value = min - resisted;
-        return;
-      }
-
       sendSwipeProgress.value = 0;
       sendHapticArmed.value = 0;
       const next = Math.min(max, Math.max(min, rawNext));
@@ -210,32 +178,6 @@ export default function ThoughtDetailScreen() {
     .onEnd((e) => {
       const current = translateX.value;
       const velocity = e.velocityX;
-      const min = -2 * screenWidth;
-      const overswipe = Math.max(0, min - current);
-      const canOverswipeSend =
-        panelIndexValue.value === 2 &&
-        sendingValue.value === 0 &&
-        replyLengthValue.value >= REPLY_MIN_LENGTH &&
-        canReplyValue.value === 1;
-
-      if (panelIndexValue.value === 2 && sendTriggered.value === 1) {
-        return;
-      }
-
-      const shouldSend =
-        canOverswipeSend &&
-        (sendSwipeProgress.value >= SEND_READY_PROGRESS ||
-          overswipe >= screenWidth * 0.22 * SEND_READY_PROGRESS ||
-          velocity <= SEND_VELOCITY_THRESHOLD);
-
-      if (shouldSend) {
-        sendTriggered.value = 1;
-        sendSwipeProgress.value = withTiming(0, { duration: 120 });
-        sendHapticArmed.value = 0;
-        translateX.value = withTiming(min, { duration: 120 });
-        runOnJS(jsQueueSwipeSend)();
-        return;
-      }
 
       sendSwipeProgress.value = withTiming(0, { duration: 120 });
       sendHapticArmed.value = 0;
@@ -332,18 +274,6 @@ export default function ThoughtDetailScreen() {
     snapToPanel,
     refreshThought,
   ]);
-
-  submitReplyRef.current = submitReply;
-
-  // Stable identity — safe for runOnJS even when submitReply is recreated by React
-  const jsQueueSwipeSend = useCallback(() => {
-    if (swipeSendQueuedRef.current) return;
-    swipeSendQueuedRef.current = true;
-    void submitReplyRef.current().finally(() => {
-      swipeSendQueuedRef.current = false;
-    });
-  }, []);
-
   const handleDeleteReply = useCallback(
     (replyId: string) => {
       Alert.alert("Delete reply", "Remove this reply from your thought?", [
@@ -650,13 +580,31 @@ export default function ThoughtDetailScreen() {
                   maxLength={REPLY_MAX_LENGTH}
                 />
                 <Text style={styles.replySafety}>{REPLY_SAFETY_TEXT}</Text>
-                <Text style={styles.replyHintText}>
-                  {sending
-                    ? "sending..."
-                    : trimmedReplyLength < REPLY_MIN_LENGTH
-                      ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
-                      : "← swipe left to send"}
-                </Text>
+                <View style={styles.replyActionRow}>
+                  <Text style={styles.replyHintText}>
+                    {sending
+                      ? "sending..."
+                      : trimmedReplyLength < REPLY_MIN_LENGTH
+                        ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
+                        : "ready to send"}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.replySendButton,
+                      (sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3.can_reply) &&
+                        styles.replySendButtonDisabled,
+                    ]}
+                    onPress={() => {
+                      void submitReply();
+                    }}
+                    disabled={sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3.can_reply}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.replySendButtonText}>
+                      {sending ? "POSTING" : "POST"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </KeyboardAvoidingView>
             )}
           </View>
@@ -930,12 +878,36 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: "italic",
   },
+  replyActionRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   replyHintText: {
     ...typography.metadata,
     fontSize: 11,
     color: "rgba(245,240,234,0.45)",
-    marginTop: 6,
-    textAlign: "center",
+    textAlign: "left",
+    flex: 1,
+  },
+  replySendButton: {
+    minWidth: 92,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: colors.VERMILLION,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  replySendButtonDisabled: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  replySendButtonText: {
+    ...typography.label,
+    fontSize: 8.5,
+    color: colors.TYPE_WHITE,
   },
   indicator: {
     position: "absolute",
