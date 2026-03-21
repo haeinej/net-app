@@ -77,9 +77,9 @@ export const POST_DEPTH_PROMPTS = [
 // EMPTY STATE — when the feed has no new thoughts
 // ─────────────────────────────────────────────
 export const EMPTY_STATE_PROMPTS = [
-  "nothing new yet — maybe yours starts it",
-  "quiet right now — come back with a thought",
-  "still here — the next conversation is forming",
+  "nothing new yet — we're still gathering thoughts around you",
+  "quiet right now — more voices should land here soon",
+  "still here — the feed will fill as more people arrive",
 ] as const;
 // ─────────────────────────────────────────────
 // WEEKLY NUDGE — opt-in push notification copy

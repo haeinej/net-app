@@ -5,7 +5,7 @@
     "dev": "npm run build && npm run start",
     "dev:tsx": "node --dns-result-order=ipv4first node_modules/.bin/tsx --tsconfig tsconfig.json src/index.ts",
     "dev:watch": "node --dns-result-order=ipv4first node_modules/.bin/tsx watch --tsconfig tsconfig.json src/index.ts",
-    "typecheck": "node node_modules/typescript/bin/tsc --noEmit --pretty false",
+    "typecheck": "node scripts/typecheck.mjs",
     "build": "node --dns-result-order=ipv4first scripts/build.mjs",
     "start": "node --dns-result-order=ipv4first dist/index.js",
     "db:migrate": "node --dns-result-order=ipv4first -r tsx/cjs src/db/migrate.ts",
@@ -25,6 +25,7 @@
     "drizzle-orm": "^0.38.0",
     "fastify": "^5.0.0",
     "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.2",
     "pg": "^8.13.0",
     "postgres": "^3.4.5",
     "zod": "^3.23.0"
@@ -35,6 +36,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^7.0.11",
     "@types/pg": "^8.11.0",
     "drizzle-kit": "^0.30.0",
     "tsx": "^4.19.0",

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { colors } from "../theme";
 
 interface ThoughtImageFrameProps {
@@ -9,6 +10,7 @@ interface ThoughtImageFrameProps {
   borderRadius?: number;
   style?: StyleProp<ViewStyle>;
   children?: ReactNode;
+  showTextScrim?: boolean;
 }
 
 function parseAspectRatio(aspectRatio: string | number | undefined): number {
@@ -32,6 +34,7 @@ export function ThoughtImageFrame({
   borderRadius = 14,
   style,
   children,
+  showTextScrim = true,
 }: ThoughtImageFrameProps) {
   const ratio = parseAspectRatio(aspectRatio);
   const hasPhoto = Boolean(imageUrl);
@@ -56,6 +59,20 @@ export function ThoughtImageFrame({
             contentFit="cover"
           />
           <View style={styles.warmTint} />
+          {showTextScrim ? (
+            <LinearGradient
+              colors={[
+                "rgba(8, 6, 4, 0.00)",
+                "rgba(8, 6, 4, 0.06)",
+                "rgba(8, 6, 4, 0.62)",
+                "rgba(8, 6, 4, 0.92)",
+              ]}
+              locations={[0, 0.22, 0.64, 1]}
+              style={styles.textScrim}
+            />
+          ) : null}
+          {/* Glass inner rim — stereoscopic depth edge */}
+          <View style={[styles.glassInnerRim, { borderRadius }]} />
         </>
       ) : null}
 
@@ -71,12 +88,23 @@ const styles = StyleSheet.create({
   },
   photo: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
   },
   warmTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(60, 45, 30, 0.35)",
+    backgroundColor: "rgba(60, 45, 30, 0.22)",
+    zIndex: 1,
+  },
+  textScrim: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
   },
   content: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+  },
+  glassInnerRim: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
   },
 });

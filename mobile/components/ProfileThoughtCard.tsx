@@ -3,34 +3,25 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { colors, spacing, typography, fontFamily } from "../theme";
+import { colors, spacing, typography } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { WarmthBar } from "./WarmthBar";
 import type { ProfileThought } from "../lib/api";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
+import { formatRelativeTime } from "../lib/format";
 
 const CARD_HEIGHT = spacing.compactCardHeight;
 const IMAGE_HEIGHT = CARD_HEIGHT - spacing.compactFooterHeight;
 const AVATAR = spacing.compactAvatarSize;
 
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  const hours = Math.floor(diffMs / 3600000);
-  const days = Math.floor(diffMs / 86400000);
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  return `${days}d`;
-}
-
 interface ProfileThoughtCardProps {
   thought: ProfileThought;
+  onPress?: (thoughtId: string) => void;
   onLongPress?: () => void;
+  disableOpen?: boolean;
   /** Use dark variant for Me screen */
   dark?: boolean;
   /** Author name to display in meta row */
@@ -43,26 +34,27 @@ interface ProfileThoughtCardProps {
 
 export function ProfileThoughtCard({
   thought,
-  onLongPress,
   dark,
   authorName,
   authorPhotoUrl,
   authorUserId,
 }: ProfileThoughtCardProps) {
   const router = useRouter();
+  const { contentWidth } = useResponsiveLayout();
+  const cardWidth = contentWidth - spacing.screenPadding * 2;
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => router.push({ pathname: "/thought/[id]", params: { id: thought.id } })}
-      onLongPress={onLongPress}
-      activeOpacity={1}
-    >
+    <View style={[styles.card, { width: cardWidth }]}>
       <View style={styles.cardInner}>
-        <WarmthBar warmthLevel={thought.warmth_level} height={CARD_HEIGHT} />
-        <View style={{ flex: 1 }}>
-          <View style={[styles.imageWrap, { height: IMAGE_HEIGHT }]}>
+        <WarmthBar height={CARD_HEIGHT} />
+        <View style={styles.body}>
+          <View
+            style={[
+              styles.imageWrap,
+              { width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT },
+            ]}
+          >
             <ThoughtImageFrame
               imageUrl={thought.photo_url ?? thought.image_url}
               aspectRatio={4 / 3}
@@ -85,8 +77,7 @@ export function ProfileThoughtCard({
               style={styles.footerProfile}
               activeOpacity={0.7}
               disabled={!authorUserId}
-              onPress={(event: GestureResponderEvent) => {
-                event.stopPropagation();
+              onPress={() => {
                 if (!authorUserId) return;
                 router.push({ pathname: "/user/[id]", params: { id: authorUserId } });
               }}
@@ -106,20 +97,23 @@ export function ProfileThoughtCard({
           </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    width: "100%",
     height: CARD_HEIGHT,
     borderRadius: spacing.cardRadius,
     overflow: "hidden",
+    backgroundColor: colors.CARD_GROUND,
   },
   cardInner: {
     flexDirection: "row",
     height: CARD_HEIGHT,
+  },
+  body: {
+    flex: 1,
   },
   imageWrap: {
     position: "relative",
@@ -130,14 +124,11 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   sentence: {
-    fontFamily: fontFamily.sentientBold,
+    ...typography.thoughtDisplayCompact,
     position: "absolute",
     left: 10,
     right: 10,
     bottom: 16,
-    fontSize: 16,
-    lineHeight: 19,
-    letterSpacing: -0.25,
     color: colors.TYPE_WHITE,
   },
   sentenceNoPhoto: {
@@ -169,10 +160,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.PANEL_DEEP,
   },
   name: {
-    fontFamily: fontFamily.comico,
-    fontSize: 8.5,
-    lineHeight: 10.5,
-    letterSpacing: 0.8,
+    ...typography.metadataSmall,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
     flex: 1,
@@ -181,10 +169,7 @@ const styles = StyleSheet.create({
     color: "rgba(245,240,234,0.5)",
   },
   date: {
-    fontFamily: fontFamily.comico,
-    fontSize: 8,
-    lineHeight: 9.5,
-    letterSpacing: 0.5,
+    ...typography.metadataSmall,
     color: colors.TYPE_MUTED,
   },
   dateDark: {

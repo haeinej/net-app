@@ -16,9 +16,10 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
+import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO, primitives, radii, opacity } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import {
   register,
   updateProfile,
@@ -53,8 +54,10 @@ function validateStrongPassword(password: string): string | null {
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { invite_code } = useLocalSearchParams<{ invite_code?: string }>();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const { containerStyle, contentWidth } = useResponsiveLayout();
   const [step, setStepState] = useState<1 | 2 | 3>(1);
 
   // Step 1
@@ -67,6 +70,8 @@ export default function OnboardingScreen() {
   const [regError, setRegError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [sendingStep1, setSendingStep1] = useState(false);
+
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Step 2
   const [interest1, setInterest1] = useState("");
@@ -105,14 +110,21 @@ export default function OnboardingScreen() {
         getStoredUserId(),
       ]);
       if (cancelled) return;
-      if (storedUserId && savedStep >= 2 && savedStep <= 3) {
-        setStepState(savedStep as 1 | 2 | 3);
+      if (storedUserId && savedStep === 3) {
+        await setOnboardingComplete(true);
+        await setOnboardingStep(1);
+        setCachedUserId(storedUserId);
+        router.replace("/(tabs)");
+        return;
+      }
+      if (storedUserId && savedStep === 2) {
+        setStepState(2);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (step !== 3 || thoughtPhotoInitialized) return;
@@ -171,12 +183,18 @@ export default function OnboardingScreen() {
 
   const canContinueStep1 =
     name.trim().length > 0 &&
+    Boolean(selectedProfilePhoto) &&
     email.trim().length > 0 &&
     password.length >= 10 &&
-    confirmPassword.length > 0;
+    confirmPassword.length > 0 &&
+    termsAccepted;
 
   const handleStep1Continue = useCallback(async () => {
     if (!canContinueStep1 || sendingStep1) return;
+    if (!selectedProfilePhoto) {
+      setRegError("Profile photo required");
+      return;
+    }
     const passwordError = validateStrongPassword(password);
     if (passwordError) {
       setRegError(passwordError);
@@ -191,9 +209,11 @@ export default function OnboardingScreen() {
     try {
       const body: RegisterBody = {
         name: name.trim(),
-        photo_url: selectedProfilePhoto ?? undefined,
+        photo_url: selectedProfilePhoto,
         email: email.trim(),
         password,
+        terms_accepted: true,
+        invite_code: invite_code || undefined,
       };
       const { verification_email } = await register(body);
       router.replace({
@@ -213,6 +233,7 @@ export default function OnboardingScreen() {
     email,
     password,
     confirmPassword,
+    invite_code,
     router,
   ]);
 
@@ -224,15 +245,17 @@ export default function OnboardingScreen() {
         .filter(Boolean)
         .slice(0, 3);
       await updateProfile({ interests });
-      await setOnboardingComplete(false);
-      await setOnboardingStep(3);
-      setStepState(3);
+      await setOnboardingComplete(true);
+      await setOnboardingStep(1);
+      const uid = await getStoredUserId();
+      if (uid) setCachedUserId(uid);
+      router.replace("/(tabs)");
     } catch {
       Alert.alert("Error", "Could not save. Try again.");
     } finally {
       setSendingStep2(false);
     }
-  }, [interest1, interest2, interest3, sendingStep2]);
+  }, [interest1, interest2, interest3, router, sendingStep2]);
 
   const handleStep3Post = useCallback(async () => {
     const s = sentence.trim();
@@ -326,7 +349,7 @@ export default function OnboardingScreen() {
             )}
           </TouchableOpacity>
           <Text style={styles.photoGuide}>
-            Optional. If you add one, make sure your full face is visible and clear.
+            Add a clear profile photo with your full face visible. This is required.
           </Text>
           <TextInput
             style={styles.input}
@@ -356,6 +379,36 @@ export default function OnboardingScreen() {
             secureTextEntry
             editable={!sendingStep1}
           />
+          <Text style={styles.passwordGuide}>
+            Use 10+ characters with uppercase, lowercase, a number, and a symbol.
+          </Text>
+
+          <View style={styles.termsRow}>
+            <TouchableOpacity
+              style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}
+              onPress={() => setTermsAccepted((v) => !v)}
+              disabled={sendingStep1}
+              activeOpacity={0.7}
+            >
+              {termsAccepted ? <Text style={styles.checkmark}>✓</Text> : null}
+            </TouchableOpacity>
+            <Text style={styles.termsText}>
+              I agree to the{" "}
+              <Text
+                style={styles.termsLink}
+                onPress={() => router.push("/terms" as Href)}
+              >
+                Terms of Use
+              </Text>
+              {" "}and{" "}
+              <Text
+                style={styles.termsLink}
+                onPress={() => router.push("/privacy" as Href)}
+              >
+                Privacy Policy
+              </Text>
+            </Text>
+          </View>
 
           {regError ? <Text style={styles.error}>{regError}</Text> : null}
 
@@ -407,7 +460,7 @@ export default function OnboardingScreen() {
 
           <TextInput
             style={styles.interestInput}
-            placeholder="what you are into right now"
+            placeholder="what you keep returning to"
             placeholderTextColor={colors.TYPE_MUTED}
             value={interest1}
             onChangeText={setInterest1}
@@ -415,7 +468,7 @@ export default function OnboardingScreen() {
           />
           <TextInput
             style={styles.interestInput}
-            placeholder="what you are into right now"
+            placeholder="what is taking your attention"
             placeholderTextColor={colors.TYPE_MUTED}
             value={interest2}
             onChangeText={setInterest2}
@@ -423,18 +476,12 @@ export default function OnboardingScreen() {
           />
           <TextInput
             style={styles.interestInput}
-            placeholder="what you are into right now"
+            placeholder="what feels quietly important"
             placeholderTextColor={colors.TYPE_MUTED}
             value={interest3}
             onChangeText={setInterest3}
             editable={!sendingStep2}
           />
-
-          {allInterestsEmpty && (
-            <Text style={styles.nudge}>
-              These only help with cold start. Your thoughts and replies matter more.
-            </Text>
-          )}
 
           <TouchableOpacity
             style={[styles.continueBtn, sendingStep2 && styles.continueBtnDisabled]}
@@ -462,7 +509,6 @@ export default function OnboardingScreen() {
       <View style={styles.header}>
         <View style={styles.headerLead}>
           <Image source={ohmLogo} style={styles.logoHeaderIcon} contentFit="contain" />
-          <Text style={styles.firstThoughtTitle}>Your first thought</Text>
         </View>
         <ScreenExitButton onPress={handleExit} disabled={onboardingBusy} />
       </View>
@@ -502,31 +548,15 @@ export default function OnboardingScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Photo</Text>
-          <Text style={styles.fieldHint}>
-            Optional. Your profile photo is used by default and you can swap it here.
-          </Text>
           <View style={styles.photoActionRow}>
             <TouchableOpacity style={styles.photoActionBtn} onPress={pickThoughtPhoto} disabled={posting}>
-              <Text style={styles.photoActionText}>
-                {thoughtPhotoUrl ? "Change photo" : "Add photo"}
-              </Text>
+              <Text style={styles.photoActionText}>Change photo</Text>
             </TouchableOpacity>
-            {thoughtPhotoUrl ? (
-              <TouchableOpacity style={styles.photoActionBtn} onPress={() => setThoughtPhotoUrl(null)} disabled={posting}>
-                <Text style={styles.photoActionText}>Remove</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
-          {!thoughtPhotoUrl ? (
-            <Text style={styles.photoFallbackText}>
-              No photo selected. The preview will stay plain until you add one.
-            </Text>
-          ) : null}
         </View>
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>One big thought</Text>
-          <Text style={styles.fieldHint}>This becomes the line on your image.</Text>
           <TextInput
             style={[styles.textArea, styles.sentenceInput]}
             placeholder="The one thought you cannot stop turning over."
@@ -542,7 +572,6 @@ export default function OnboardingScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Context</Text>
-          <Text style={styles.fieldHint}>Three lines that place the thought.</Text>
           <TextInput
             style={[styles.textArea, styles.contextInput]}
             placeholder="Where it came from, what triggered it, what is underneath it."
@@ -584,25 +613,25 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 24,
+    maxWidth: 540,
+    alignSelf: "center" as const,
+    width: "100%" as const,
   },
   stepTitle: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 14,
+    ...typography.buttonText,
     color: colors.TYPE_DARK,
     marginBottom: 8,
-    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   stepSubtitle: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 15.5,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     marginBottom: 20,
   },
   firstThoughtTitle: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 8.5,
+    ...typography.metadataSmall,
     color: colors.TYPE_MUTED,
-    letterSpacing: 1.2,
+    textTransform: "uppercase",
   },
   header: {
     flexDirection: "row",
@@ -613,7 +642,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(26,26,22,0.06)",
+    borderBottomColor: colors.CARD_BORDER,
   },
   headerLead: {
     flex: 1,
@@ -639,13 +668,13 @@ const styles = StyleSheet.create({
     height: 22,
   },
   input: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 14,
-    color: colors.TYPE_DARK,
-    backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    ...primitives.input,
+    marginBottom: 12,
+  },
+  passwordGuide: {
+    ...typography.context,
+    color: colors.TYPE_MUTED,
+    marginTop: -2,
     marginBottom: 12,
   },
   photoWrap: {
@@ -679,48 +708,69 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   photoGuide: {
-    fontFamily: typography.context.fontFamily,
-    fontSize: 15.5,
-    lineHeight: 21,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     textAlign: "center",
     marginBottom: 12,
   },
-  error: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 12,
+  termsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.TYPE_MUTED,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.OLIVE,
+    borderColor: colors.OLIVE,
+  },
+  checkmark: {
+    color: colors.TYPE_WHITE,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 16,
+  },
+  termsText: {
+    flex: 1,
+    fontFamily: typography.context.fontFamily,
+    fontSize: 11.5,
+    lineHeight: 17,
+    color: colors.TYPE_DARK,
+  },
+  termsLink: {
     color: colors.OLIVE,
-    marginBottom: 12,
+    textDecorationLine: "underline" as const,
+  },
+  error: {
+    ...primitives.errorText,
   },
   continueBtn: {
+    ...primitives.buttonPrimary,
     backgroundColor: colors.OLIVE,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderRadius: 8,
     marginTop: 24,
   },
   continueBtnDisabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   continueBtnText: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 16,
-    color: colors.TYPE_WHITE,
-    letterSpacing: 1.2,
+    ...primitives.buttonPrimaryText,
   },
   interestInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 16,
-    color: colors.TYPE_DARK,
-    backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    ...primitives.inputReading,
     marginBottom: 12,
   },
   nudge: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 11,
+    ...typography.label,
     color: colors.TYPE_MUTED,
     marginTop: 4,
   },
@@ -733,14 +783,11 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   previewSentence: {
-    fontFamily: fontFamily.sentientBold,
+    ...typography.thoughtDisplay,
     position: "absolute",
     left: 16,
     right: 16,
     bottom: 14,
-    fontSize: 26,
-    lineHeight: 31,
-    letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
   },
   previewHint: {
@@ -752,18 +799,13 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
   },
   fieldBlock: {
-    marginBottom: 16,
+    ...primitives.fieldBlock,
   },
   fieldLabel: {
-    ...typography.label,
-    fontSize: 12,
-    color: colors.TYPE_MUTED,
-    marginBottom: 6,
+    ...primitives.fieldLabel,
   },
   fieldHint: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 15.5,
-    lineHeight: 22,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     marginBottom: 10,
   },
@@ -773,28 +815,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   photoActionBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: colors.CARD_GROUND,
+    ...primitives.buttonPill,
   },
   photoActionText: {
-    ...typography.label,
-    fontSize: 10.5,
-    color: colors.TYPE_DARK,
+    ...primitives.buttonPillText,
   },
   photoFallbackText: {
     ...typography.context,
     color: colors.TYPE_MUTED,
   },
   textArea: {
-    backgroundColor: colors.CARD_GROUND,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    ...primitives.textArea,
   },
   sentenceInput: {
-    fontFamily: fontFamily.comico,
+    fontFamily: fontFamily.sentientBold,
     fontSize: 22,
     lineHeight: 29,
     color: colors.TYPE_DARK,
@@ -802,28 +836,20 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   contextInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.body,
     color: colors.TYPE_DARK,
     minHeight: 88,
     textAlignVertical: "top",
   },
   postBtn: {
-    marginTop: 16,
-    paddingVertical: 14,
-    borderRadius: 8,
+    ...primitives.buttonPrimary,
     backgroundColor: colors.VERMILLION,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
+    marginTop: 16,
   },
   postBtnDisabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   postBtnText: {
-    ...typography.label,
-    fontSize: 14,
-    color: colors.TYPE_WHITE,
+    ...primitives.buttonPrimaryText,
   },
 });

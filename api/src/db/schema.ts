@@ -24,6 +24,32 @@ export const replyStatusEnum = pgEnum("reply_status", [
   "deleted",
 ]);
 
+export const reportReasonEnum = pgEnum("report_reason", [
+  "harassment",
+  "hate_speech",
+  "spam",
+  "sexual_content",
+  "violence",
+  "self_harm",
+  "other",
+]);
+
+export const reportStatusEnum = pgEnum("report_status", [
+  "pending",
+  "reviewed",
+  "actioned",
+  "dismissed",
+]);
+
+export const reportTargetTypeEnum = pgEnum("report_target_type", [
+  "thought",
+  "reply",
+  "crossing",
+  "crossing_reply",
+  "message",
+  "user",
+]);
+
 export const engagementEventTypeEnum = pgEnum("engagement_event_type", [
   "view_p1",
   "swipe_p2",
@@ -53,8 +79,31 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   passwordHash: text("password_hash"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  invitedByUserId: uuid("invited_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
+
+// 1b. invite_codes
+export const inviteCodes = pgTable(
+  "invite_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    redeemedByUserId: uuid("redeemed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("invite_codes_code_unique").on(table.code),
+    index("invite_codes_created_by_idx").on(table.createdByUserId),
+  ]
+);
 
 export const emailVerificationCodes = pgTable(
   "email_verification_codes",
@@ -144,6 +193,20 @@ export const replies = pgTable(
   (table) => [index("replies_thought_status_idx").on(table.thoughtId, table.status)]
 );
 
+// 3b. thought_feed_stats (materialized reply / conversation quality signals per thought)
+export const thoughtFeedStats = pgTable("thought_feed_stats", {
+  thoughtId: uuid("thought_id")
+    .primaryKey()
+    .references(() => thoughts.id, { onDelete: "cascade" }),
+  acceptedReplyCount: integer("accepted_reply_count").notNull().default(0),
+  crossDomainAcceptedReplyCount: integer("cross_domain_accepted_reply_count")
+    .notNull()
+    .default(0),
+  sustainedConversationCount: integer("sustained_conversation_count").notNull().default(0),
+  maxConversationDepth: integer("max_conversation_depth").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 // 4. conversations
 export const conversations = pgTable(
   "conversations",
@@ -172,6 +235,14 @@ export const conversations = pgTable(
     index("conversations_participant_a_idx").on(table.participantA),
     index("conversations_participant_b_idx").on(table.participantB),
     index("conversations_last_message_at_idx").on(table.lastMessageAt.desc()),
+    index("conversations_participant_a_last_msg_idx").on(
+      table.participantA,
+      table.lastMessageAt.desc()
+    ),
+    index("conversations_participant_b_last_msg_idx").on(
+      table.participantB,
+      table.lastMessageAt.desc()
+    ),
     uniqueIndex("conversations_reply_id_unique").on(table.replyId),
   ]
 );
@@ -274,6 +345,27 @@ export const feedServes = pgTable(
   ]
 );
 
+export const feedSnapshots = pgTable(
+  "feed_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    viewerId: uuid("viewer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    configVersion: text("config_version").notNull(),
+    items: jsonb("items").notNull(),
+    traces: jsonb("traces").notNull(),
+    hasMore: boolean("has_more").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("feed_snapshots_viewer_expires_idx").on(table.viewerId, table.expiresAt.desc()),
+    index("feed_snapshots_expires_idx").on(table.expiresAt),
+  ]
+);
+
+
 // 8. question_clusters (legacy name; currently used as resonance clusters)
 export const questionClusters = pgTable("question_clusters", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -319,6 +411,22 @@ export const userRecommendationWeights = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   }
 );
+
+export const userFeedProfiles = pgTable(
+  "user_feed_profiles",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    resonanceCentroid: vector("resonance_centroid", { dimensions: VECTOR_DIMS }),
+    surfaceCentroid: vector("surface_centroid", { dimensions: VECTOR_DIMS }),
+    recentClusterIds: uuid("recent_cluster_ids").array(),
+    embeddedThoughtCount: integer("embedded_thought_count").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("user_feed_profiles_updated_idx").on(table.updatedAt.desc())]
+);
+
 
 // 11. failed_processing_jobs (Phase 3 + 4 — embedding pipeline or image generation retry)
 export const failedProcessingJobs = pgTable(
@@ -488,6 +596,14 @@ export const crossings = pgTable("crossings", {
   uniqueIndex("crossings_source_draft_unique")
     .on(table.sourceDraftId)
     .where(sql`${table.sourceDraftId} is not null`),
+  index("crossings_participant_a_created_idx").on(
+    table.participantA,
+    table.createdAt.desc()
+  ),
+  index("crossings_participant_b_created_idx").on(
+    table.participantB,
+    table.createdAt.desc()
+  ),
 ]);
 
 // 19b. crossing_replies (replies to crossings, tagged to a participant)
@@ -513,5 +629,69 @@ export const crossingReplies = pgTable(
     uniqueIndex("crossing_replies_pending_unique")
       .on(table.crossingId, table.replierId)
       .where(sql`${table.status} = 'pending'`),
+  ]
+);
+
+
+// 20. reports (user-flagged objectionable content)
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id),
+    targetType: reportTargetTypeEnum("target_type").notNull(),
+    targetId: uuid("target_id").notNull(),
+    targetUserId: uuid("target_user_id").references(() => users.id),
+    reason: reportReasonEnum("reason").notNull(),
+    description: text("description"),
+    status: reportStatusEnum("status").notNull().default("pending"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("reports_reporter_idx").on(table.reporterId),
+    index("reports_target_idx").on(table.targetType, table.targetId),
+    index("reports_status_idx").on(table.status, table.createdAt.desc()),
+  ]
+);
+
+// 21. push_tokens (Expo push notification tokens per device)
+export const pushTokens = pgTable(
+  "push_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    platform: text("platform").notNull(), // 'ios' | 'android'
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("push_tokens_token_unique").on(table.token),
+    index("push_tokens_user_idx").on(table.userId),
+  ]
+);
+
+// 22. blocks (user blocks — hides content and notifies developer)
+export const blocks = pgTable(
+  "blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blockerId: uuid("blocker_id")
+      .notNull()
+      .references(() => users.id),
+    blockedId: uuid("blocked_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("blocks_pair_unique").on(table.blockerId, table.blockedId),
+    index("blocks_blocker_idx").on(table.blockerId),
+    index("blocks_blocked_idx").on(table.blockedId),
   ]
 );

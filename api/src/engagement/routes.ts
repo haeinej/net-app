@@ -3,6 +3,8 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import { sql } from "drizzle-orm";
+import { db, systemConfig } from "../db";
 import { trackEngagementEvents } from "./track";
 import type { TrackRequestBody } from "./types";
 
@@ -17,7 +19,19 @@ export async function engagementRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Body: TrackRequestBody }>(
     "/api/engagement/track",
-    { onRequest: [authenticate] },
+    {
+      onRequest: [authenticate],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: "1 hour",
+          keyGenerator: (req) => {
+            const userId = (req.user as { sub?: string } | undefined)?.sub;
+            return userId ? `user:${userId}` : `ip:${req.ip}`;
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const userId = (request.user as { sub?: string } | undefined)?.sub;
       if (!userId) {
@@ -27,8 +41,26 @@ export async function engagementRoutes(app: FastifyInstance): Promise<void> {
       if (!body || !Array.isArray(body.events)) {
         return reply.status(400).send({ error: "Body must contain events array" });
       }
-      await trackEngagementEvents(userId, body.events);
-      return reply.status(200).send();
+      if (body.events.length === 0) {
+        return reply.status(200).send({ ingested: 0 });
+      }
+      if (body.events.length > 100) {
+        return reply.status(400).send({ error: "Too many events" });
+      }
+      const ingested = await trackEngagementEvents(userId, body.events);
+      // Increment aggregated total engagement events counter in system_config
+      if (ingested > 0) {
+        await db
+          .insert(systemConfig)
+          .values({ key: "total_engagement_events", value: ingested })
+          .onConflictDoUpdate({
+            target: systemConfig.key,
+            set: {
+              value: sql`to_jsonb(coalesce((system_config.value)::int, 0) + ${ingested})`,
+            },
+          });
+      }
+      return reply.status(200).send({ ingested });
     }
   );
 }

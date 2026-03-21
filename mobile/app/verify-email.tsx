@@ -18,7 +18,12 @@ import {
   resendVerificationEmail,
   setCachedUserId,
 } from "../lib/api";
-import { setAuth, setOnboardingComplete, setOnboardingStep } from "../lib/auth-store";
+import {
+  dismissIntro,
+  setAuth,
+  setOnboardingComplete,
+  setOnboardingStep,
+} from "../lib/auth-store";
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
@@ -42,39 +47,31 @@ export default function VerifyEmailScreen() {
   const cleanEmail = useMemo(() => normalizeEmail(email), [email]);
   const handledTokenHashRef = useRef<string | null>(null);
 
-  const finishAuth = useCallback(
-    async (payload: {
-      token: string;
-      user_id: string;
-      onboarding_complete: boolean;
-      onboarding_step: 1 | 2 | 3;
-    }) => {
-      await setAuth(payload.token, payload.user_id);
-      await setOnboardingComplete(payload.onboarding_complete);
-      await setOnboardingStep(payload.onboarding_step);
-      setCachedUserId(payload.user_id);
-      router.replace(payload.onboarding_complete ? "/(tabs)" : "/onboarding");
-    },
-    [router]
-  );
-
   const handleVerify = useCallback(async () => {
-    if (!cleanEmail || !/^\d{6}$/.test(code.trim())) {
-      setError("Enter your email and the 6-digit code");
+    if (!cleanEmail || !/^\d{6,8}$/.test(code.trim())) {
+      setError("Enter your email and the verification code");
       return;
     }
 
     setError(null);
     setVerifying(true);
     try {
-      const auth = await verifyEmail(cleanEmail, code.trim());
-      await finishAuth(auth);
+      const { token, user_id, onboarding_complete, onboarding_step } = await verifyEmail(
+        cleanEmail,
+        code.trim()
+      );
+      await setAuth(token, user_id);
+      await dismissIntro();
+      await setOnboardingComplete(onboarding_complete);
+      await setOnboardingStep(onboarding_step);
+      setCachedUserId(user_id);
+      router.replace(onboarding_complete ? "/(tabs)" : "/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not verify email");
     } finally {
       setVerifying(false);
     }
-  }, [cleanEmail, code, finishAuth]);
+  }, [cleanEmail, code, router]);
 
   const handleResend = useCallback(async () => {
     if (!cleanEmail) {
@@ -116,22 +113,29 @@ export default function VerifyEmailScreen() {
     setVerifying(true);
 
     verifyEmailLink(tokenHash, verifyType)
-      .then(async (auth) => {
+      .then(async ({ token, user_id, onboarding_complete, onboarding_step }) => {
         if (cancelled) return;
-        await finishAuth(auth);
+        await setAuth(token, user_id);
+        await dismissIntro();
+        await setOnboardingComplete(onboarding_complete);
+        await setOnboardingStep(onboarding_step);
+        setCachedUserId(user_id);
+        router.replace(onboarding_complete ? "/(tabs)" : "/onboarding");
       })
       .catch((err) => {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Could not verify email");
       })
       .finally(() => {
-        if (!cancelled) setVerifying(false);
+        if (!cancelled) {
+          setVerifying(false);
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [finishAuth, params.error, params.error_description, params.token_hash, params.type, verifying]);
+  }, [params.error, params.error_description, params.token_hash, params.type, router, verifying]);
 
   return (
     <KeyboardAvoidingView
@@ -141,7 +145,7 @@ export default function VerifyEmailScreen() {
     >
       <View style={styles.content}>
         <Text style={styles.title}>Verify your email</Text>
-        <Text style={styles.copy}>Tap the link in your email, or enter the 6-digit code.</Text>
+        <Text style={styles.copy}>Tap the link in your email, or enter the verification code.</Text>
 
         <TextInput
           style={styles.input}
@@ -160,12 +164,12 @@ export default function VerifyEmailScreen() {
 
         <TextInput
           style={styles.input}
-          placeholder="6-digit code"
+          placeholder="Verification code"
           placeholderTextColor={colors.TYPE_MUTED}
           keyboardType="number-pad"
           value={code}
           onChangeText={(value) => {
-            setCode(value.replace(/\D/g, "").slice(0, 6));
+            setCode(value.replace(/\D/g, "").slice(0, 8));
             setError(null);
           }}
           editable={!verifying && !resending}
@@ -278,7 +282,7 @@ const styles = StyleSheet.create({
   },
   secondaryLinkText: {
     fontFamily: typography.label.fontFamily,
-    fontSize: 12,
+    fontSize: 11,
     color: colors.TYPE_MUTED,
   },
 });

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -27,10 +27,11 @@ import Animated, {
   runOnJS,
   Easing,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
+
 import {
   deleteReply,
   fetchThought,
@@ -40,25 +41,14 @@ import {
 } from "../lib/api";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getSavedCardPanel, setSavedCardPanel } from "../lib/card-panel-memory";
+import { formatRelativeTime } from "../lib/format";
 
-const REPLY_MIN_LENGTH = 50;
+const REPLY_MIN_LENGTH = 30;
 const REPLY_MAX_LENGTH = 300;
 const IMAGE_HEIGHT = 150;
 const CARD_HEIGHT = spacing.compactCardHeight;
 const FOOTER_HEIGHT = spacing.compactFooterHeight;
 const EXPANDED_HEIGHT = 340;
-
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  const hours = Math.floor(diffMs / 3600000);
-  const days = Math.floor(diffMs / 86400000);
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  return `${days}d`;
-}
 
 interface SwipeableThoughtCardProps {
   item: FeedItemThought;
@@ -70,10 +60,10 @@ interface SwipeableThoughtCardProps {
 
 export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit }: SwipeableThoughtCardProps) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const cardWidth = width - spacing.screenPadding * 2;
+  const { contentWidth } = useResponsiveLayout();
+  const cardWidth = contentWidth - spacing.screenPadding * 2;
 
-  const { thought, user, warmth_level } = item;
+  const { thought, user } = item;
   const cardKey = `thought-${thought.id}`;
   const initialPanel = getSavedCardPanel(cardKey);
 
@@ -99,17 +89,12 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const pulseOpacity = useSharedValue(0);
-
-  // Warmth escalates as user swipes deeper into panels
-  const effectiveWarmth = (() => {
-    if (isTyping) return "full" as const;
-    const levels: Array<typeof warmth_level> = ["none", "low", "medium", "full"];
-    if (displayPanel >= 2) return "full" as const;
-    if (displayPanel === 1) return "medium" as const;
-    // Panel 0: show at least "low" so the bar is always visible
-    const baseIdx = levels.indexOf(warmth_level);
-    return levels[Math.max(baseIdx, 1)];
-  })();
+  const sendSwipeProgress = useSharedValue(0);
+  const sendHapticArmed = useSharedValue(0);
+  const sendTriggered = useSharedValue(0);
+  const replyLengthValue = useSharedValue(0);
+  const canReplyValue = useSharedValue(0);
+  const sendingValue = useSharedValue(0);
 
   // Card height animation for reply expansion
   const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
@@ -150,18 +135,29 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   // Softer spring for rubber-band release
   const RUBBER_SPRING = { damping: 22, stiffness: 180, mass: 0.6 };
 
-  const triggerSnapHaptic = useCallback(() => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {}
-  }, []);
-
   const rememberPanel = useCallback(
     (panel: number) => {
       setSavedCardPanel(cardKey, panel);
     },
     [cardKey]
   );
+
+  // ── Stable-identity wrappers for runOnJS (prevents Hermes crash from GC'd closures) ──
+  // When React re-renders (e.g. every keystroke), useCallback recreates closures.
+  // Gesture worklets capture these via runOnJS — if the old closure is GC'd mid-swipe,
+  // Hermes crashes with throwPendingError. Refs ensure the worklet always calls a live function.
+  const loadDetailRef = useRef(loadDetail);
+  loadDetailRef.current = loadDetail;
+  const rememberPanelRef = useRef(rememberPanel);
+  rememberPanelRef.current = rememberPanel;
+  const recordSwipeP2Ref = useRef(recordSwipeP2);
+  recordSwipeP2Ref.current = recordSwipeP2;
+  const recordSwipeP3Ref = useRef(recordSwipeP3);
+  recordSwipeP3Ref.current = recordSwipeP3;
+  const jsLoadDetail = useCallback(() => { loadDetailRef.current(); }, []);
+  const jsRememberPanel = useCallback((p: number) => { rememberPanelRef.current(p); }, []);
+  const jsRecordSwipeP2 = useCallback(() => { recordSwipeP2Ref.current(); }, []);
+  const jsRecordSwipeP3 = useCallback(() => { recordSwipeP3Ref.current(); }, []);
 
   const snapTo = useCallback(
     (target: number, from: number) => {
@@ -182,24 +178,33 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       indicatorProgress.value = withSpring(target, { damping: 20, stiffness: 200 });
       // Reset drag progress
       dragProgress.value = withSpring(0, RUBBER_SPRING);
+      sendSwipeProgress.value = withTiming(0, { duration: 140 });
+      sendHapticArmed.value = 0;
+      sendTriggered.value = 0;
 
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
-      runOnJS(rememberPanel)(target);
-
-      // Haptic on panel change
-      if (target !== from) {
-        runOnJS(triggerSnapHaptic)();
-      }
+      runOnJS(jsRememberPanel)(target);
 
       if (from === 0 && target === 1) {
-        runOnJS(recordSwipeP2)();
-        runOnJS(loadDetail)();
+        runOnJS(jsRecordSwipeP2)();
+        runOnJS(jsLoadDetail)();
       } else if (from === 1 && target === 2) {
-        runOnJS(recordSwipeP3)();
+        runOnJS(jsRecordSwipeP3)();
       }
     },
-    [cardWidth, currentPanel, indicatorProgress, loadDetail, panel2X, panel3X, rememberPanel, triggerSnapHaptic]
+    [
+      cardWidth,
+      currentPanel,
+      indicatorProgress,
+      jsLoadDetail,
+      panel2X,
+      panel3X,
+      jsRememberPanel,
+      sendHapticArmed,
+      sendTriggered,
+      sendSwipeProgress,
+    ]
   );
 
   // Rubber-band function: diminishing returns past boundary (like iOS overscroll)
@@ -216,15 +221,20 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       "worklet";
       const ci = currentPanel.value;
       const tx = e.translationX;
+      const sendDistance = cardWidth * 0.28;
 
       // Track drag progress for parallax
       dragProgress.value = Math.max(-1, Math.min(1, tx / cardWidth));
 
       // Update indicator progress during drag
       if (ci === 0) {
+        sendSwipeProgress.value = 0;
+        sendHapticArmed.value = 0;
         const progress = Math.max(0, Math.min(1, -tx / cardWidth));
         indicatorProgress.value = progress;
       } else if (ci === 1) {
+        sendSwipeProgress.value = 0;
+        sendHapticArmed.value = 0;
         if (tx < 0) {
           indicatorProgress.value = 1 + Math.max(0, Math.min(1, -tx / cardWidth));
         } else {
@@ -258,8 +268,12 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           // Swiping right → push panel 3 out
           const next = Math.max(0, Math.min(cardWidth, tx));
           panel3X.value = next;
+          sendSwipeProgress.value = 0;
+          sendHapticArmed.value = 0;
         } else {
-          // Swiping left on last panel → rubber band
+          sendSwipeProgress.value = 0;
+          sendHapticArmed.value = 0;
+          // Swiping left on the reply panel only rubber-bands.
           panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
         }
       }
@@ -297,6 +311,8 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
         }
       } else if (ci === 2) {
         if (e.translationX < 0) {
+          sendSwipeProgress.value = withTiming(0, { duration: 120 });
+          sendHapticArmed.value = 0;
           // Rubber-band release — snap back
           snapTo(2, 2);
         } else if (panel3X.value > threshold || vx > flickVelocity) {
@@ -360,16 +376,46 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     opacity: pulseOpacity.value,
   }));
 
-  // Reply handlers
-  const handleSendReply = useCallback(async () => {
+  const p2 = detailData?.panel_2;
+  const p3 = detailData?.panel_3;
+  const canInlineReply = !isOwn && (p3 ? p3.can_reply : true);
+  const trimmedReplyLength = replyText.trim().length;
+
+  useEffect(() => {
+    replyLengthValue.value = trimmedReplyLength;
+  }, [replyLengthValue, trimmedReplyLength]);
+
+  useEffect(() => {
+    canReplyValue.value = p3?.can_reply ? 1 : 0;
+  }, [canReplyValue, p3?.can_reply]);
+
+  useEffect(() => {
+    sendingValue.value = sending ? 1 : 0;
+  }, [sending, sendingValue]);
+
+  useEffect(() => {
+    const shouldExpand = displayPanel === 2 && canInlineReply;
+    cardHeightAnim.value = withSpring(shouldExpand ? EXPANDED_HEIGHT : CARD_HEIGHT, {
+      damping: 24,
+      stiffness: 220,
+      mass: 0.8,
+    });
+  }, [canInlineReply, cardHeightAnim, displayPanel]);
+
+  const submitReply = useCallback(async () => {
     const text = replyText.trim();
-    if (!text || text.length < REPLY_MIN_LENGTH || sending) return;
-    if (!detailData?.panel_3.can_reply) return;
+    if (!text || text.length < REPLY_MIN_LENGTH || sending || !detailData?.panel_3.can_reply) {
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapTo(2, 2);
+      return;
+    }
+    sendingValue.value = 1;
     setSending(true);
     try {
       await postReply(thought.id, text);
       recordReplySent({ reply_length_chars: text.length });
-      try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
       pulseOpacity.value = withSequence(
         withTiming(0.2, { duration: 80, easing: Easing.out(Easing.ease) }),
         withTiming(0, { duration: 400, easing: Easing.inOut(Easing.ease) })
@@ -380,11 +426,28 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       snapTo(0, 2);
       await refreshDetail();
     } catch {
-      // keep state for retry
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapTo(2, 2);
     } finally {
+      sendingValue.value = 0;
       setSending(false);
     }
-  }, [thought.id, replyText, sending, detailData, recordReplySent, pulseOpacity, snapTo, refreshDetail]);
+  }, [
+    sendingValue,
+    thought.id,
+    replyText,
+    sending,
+    detailData,
+    recordReplySent,
+    pulseOpacity,
+    sendHapticArmed,
+    sendSwipeProgress,
+    sendTriggered,
+    snapTo,
+    refreshDetail,
+  ]);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
@@ -442,8 +505,6 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   );
 
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
-  const p2 = detailData?.panel_2;
-  const p3 = detailData?.panel_3;
 
   const openUserProfile = useCallback(
     (userId?: string | null) => {
@@ -454,8 +515,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   );
 
   const handleProfilePress = useCallback(
-    (event: GestureResponderEvent) => {
-      event.stopPropagation();
+    () => {
       openUserProfile(user.id);
     },
     [openUserProfile, user.id]
@@ -469,35 +529,32 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
           <View style={styles.panel1Inner}>
             <View style={{ width: spacing.warmthBarWidth }} />
             <View style={[styles.imageWrap, { width: cardWidth - spacing.warmthBarWidth, height: IMAGE_HEIGHT }]}>
-              <ThoughtImageFrame
-                imageUrl={thought.photo_url ?? thought.image_url}
-                aspectRatio={4 / 3}
-                borderRadius={0}
-                style={StyleSheet.absoluteFillObject}
-              />
-              <View style={styles.imageOverlay} pointerEvents="none">
-                <Text
-                  style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
-                  numberOfLines={4}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
-                >
-                  {thought.sentence}
-                </Text>
-                <View style={[styles.dotsHint, !hasPhoto && styles.dotsHintNoPhoto]}>
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
+              <View style={styles.panel1OpenHitArea}>
+                <ThoughtImageFrame
+                  imageUrl={thought.photo_url ?? thought.image_url}
+                  aspectRatio={4 / 3}
+                  borderRadius={0}
+                  style={StyleSheet.absoluteFillObject}
+                />
+                <View style={styles.imageOverlay} pointerEvents="none">
+                  <Text
+                    style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
+                    numberOfLines={4}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                  >
+                    {thought.sentence}
+                  </Text>
+                  <View style={[styles.dotsHint, !hasPhoto && styles.dotsHintNoPhoto]}>
+                    <View style={styles.dot} />
+                    <View style={styles.dot} />
+                    <View style={styles.dot} />
+                  </View>
                 </View>
               </View>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.footer}
-            onLongPress={handleLongPress}
-            activeOpacity={isOwn ? 0.7 : 1}
-            delayLongPress={400}
-          >
+          <View style={styles.footer}>
             <TouchableOpacity
               style={styles.profileRow}
               onPress={handleProfilePress}
@@ -527,7 +584,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 </TouchableOpacity>
               ) : null}
             </View>
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* Panel 2 — Context (slides from right, glass-rimmed) */}
@@ -615,7 +672,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
             ) : null}
           </ScrollView>
           {/* Reply input — only for other people's cards */}
-          {!isOwn && (
+          {canInlineReply && (
             <KeyboardAvoidingView
               behavior={Platform.OS === "ios" ? "padding" : undefined}
               style={styles.inputWrap}
@@ -633,16 +690,29 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 multiline={false}
                 maxLength={REPLY_MAX_LENGTH}
               />
-              <View style={styles.inputRow}>
-                <Text style={styles.replyHint}>
-                  {replyText.trim().length}/{REPLY_MIN_LENGTH} min
+              <View style={styles.replyActionRow}>
+                <Text style={styles.replyHintText}>
+                  {sending
+                    ? "sending..."
+                    : trimmedReplyLength < REPLY_MIN_LENGTH
+                      ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
+                      : "ready to send"}
                 </Text>
                 <TouchableOpacity
-                  style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                  onPress={handleSendReply}
-                  disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
+                  style={[
+                    styles.replySendButton,
+                    (sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3?.can_reply) &&
+                      styles.replySendButtonDisabled,
+                  ]}
+                  onPress={() => {
+                    void submitReply();
+                  }}
+                  disabled={sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3?.can_reply}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.sendBtnText}>Send</Text>
+                  <Text style={styles.replySendButtonText}>
+                    {sending ? "POSTING" : "POST"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </KeyboardAvoidingView>
@@ -657,7 +727,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
 
         {/* Warmth bar — always visible across all panels, follows card height */}
         <Animated.View style={[styles.warmthBarOverlay, warmthBarHeightStyle]} pointerEvents="none">
-          <View style={[styles.warmthBarFill, { backgroundColor: effectiveWarmth === "none" ? "transparent" : effectiveWarmth === "low" ? colors.CHARTREUSE : effectiveWarmth === "medium" ? colors.OLIVE : colors.VERMILLION }]} />
+          <View style={[styles.warmthBarFill, { backgroundColor: colors.VERMILLION }]} />
         </Animated.View>
 
         {/* Panel indicator dots — animated Apple-style */}
@@ -700,6 +770,9 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
   },
+  panel1OpenHitArea: {
+    flex: 1,
+  },
   imageOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,
@@ -710,8 +783,8 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 20,
-    fontSize: 23,
-    lineHeight: 27,
+    fontSize: 18.5,
+    lineHeight: 22,
     letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
   },
@@ -840,7 +913,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   repliesContentContainer: {
-    paddingBottom: 4,
+    paddingBottom: 8,
   },
   replyRow: {
     flexDirection: "row",
@@ -888,46 +961,57 @@ const styles = StyleSheet.create({
     color: colors.VERMILLION,
   },
   inputWrap: {
-    paddingTop: 6,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.1)",
   },
   replyInputLabel: {
     ...typography.replyInput,
     fontSize: 9.5,
+    lineHeight: 14,
     color: colors.VERMILLION,
     marginBottom: 4,
   },
   replyInput: {
     ...typography.replyInput,
     fontSize: 12.5,
+    lineHeight: 18,
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.2)",
-    paddingVertical: 6,
+    minHeight: 34,
+    paddingHorizontal: 0,
+    paddingTop: Platform.OS === "ios" ? 8 : 6,
+    paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
-  inputRow: {
+  replyActionRow: {
+    marginTop: 8,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 6,
+    justifyContent: "space-between",
+    gap: 12,
   },
-  replyHint: {
+  replyHintText: {
     ...typography.metadata,
-    fontSize: 7.5,
-    color: colors.TYPE_MUTED,
+    fontSize: 11,
+    color: "rgba(245,240,234,0.45)",
+    textAlign: "left",
+    flex: 1,
   },
-  sendBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+  replySendButton: {
+    minWidth: 84,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 18,
     backgroundColor: colors.VERMILLION,
-    // Soft organic lift
-    ...shadows.raised,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: {
+  replySendButtonDisabled: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  replySendButtonText: {
     ...typography.label,
     fontSize: 8.5,
     color: colors.TYPE_WHITE,

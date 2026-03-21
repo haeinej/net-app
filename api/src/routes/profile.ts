@@ -4,17 +4,9 @@ import {
   db,
   users,
   thoughts,
-  replies,
   crossings,
-  conversations,
-  messages,
-  crossingDrafts,
-  crossingReplies,
-  engagementEvents,
-  failedProcessingJobs,
-  imageGenerations,
-  userRecommendationWeights,
 } from "../db";
+import rawSql from "../db/client";
 import { getUserId, authenticate } from "../lib/auth";
 import { verifyPassword } from "../lib/password";
 const INTERESTS_MAX = 3;
@@ -23,6 +15,11 @@ const UUID_PATTERN =
 
 interface UserIdParam {
   id: string;
+}
+
+interface ProfileQuery {
+  thoughts_limit?: string;
+  crossings_limit?: string;
 }
 
 interface UpdateProfileBody {
@@ -35,10 +32,164 @@ interface DeleteAccountBody {
   password?: string;
 }
 
+type DeleteRootTable =
+  | "users"
+  | "thoughts"
+  | "replies"
+  | "conversations"
+  | "crossings"
+  | "crossing_drafts";
+
+const OPTIONAL_DELETE_TABLES = [
+  "email_verification_codes",
+  "reports",
+  "blocks",
+  "crossing_replies",
+  "feed_serves",
+  "user_feed_profiles",
+  "feed_snapshots",
+  "push_tokens",
+  "shift_drafts",
+  "shifts",
+] as const;
+
+const DELETE_ROOT_TABLES: readonly DeleteRootTable[] = [
+  "users",
+  "thoughts",
+  "replies",
+  "conversations",
+  "crossings",
+  "crossing_drafts",
+] as const;
+
+const MANUALLY_HANDLED_DELETE_TABLES = new Set<string>([
+  ...OPTIONAL_DELETE_TABLES,
+  ...DELETE_ROOT_TABLES,
+  "messages",
+  "user_recommendation_weights",
+  "image_generations",
+  "engagement_events",
+  "failed_processing_jobs",
+]);
+
+const DELETE_ROOT_ID_SELECTS: Record<DeleteRootTable, string> = {
+  users: "select $1::uuid as id",
+  thoughts: `
+    select id
+    from public.thoughts
+    where user_id = $1::uuid
+  `,
+  replies: `
+    select id
+    from public.replies
+    where replier_id = $1::uuid
+       or thought_id in (
+         select id
+         from public.thoughts
+         where user_id = $1::uuid
+       )
+  `,
+  conversations: `
+    select id
+    from public.conversations
+    where participant_a = $1::uuid
+       or participant_b = $1::uuid
+       or thought_id in (
+         select id
+         from public.thoughts
+         where user_id = $1::uuid
+       )
+       or reply_id in (
+         select id
+         from public.replies
+         where replier_id = $1::uuid
+            or thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+       )
+  `,
+  crossing_drafts: `
+    select id
+    from public.crossing_drafts
+    where initiator_id = $1::uuid
+       or auto_posted_thought_id in (
+         select id
+         from public.thoughts
+         where user_id = $1::uuid
+       )
+       or conversation_id in (
+         select id
+         from public.conversations
+         where participant_a = $1::uuid
+            or participant_b = $1::uuid
+            or thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+            or reply_id in (
+              select id
+              from public.replies
+              where replier_id = $1::uuid
+                 or thought_id in (
+                   select id
+                   from public.thoughts
+                   where user_id = $1::uuid
+                 )
+            )
+       )
+  `,
+  crossings: `
+    select id
+    from public.crossings
+    where participant_a = $1::uuid
+       or participant_b = $1::uuid
+       or conversation_id in (
+         select id
+         from public.conversations
+         where participant_a = $1::uuid
+            or participant_b = $1::uuid
+            or thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+            or reply_id in (
+              select id
+              from public.replies
+              where replier_id = $1::uuid
+                 or thought_id in (
+                   select id
+                   from public.thoughts
+                   where user_id = $1::uuid
+                 )
+            )
+       )
+       or source_draft_id in (
+         select id
+         from public.crossing_drafts
+         where initiator_id = $1::uuid
+            or auto_posted_thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+       )
+  `,
+};
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replace(/"/g, "\"\"")}"`;
+}
+
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
-  app.get<{ Params: UserIdParam }>("/api/users/:id/profile", async (request, reply) => {
+  app.get<{ Params: UserIdParam; Querystring: ProfileQuery }>(
+    "/api/users/:id/profile",
+    async (request, reply) => {
     try {
       const userId = getUserId(request);
       if (!userId) return reply.status(401).send();
@@ -47,24 +198,65 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: "Profile not found" });
       }
 
-      const [[user], userThoughts] = await Promise.all([
-        db.select().from(users).where(eq(users.id, targetId)).limit(1),
-        db
-          .select()
-          .from(thoughts)
-          .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
-          .orderBy(desc(thoughts.createdAt)),
-      ]);
+      const [user] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          photoUrl: users.photoUrl,
+        })
+        .from(users)
+        .where(eq(users.id, targetId))
+        .limit(1);
 
       if (!user) return reply.status(404).send({ error: "Profile not found" });
 
-      const thoughtsForProfile = userThoughts.map((t) => ({
-        id: t.id,
-        sentence: t.sentence,
-        photo_url: t.photoUrl,
-        image_url: t.imageUrl,
-        created_at: t.createdAt?.toISOString(),
-      }));
+      const rawThoughtsLimit = parseInt(request.query.thoughts_limit ?? "100", 10);
+      const thoughtsLimit =
+        Number.isFinite(rawThoughtsLimit) && rawThoughtsLimit > 0
+          ? Math.min(rawThoughtsLimit, 200)
+          : 100;
+
+      let thoughtsForProfile: Array<{
+        id: string;
+        sentence: string;
+        photo_url: string | null;
+        image_url: string | null;
+        created_at: string | null;
+      }> = [];
+
+      try {
+        const userThoughts = await db
+          .select({
+            id: thoughts.id,
+            sentence: thoughts.sentence,
+            photoUrl: thoughts.photoUrl,
+            imageUrl: thoughts.imageUrl,
+            createdAt: thoughts.createdAt,
+          })
+          .from(thoughts)
+          .where(and(eq(thoughts.userId, targetId), isNull(thoughts.deletedAt)))
+          .orderBy(desc(thoughts.createdAt))
+          .limit(thoughtsLimit);
+
+        thoughtsForProfile = userThoughts.map((t) => ({
+          id: t.id,
+          sentence: t.sentence,
+          photo_url: t.photoUrl,
+          image_url: t.imageUrl,
+          created_at: t.createdAt?.toISOString() ?? null,
+        }));
+      } catch (error) {
+        request.log.error(
+          { error, targetId },
+          "profile thought hydration failed; returning profile without thoughts"
+        );
+      }
+
+      const rawCrossingsLimit = parseInt(request.query.crossings_limit ?? "100", 10);
+      const crossingsLimit =
+        Number.isFinite(rawCrossingsLimit) && rawCrossingsLimit > 0
+          ? Math.min(rawCrossingsLimit, 200)
+          : 100;
 
       let crossingsForProfile: Array<{
         id: string;
@@ -78,10 +270,19 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
 
       try {
         const userCrossings = await db
-          .select()
+          .select({
+            id: crossings.id,
+            sentence: crossings.sentence,
+            context: crossings.context,
+            imageUrl: crossings.imageUrl,
+            createdAt: crossings.createdAt,
+            participantA: crossings.participantA,
+            participantB: crossings.participantB,
+          })
           .from(crossings)
           .where(or(eq(crossings.participantA, targetId), eq(crossings.participantB, targetId)))
-          .orderBy(desc(crossings.createdAt));
+          .orderBy(desc(crossings.createdAt))
+          .limit(crossingsLimit);
 
         const participantIds = [
           ...new Set(userCrossings.flatMap((c) => [c.participantA, c.participantB])),
@@ -108,8 +309,18 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
           context: c.context,
           image_url: c.imageUrl,
           created_at: c.createdAt?.toISOString() ?? null,
-          participant_a: userInfoMap.get(c.participantA) ?? null,
-          participant_b: userInfoMap.get(c.participantB) ?? null,
+          participant_a:
+            userInfoMap.get(c.participantA) ?? {
+              id: c.participantA,
+              name: null,
+              photo_url: null,
+            },
+          participant_b:
+            userInfoMap.get(c.participantB) ?? {
+              id: c.participantB,
+              name: null,
+              photo_url: null,
+            },
         }));
       } catch (error) {
         request.log.error(
@@ -187,92 +398,198 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: "incorrect password" });
       }
 
-      await db.transaction(async (tx) => {
-        const [userThoughtRows, conversationRows, userCrossingRows] = await Promise.all([
-          tx
-            .select({ id: thoughts.id })
-            .from(thoughts)
-            .where(eq(thoughts.userId, userId)),
-          tx
-            .select({ id: conversations.id })
-            .from(conversations)
-            .where(
-              or(
-                eq(conversations.participantA, userId),
-                eq(conversations.participantB, userId)
-              )
-            ),
-          tx
-            .select({ id: crossings.id })
-            .from(crossings)
-            .where(
-              or(eq(crossings.participantA, userId), eq(crossings.participantB, userId))
-            ),
-        ]);
-        const userThoughtIds = userThoughtRows.map((row) => row.id);
-        const conversationIds = conversationRows.map((row) => row.id);
-        const userCrossingIds = userCrossingRows.map((row) => row.id);
+      try {
+        await rawSql.begin(async (tx) => {
+          const sqlTx = tx as unknown as typeof rawSql;
+          const existingTableRows = await sqlTx<{ table_name: string }[]>`
+            select table_name
+            from information_schema.tables
+            where table_schema = 'public'
+              and table_name = any(${[...OPTIONAL_DELETE_TABLES]})
+          `;
+          const existingTables = new Set(
+            existingTableRows.map((row: { table_name: string }) => String(row.table_name))
+          );
 
-        if (userCrossingIds.length > 0) {
-          await tx
-            .delete(crossingReplies)
-            .where(inArray(crossingReplies.crossingId, userCrossingIds));
-        }
+          if (existingTables.has("email_verification_codes")) {
+            await sqlTx`delete from public.email_verification_codes where user_id = ${userId}`;
+          }
+          if (existingTables.has("reports")) {
+            await sqlTx`
+              delete from public.reports
+              where reporter_id = ${userId} or target_user_id = ${userId}
+            `;
+          }
+          if (existingTables.has("blocks")) {
+            await sqlTx`
+              delete from public.blocks
+              where blocker_id = ${userId} or blocked_id = ${userId}
+            `;
+          }
+          if (existingTables.has("push_tokens")) {
+            await sqlTx`delete from public.push_tokens where user_id = ${userId}`;
+          }
+          if (existingTables.has("feed_serves")) {
+            await sqlTx`
+              delete from public.feed_serves
+              where viewer_id = ${userId}
+                 or author_id = ${userId}
+                 or thought_id in (
+                   select id from public.thoughts where user_id = ${userId}
+                 )
+            `;
+          }
+          if (existingTables.has("feed_snapshots")) {
+            await sqlTx`delete from public.feed_snapshots where viewer_id = ${userId}`;
+          }
+          if (existingTables.has("user_feed_profiles")) {
+            await sqlTx`delete from public.user_feed_profiles where user_id = ${userId}`;
+          }
+          if (existingTables.has("crossing_replies")) {
+            await sqlTx`
+              delete from public.crossing_replies
+              where replier_id = ${userId}
+                 or target_participant_id = ${userId}
+                 or crossing_id in (
+                   select id
+                   from public.crossings
+                   where participant_a = ${userId} or participant_b = ${userId}
+                 )
+            `;
+          }
+          if (existingTables.has("shifts")) {
+            await sqlTx`
+              delete from public.shifts
+              where participant_a = ${userId}
+                 or participant_b = ${userId}
+                 or conversation_id in (
+                   select id
+                   from public.conversations
+                   where participant_a = ${userId} or participant_b = ${userId}
+                 )
+            `;
+          }
+          if (existingTables.has("shift_drafts")) {
+            await sqlTx`
+              delete from public.shift_drafts
+              where initiator_id = ${userId}
+                 or conversation_id in (
+                   select id
+                   from public.conversations
+                   where participant_a = ${userId} or participant_b = ${userId}
+                 )
+            `;
+          }
 
-        if (conversationIds.length > 0) {
-          await tx
-            .delete(messages)
-            .where(inArray(messages.conversationId, conversationIds));
-          await tx
-            .delete(crossingDrafts)
-            .where(inArray(crossingDrafts.conversationId, conversationIds));
-          await tx
-            .delete(crossings)
-            .where(inArray(crossings.conversationId, conversationIds));
-          await tx
-            .delete(conversations)
-            .where(inArray(conversations.id, conversationIds));
-        }
+          const dependentForeignKeyRows = await sqlTx<{
+            table_name: string;
+            column_name: string;
+            foreign_table_name: DeleteRootTable;
+          }[]>`
+            select tc.table_name, kcu.column_name, ccu.table_name as foreign_table_name
+            from information_schema.table_constraints tc
+            join information_schema.key_column_usage kcu
+              on tc.constraint_name = kcu.constraint_name
+             and tc.table_schema = kcu.table_schema
+            join information_schema.constraint_column_usage ccu
+              on ccu.constraint_name = tc.constraint_name
+             and ccu.table_schema = tc.table_schema
+            where tc.constraint_type = 'FOREIGN KEY'
+              and tc.table_schema = 'public'
+              and ccu.table_name = any(${[...DELETE_ROOT_TABLES]})
+          `;
 
-        if (userCrossingIds.length > 0) {
-          await tx.delete(crossings).where(inArray(crossings.id, userCrossingIds));
-        }
+          for (const row of dependentForeignKeyRows) {
+            if (MANUALLY_HANDLED_DELETE_TABLES.has(row.table_name)) continue;
 
-        await tx
-          .delete(crossingDrafts)
-          .where(eq(crossingDrafts.initiatorId, userId));
-        await tx.delete(crossingReplies).where(eq(crossingReplies.replierId, userId));
-        await tx
-          .delete(crossingReplies)
-          .where(eq(crossingReplies.targetParticipantId, userId));
+            const idSelect = DELETE_ROOT_ID_SELECTS[row.foreign_table_name];
+            if (!idSelect) continue;
 
-        await tx
-          .delete(userRecommendationWeights)
-          .where(eq(userRecommendationWeights.userId, userId));
-        await tx.delete(imageGenerations).where(eq(imageGenerations.userId, userId));
-        await tx.delete(engagementEvents).where(eq(engagementEvents.userId, userId));
+            await sqlTx.unsafe(
+              `delete from public.${quoteIdentifier(row.table_name)}
+               where ${quoteIdentifier(row.column_name)} in (${idSelect})`,
+              [userId]
+            );
+          }
 
-        if (userThoughtIds.length > 0) {
-          await tx
-            .delete(engagementEvents)
-            .where(inArray(engagementEvents.thoughtId, userThoughtIds));
-          await tx
-            .delete(failedProcessingJobs)
-            .where(inArray(failedProcessingJobs.thoughtId, userThoughtIds));
-          await tx
-            .delete(imageGenerations)
-            .where(inArray(imageGenerations.thoughtId, userThoughtIds));
-          await tx
-            .delete(replies)
-            .where(inArray(replies.thoughtId, userThoughtIds));
-          await tx.delete(thoughts).where(inArray(thoughts.id, userThoughtIds));
-        }
+          await sqlTx`
+            delete from public.messages
+            where conversation_id in (
+              select id
+              from public.conversations
+              where participant_a = ${userId} or participant_b = ${userId}
+            )
+               or sender_id = ${userId}
+          `;
+          await sqlTx`
+            delete from public.crossings
+            where participant_a = ${userId}
+               or participant_b = ${userId}
+               or conversation_id in (
+                 select id
+                 from public.conversations
+                 where participant_a = ${userId} or participant_b = ${userId}
+               )
+          `;
+          await sqlTx`
+            delete from public.crossing_drafts
+            where initiator_id = ${userId}
+               or conversation_id in (
+                 select id
+                 from public.conversations
+                 where participant_a = ${userId} or participant_b = ${userId}
+               )
+          `;
+          await sqlTx`
+            delete from public.user_recommendation_weights
+            where user_id = ${userId}
+          `;
+          await sqlTx`
+            delete from public.image_generations
+            where user_id = ${userId}
+               or thought_id in (
+                 select id from public.thoughts where user_id = ${userId}
+               )
+          `;
+          await sqlTx`
+            delete from public.engagement_events
+            where user_id = ${userId}
+               or thought_id in (
+                 select id from public.thoughts where user_id = ${userId}
+               )
+          `;
+          await sqlTx`
+            delete from public.failed_processing_jobs
+            where thought_id in (
+              select id from public.thoughts where user_id = ${userId}
+            )
+          `;
+          await sqlTx`
+            delete from public.conversations
+            where participant_a = ${userId} or participant_b = ${userId}
+          `;
+          await sqlTx`
+            delete from public.replies
+            where replier_id = ${userId}
+               or thought_id in (
+                 select id from public.thoughts where user_id = ${userId}
+               )
+          `;
+          await sqlTx`
+            delete from public.thoughts
+            where user_id = ${userId}
+          `;
+          await sqlTx`
+            delete from public.users
+            where id = ${userId}
+          `;
+        });
 
-        await tx.delete(replies).where(eq(replies.replierId, userId));
-        await tx.delete(users).where(eq(users.id, userId));
-      });
-
-      return reply.status(204).send();
+        return reply.status(204).send();
+      } catch (error) {
+        request.log.error({ error, userId }, "account deletion failed");
+        return reply.status(500).send({ error: "Internal server error" });
+      }
     }
   );
 }

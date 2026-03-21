@@ -20,6 +20,9 @@ build/
 out/
 api/.dist-build/
 api/.dist-previous/
+api/dist 2/
+api/dist-link
+api/dist-link 2
 
 # Database
 *.sqlite
@@ -44,6 +47,12 @@ coverage/
 
 # Generated
 *.generated.*
+* 2.*
+node_modules.repair-backup.*/
+node_modules.root-corrupt-backup.*/
+node_modules.bad.*/
+api/node_modules.bad.*/
+mobile/node_modules.bad.*/
 
 # Python
 __pycache__/

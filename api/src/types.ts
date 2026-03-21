@@ -1,7 +1,5 @@
 // Core domain types for ohm.
 
-export type WarmthLevel = "none" | "low" | "medium" | "full";
-
 export interface User {
   id: string;
   display_name: string;
@@ -33,10 +31,7 @@ export interface Thought {
   created_at: Date;
 }
 
-export interface FeedThought extends Thought {
-  warmth_level: WarmthLevel;
-  // NOTE: never include counts of any kind
-}
+export type FeedThought = Thought;
 
 export interface Reply {
   id: string;

@@ -4,6 +4,8 @@ import { db, thoughts, users, replies } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { processNewThought } from "../thought-processing";
 import { invalidateFeedCache } from "../feed";
+import { filterContent } from "../lib/content-filter";
+import { invalidateViewerFeedProfile } from "../feed/viewer-profile";
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -37,6 +39,21 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (context.length > CONTEXT_MAX)
       return reply.status(400).send({ error: `context max ${CONTEXT_MAX} chars` });
 
+    const sentenceFilter = filterContent(sentence);
+    if (sentenceFilter.flagged) {
+      return reply.status(400).send({
+        error: "Your thought was flagged for potentially objectionable content. Please revise and try again.",
+      });
+    }
+    if (context) {
+      const contextFilter = filterContent(context);
+      if (contextFilter.flagged) {
+        return reply.status(400).send({
+          error: "Your context was flagged for potentially objectionable content. Please revise and try again.",
+        });
+      }
+    }
+
     const [row] = await db
       .insert(thoughts)
       .values({
@@ -58,8 +75,15 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (!row) return reply.status(500).send();
 
     const thoughtId = row.id;
-    processNewThought(thoughtId).catch(() => {});
-    invalidateFeedCache();
+    processNewThought(thoughtId).catch((err: any) => {
+      console.error("processNewThought failed", {
+        thoughtId,
+        message: err?.message ?? String(err),
+        code: err?.code,
+      });
+    });
+    void invalidateFeedCache();
+    void invalidateViewerFeedProfile(userId);
 
     return reply.status(201).send({
       id: thoughtId,
@@ -79,7 +103,8 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (!t) return reply.status(404).send();
     if (t.userId !== userId) return reply.status(403).send();
     await db.update(thoughts).set({ deletedAt: new Date() }).where(eq(thoughts.id, id));
-    invalidateFeedCache();
+    void invalidateFeedCache();
+    void invalidateViewerFeedProfile(userId);
     return reply.status(200).send();
   });
 
@@ -107,7 +132,17 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
 
     if (Object.keys(updates).length > 0) {
       await db.update(thoughts).set(updates).where(eq(thoughts.id, id));
-      invalidateFeedCache();
+      void invalidateFeedCache();
+      void invalidateViewerFeedProfile(userId);
+      if (sentence !== undefined || context !== undefined) {
+        processNewThought(id).catch((err: any) => {
+          console.error("processNewThought after edit failed", {
+            thoughtId: id,
+            message: err?.message ?? String(err),
+            code: err?.code,
+          });
+        });
+      }
     }
 
     const [updated] = await db.select().from(thoughts).where(eq(thoughts.id, id));
@@ -149,8 +184,6 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       ? await db.select().from(users).where(inArray(users.id, replierIds))
       : [];
     const replierMap = new Map(repliers.map((u) => [u.id, u]));
-    const warmth =
-      visibleReplies.length === 0 ? "none" : visibleReplies.length <= 2 ? "low" : "medium";
     const pending = await db
       .select()
       .from(replies)
@@ -167,7 +200,6 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         user: author
           ? { id: author.id, name: author.name, photo_url: author.photoUrl }
           : null,
-        warmth_level: warmth,
         created_at: t.createdAt?.toISOString(),
       },
       panel_2: { sentence: t.sentence, context: t.context ?? "" },

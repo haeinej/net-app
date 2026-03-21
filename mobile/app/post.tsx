@@ -16,10 +16,9 @@ import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO } from "../theme";
+import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO, primitives, opacity } from "../theme";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { createThought, fetchProfile, getMyUserId } from "../lib/api";
-import { ScreenExitButton } from "../components/ScreenExitButton";
-import { BrandLockup } from "../components/BrandLockup";
 import { ThoughtImageFrame } from "../components/ThoughtImageFrame";
 import { pickComposePrompt, COMPOSE_SUBTITLE } from "../constants/prompts";
 
@@ -29,7 +28,7 @@ const CONTEXT_MAX = 600;
 export default function ComposeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { contentWidth } = useResponsiveLayout();
   const [sentence, setSentence] = useState("");
   const [context, setContext] = useState("");
   const [posting, setPosting] = useState(false);
@@ -37,7 +36,7 @@ export default function ComposeScreen() {
   const [loadingPhoto, setLoadingPhoto] = useState(true);
   const [composePlaceholder] = useState(() => pickComposePrompt());
 
-  const previewWidth = width - spacing.screenPadding * 2;
+  const previewWidth = contentWidth - spacing.screenPadding * 2;
   const previewHeight = previewWidth / IMAGE_ASPECT_RATIO;
 
   useEffect(() => {
@@ -110,11 +109,9 @@ export default function ComposeScreen() {
       keyboardVerticalOffset={0}
     >
       <View style={styles.header}>
-        <View style={styles.headerLead}>
-          <BrandLockup size="sm" />
-          <Text style={styles.headerTitle}>Post a thought</Text>
-        </View>
-        <ScreenExitButton onPress={() => router.back()} disabled={posting} />
+        <Text style={styles.brandWordmark}>
+          ohm<Text style={styles.brandPeriod}>.</Text>
+        </Text>
       </View>
 
       <ScrollView
@@ -144,29 +141,14 @@ export default function ComposeScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Photo</Text>
-          <Text style={styles.fieldHint}>
-            Optional. Your profile photo is used by default and you can swap it here.
-          </Text>
           {loadingPhoto ? (
             <ActivityIndicator size="small" color={colors.TYPE_MUTED} style={styles.photoLoader} />
           ) : null}
           <View style={styles.photoActionRow}>
             <TouchableOpacity style={styles.photoActionBtn} onPress={pickThoughtPhoto} disabled={posting}>
-              <Text style={styles.photoActionText}>
-                {thoughtPhotoUrl ? "Change photo" : "Add photo"}
-              </Text>
+              <Text style={styles.photoActionText}>Change photo</Text>
             </TouchableOpacity>
-            {thoughtPhotoUrl ? (
-              <TouchableOpacity style={styles.photoActionBtn} onPress={() => setThoughtPhotoUrl(null)} disabled={posting}>
-                <Text style={styles.photoActionText}>Remove</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
-          {!thoughtPhotoUrl && !loadingPhoto ? (
-            <Text style={styles.photoFallbackText}>
-              No photo selected. The preview will stay plain until you add one.
-            </Text>
-          ) : null}
         </View>
 
         <View style={styles.fieldBlock}>
@@ -187,7 +169,6 @@ export default function ComposeScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Context</Text>
-          <Text style={styles.fieldHint}>Three lines that place the thought.</Text>
           <TextInput
             style={[styles.textArea, styles.contextInput]}
             placeholder="Where it came from, what triggered it, what is underneath it."
@@ -223,24 +204,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.WARM_GROUND,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
+    alignItems: "flex-start",
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(26,26,22,0.06)",
+    borderBottomColor: colors.CARD_BORDER,
   },
-  headerLead: {
-    flex: 1,
-    gap: 6,
+  brandWordmark: {
+    ...typography.logo,
+    color: colors.TYPE_DARK,
   },
-  headerTitle: {
-    ...typography.label,
-    fontSize: 12,
-    color: colors.TYPE_MUTED,
+  brandPeriod: {
+    color: colors.VERMILLION,
   },
   scroll: {
     flex: 1,
@@ -248,6 +224,9 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 24,
+    maxWidth: 540,
+    alignSelf: "center" as const,
+    width: "100%" as const,
   },
   previewWrap: {
     alignSelf: "center",
@@ -258,14 +237,11 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   previewSentence: {
-    fontFamily: fontFamily.sentientBold,
+    ...typography.thoughtDisplay,
     position: "absolute",
     left: 16,
     right: 16,
     bottom: 14,
-    fontSize: 26,
-    lineHeight: 31,
-    letterSpacing: -0.3,
     color: colors.TYPE_WHITE,
   },
   previewHint: {
@@ -277,18 +253,13 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.75)",
   },
   fieldBlock: {
-    marginBottom: 16,
+    ...primitives.fieldBlock,
   },
   fieldLabel: {
-    ...typography.label,
-    fontSize: 12,
-    color: colors.TYPE_MUTED,
-    marginBottom: 6,
+    ...primitives.fieldLabel,
   },
   fieldHint: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 15.5,
-    lineHeight: 22,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     marginBottom: 10,
   },
@@ -302,57 +273,39 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   photoActionBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: colors.CARD_GROUND,
+    ...primitives.buttonPill,
   },
   photoActionText: {
-    ...typography.label,
-    fontSize: 10.5,
-    color: colors.TYPE_DARK,
+    ...primitives.buttonPillText,
   },
   photoFallbackText: {
     ...typography.context,
     color: colors.TYPE_MUTED,
   },
   textArea: {
-    backgroundColor: colors.CARD_GROUND,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    ...primitives.textArea,
   },
   sentenceInput: {
-    fontFamily: fontFamily.sentientBold,
-    fontSize: 24,
-    lineHeight: 31,
+    ...typography.thoughtDisplay,
     color: colors.TYPE_DARK,
     minHeight: 148,
     textAlignVertical: "top",
   },
   contextInput: {
-    fontFamily: fontFamily.sentient,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.body,
     color: colors.TYPE_DARK,
     minHeight: 88,
     textAlignVertical: "top",
   },
   postBtn: {
-    marginTop: 16,
-    paddingVertical: 14,
-    borderRadius: 8,
+    ...primitives.buttonPrimary,
     backgroundColor: colors.VERMILLION,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
+    marginTop: 16,
   },
   postBtnDisabled: {
-    opacity: 0.5,
+    opacity: opacity.disabled,
   },
   postBtnText: {
-    ...typography.label,
-    fontSize: 14,
-    color: colors.TYPE_WHITE,
+    ...primitives.buttonPrimaryText,
   },
 });

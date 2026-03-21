@@ -46,6 +46,29 @@ async function main() {
     throw new Error("CORS_ORIGIN must be set in production");
   }
 
+  app.addHook("onResponse", async (request, reply) => {
+    const route = request.routeOptions.url ?? request.raw.url ?? "unknown";
+    const method = request.method;
+    const statusCode = reply.statusCode;
+    const durationMs =
+      typeof reply.elapsedTime === "number" && reply.elapsedTime > 0
+        ? reply.elapsedTime
+        : 0;
+    const userId = (request as any).user?.sub ?? null;
+
+    request.log.info(
+      {
+        route,
+        method,
+        statusCode,
+        duration_ms: Math.round(durationMs),
+        user_id: userId,
+      },
+      "request_completed"
+    );
+  });
+
+
   console.log("[boot] registering cors...");
   await app.register(cors, {
     origin(origin, callback) {
@@ -97,6 +120,9 @@ async function main() {
   const { profileRoutes } = await import("./routes/profile");
   const { engagementRoutes } = await import("./engagement");
   const { internalFeedMetricsRoutes } = await import("./routes/internal-feed-metrics");
+  const { moderationRoutes } = await import("./routes/moderation");
+  const { pushRoutes } = await import("./routes/push");
+  const { inviteRoutes } = await import("./routes/invites");
 
   await app.register(waitlistRoutes);
   await app.register(authRoutes);
@@ -109,6 +135,9 @@ async function main() {
   await app.register(profileRoutes);
   await app.register(engagementRoutes);
   await app.register(internalFeedMetricsRoutes);
+  await app.register(moderationRoutes);
+  await app.register(pushRoutes);
+  await app.register(inviteRoutes);
 
   console.log("[boot] routes registered, loading cron...");
   const { cronPlugin } = await import("./plugins/cron");

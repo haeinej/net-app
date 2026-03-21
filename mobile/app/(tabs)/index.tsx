@@ -19,16 +19,14 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing, typography } from "../../theme";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { pickPrompt, EMPTY_STATE_PROMPTS } from "../../constants/prompts";
 import { Header } from "../../components/Header";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
-import { CollaborativeCard } from "../../components/CollaborativeCard";
 import { CardDeck } from "../../components/CardDeck";
 import { NotificationPanel } from "../../components/NotificationPanel";
-import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
 import {
   fetchFeed,
   fetchNotifications,
@@ -37,17 +35,17 @@ import {
   getMyUserId,
   deleteThought,
   editThought,
+  fetchThought,
   type FeedItem,
   type NotificationItem,
 } from "../../lib/api";
-
-const WALKTHROUGH_SEEN_KEY = "ohm_walkthrough_seen";
 
 const PAGE_SIZE = 20;
 const FOCUS_REFRESH_INTERVAL_MS = 60_000;
 
 export default function WorldsScreen() {
   const router = useRouter();
+  const { containerStyle } = useResponsiveLayout();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
@@ -55,7 +53,7 @@ export default function WorldsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -64,6 +62,8 @@ export default function WorldsScreen() {
   const connectionOpacity = useSharedValue(0);
   const [connectionVisible, setConnectionVisible] = useState(false);
   const pendingNavRef = useRef<(() => void) | null>(null);
+  const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [acceptingReplyId, setAcceptingReplyId] = useState<string | null>(null);
 
   const connectionOverlayStyle = useAnimatedStyle(() => ({
     opacity: connectionOpacity.value,
@@ -72,9 +72,21 @@ export default function WorldsScreen() {
 
   const inFlightFeed = useRef<Promise<void> | null>(null);
   const lastFocusRefreshAt = useRef(0);
+  const postButtonRef = useRef<View>(null);
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
+  }, []);
+
+  // Clean up connection timer on unmount to prevent navigation after screen is gone
+  useEffect(() => {
+    return () => {
+      if (connectionTimerRef.current) {
+        clearTimeout(connectionTimerRef.current);
+        connectionTimerRef.current = null;
+      }
+      pendingNavRef.current = null;
+    };
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -91,26 +103,61 @@ export default function WorldsScreen() {
       const thought = feed.find((item) => item.type === "thought" && item.thought.id === thoughtId);
       if (!thought || thought.type !== "thought") return;
 
+      const openContextPrompt = (nextSentence: string, existingContext: string) => {
+        Alert.prompt(
+          "Edit context",
+          "Update the context:",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Save",
+              onPress: async (newContext?: string) => {
+                const nextContext = newContext?.trim() ?? "";
+
+                try {
+                  await editThought(thoughtId, {
+                    sentence: nextSentence,
+                    context: nextContext,
+                  });
+                  setFeed((prev) =>
+                    prev.map((item) =>
+                      item.type === "thought" && item.thought.id === thoughtId
+                        ? {
+                            ...item,
+                            thought: {
+                              ...item.thought,
+                              sentence: nextSentence,
+                              has_context: nextContext.length > 0,
+                            },
+                          }
+                        : item
+                    )
+                  );
+                } catch {
+                  // keep the existing thought on failure
+                }
+              },
+            },
+          ],
+          "plain-text",
+          existingContext
+        );
+      };
+
       Alert.prompt(
         "Edit thought",
         "Update your sentence:",
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Save",
+            text: "Next",
             onPress: async (newSentence?: string) => {
               const nextSentence = newSentence?.trim();
               if (!nextSentence) return;
 
               try {
-                await editThought(thoughtId, { sentence: nextSentence });
-                setFeed((prev) =>
-                  prev.map((item) =>
-                    item.type === "thought" && item.thought.id === thoughtId
-                      ? { ...item, thought: { ...item.thought, sentence: nextSentence } }
-                      : item
-                  )
-                );
+                const thoughtDetail = await fetchThought(thoughtId);
+                openContextPrompt(nextSentence, thoughtDetail.panel_2.context ?? "");
               } catch {
                 // keep the old sentence on failure
               }
@@ -124,51 +171,24 @@ export default function WorldsScreen() {
     [feed]
   );
 
-  // Walkthrough state
-  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
-  const postButtonRef = useRef<View>(null);
-  const feedCardRef = useRef<View>(null);
-  const conversationsTabRef = useRef<View>(null);
-
-  const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
-    "walkthrough-post-button": postButtonRef,
-    "walkthrough-feed-card": feedCardRef,
-    "walkthrough-conversations-tab": conversationsTabRef,
-  }).current;
-
-  // Check if walkthrough has been seen
-  useEffect(() => {
-    AsyncStorage.getItem(WALKTHROUGH_SEEN_KEY).then((val) => {
-      if (val !== "true") {
-        // Small delay to let the feed render first
-        setTimeout(() => setWalkthroughVisible(true), 800);
-      }
-    });
-  }, []);
-
-  const handleWalkthroughComplete = useCallback(() => {
-    setWalkthroughVisible(false);
-    AsyncStorage.setItem(WALKTHROUGH_SEEN_KEY, "true");
-  }, []);
-
   const loadFeed = useCallback(
-    async (off: number, append: boolean, opts: { isRefresh?: boolean } = {}) => {
+    async (cursor: string | null, append: boolean, opts: { isRefresh?: boolean } = {}) => {
       if (inFlightFeed.current) {
-        // ignore overlapping calls
+        return inFlightFeed.current;
       }
       const { isRefresh } = opts;
       if (append) setLoadingMore(true);
       else if (isRefresh) setRefreshing(true);
-      else if (off === 0) setLoading(true);
+      else if (!cursor) setLoading(true);
 
       setError(null);
 
       const p = (async () => {
         try {
-          const items = await fetchFeed(PAGE_SIZE, off);
-          setFeed((prev) => (append ? prev.concat(items) : items));
-          setOffset(off + items.length);
-          setHasMore(items.length === PAGE_SIZE);
+          const page = await fetchFeed(PAGE_SIZE, cursor);
+          setFeed((prev) => (append ? prev.concat(page.items) : page.items));
+          setNextCursor(page.next_cursor);
+          setHasMore(Boolean(page.next_cursor));
         } catch (e) {
           setError(e instanceof Error ? e.message : "Something went wrong");
         } finally {
@@ -198,15 +218,15 @@ export default function WorldsScreen() {
   }, []);
 
   const onRefresh = useCallback(() => {
-    setOffset(0);
+    setNextCursor(null);
     loadNotifications();
-    loadFeed(0, false, { isRefresh: true });
+    loadFeed(null, false, { isRefresh: true });
   }, [loadFeed, loadNotifications]);
 
   const onEndReached = useCallback(() => {
-    if (!hasMore || loadingMore || feed.length === 0) return;
-    loadFeed(offset, true);
-  }, [hasMore, loadingMore, feed.length, offset, loadFeed]);
+    if (!hasMore || loadingMore || feed.length === 0 || !nextCursor) return;
+    loadFeed(nextCursor, true);
+  }, [hasMore, loadingMore, feed.length, nextCursor, loadFeed]);
 
   const openNotifications = useCallback(() => {
     setNotificationPanelOpen((prev) => {
@@ -216,6 +236,9 @@ export default function WorldsScreen() {
   }, [loadNotifications]);
 
   const handleAccept = useCallback(async (item: NotificationItem) => {
+    if (acceptingReplyId) return;
+    setAcceptingReplyId(item.reply_id);
+
     try {
       const result = await acceptReply(item.reply_id);
       setNotificationPanelOpen(false);
@@ -252,14 +275,24 @@ export default function WorldsScreen() {
         setConnectionVisible(false);
         router.push(navParams);
       };
-      setTimeout(() => {
+      if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
+      connectionTimerRef.current = setTimeout(() => {
         pendingNavRef.current?.();
         pendingNavRef.current = null;
+        connectionTimerRef.current = null;
       }, 850);
-    } catch {
-      // keep in list; user can retry
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.includes("timeout")
+          ? "Network timeout — check your connection and try again."
+          : err instanceof Error && err.message.includes("reachable")
+            ? "Can't reach the server — check your connection."
+            : "Something went wrong. Try again.";
+      Alert.alert("Couldn't connect", message);
+    } finally {
+      setAcceptingReplyId(null);
     }
-  }, [router, connectionOpacity]);
+  }, [router, connectionOpacity, acceptingReplyId]);
 
   const handleIgnore = useCallback(async (replyId: string) => {
     try {
@@ -284,7 +317,7 @@ export default function WorldsScreen() {
 
       if (shouldRefresh) {
         lastFocusRefreshAt.current = now;
-        loadFeed(0, false);
+        loadFeed(null, false);
         loadNotifications();
       }
     }, [feed.length, loadFeed, loadNotifications])
@@ -301,6 +334,7 @@ export default function WorldsScreen() {
         <NotificationPanel
           items={notifications}
           loading={notificationsLoading}
+          acceptingReplyId={acceptingReplyId}
           onAccept={handleAccept}
           onIgnore={handleIgnore}
         />
@@ -326,26 +360,24 @@ export default function WorldsScreen() {
               ? item.thought.id
               : item.type === "crossing"
                 ? `crossing-${item.crossing.id}`
-                : `collaborative-${item.collaborative.id}`
+                : "hidden-crossing"
           }
-          renderItem={({ item, index }) => (
+          renderItem={({ item }) => (
             <View
-              ref={index === 0 ? feedCardRef : undefined}
               collapsable={false}
-              style={styles.cardWrap}
+              style={[styles.cardWrap, containerStyle]}
             >
               <CardDeck>
                 {item.type === "thought" ? (
                   <SwipeableThoughtCard
                     item={item}
-                    isOwn={myUserId === item.user.id}
+                    visible
+                    isOwn={Boolean(myUserId && item.user?.id && myUserId === item.user.id)}
                     onDelete={handleFeedDelete}
                     onEdit={handleFeedEdit}
                   />
                 ) : item.type === "crossing" ? (
-                  <CrossingCard item={item} myUserId={myUserId} />
-                ) : item.type === "collaborative" ? (
-                  <CollaborativeCard item={item} />
+                  <CrossingCard item={item} visible myUserId={myUserId} />
                 ) : null}
               </CardDeck>
             </View>
@@ -371,21 +403,6 @@ export default function WorldsScreen() {
         />
       )}
 
-      {/* Conversations tab ref anchor — positioned over the tab bar area */}
-      <View
-        ref={conversationsTabRef}
-        collapsable={false}
-        style={styles.conversationsTabAnchor}
-        pointerEvents="none"
-      />
-
-      {/* Onboarding walkthrough overlay */}
-      <OnboardingWalkthrough
-        visible={walkthroughVisible}
-        onComplete={handleWalkthroughComplete}
-        targetRefs={walkthroughRefs}
-      />
-
       {/* Connection moment — the felt crossing from stranger to thinking partner */}
       {connectionVisible && (
         <Animated.View style={[StyleSheet.absoluteFill, styles.connectionOverlay, connectionOverlayStyle]}>
@@ -408,12 +425,13 @@ const styles = StyleSheet.create({
   },
   list: { flex: 1 },
   listContent: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.belowHeader,
-    paddingBottom: spacing.cardGap,
+    paddingTop: 16,
+    paddingBottom: 48,
+    alignItems: "center",
   },
   cardWrap: {
-    marginBottom: spacing.cardGap + 4,
+    marginBottom: spacing.cardGap + 6,
+    paddingHorizontal: 12,
     paddingBottom: 6,
   },
   centered: {
@@ -443,13 +461,6 @@ const styles = StyleSheet.create({
   footer: {
     paddingVertical: 16,
     alignItems: "center",
-  },
-  conversationsTabAnchor: {
-    position: "absolute",
-    bottom: 0,
-    left: "33%",
-    width: "34%",
-    height: 56,
   },
   connectionOverlay: {
     zIndex: 100,

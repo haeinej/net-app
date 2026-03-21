@@ -31,21 +31,21 @@ export async function getOnboardingStateForUser(
     };
   }
 
-  if (existingThought) {
-    return {
-      onboarding_step: 1,
-      onboarding_complete: true,
-    };
-  }
-
   const hasInterests =
     Array.isArray(user.interests) &&
     user.interests.some(
       (value) => typeof value === "string" && value.trim().length > 0
     );
 
+  if (existingThought || hasInterests) {
+    return {
+      onboarding_step: 1,
+      onboarding_complete: true,
+    };
+  }
+
   return {
-    onboarding_step: hasInterests ? 3 : 2,
+    onboarding_step: 2,
     onboarding_complete: false,
   };
 }

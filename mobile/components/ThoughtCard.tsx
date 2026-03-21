@@ -9,33 +9,23 @@ import {
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily } from "../theme";
-import { WarmthBar, type WarmthLevel } from "./WarmthBar";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
+import { WarmthBar } from "./WarmthBar";
 import type { FeedItemThought } from "../lib/api";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
+import { formatRelativeTime } from "../lib/format";
 
 interface ThoughtCardProps {
   item: FeedItemThought;
 }
 
-function formatRelativeTime(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  const hours = Math.floor(diffMs / 3600000);
-  const days = Math.floor(diffMs / 86400000);
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  return `${days}d`;
-}
-
 export function ThoughtCard({ item }: ThoughtCardProps) {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const cardWidth = width - spacing.screenPadding * 2;
+  const { contentWidth } = useResponsiveLayout();
+  const cardWidth = contentWidth - spacing.screenPadding * 2;
   const imageHeight = cardWidth / IMAGE_ASPECT_RATIO;
 
-  const { thought, user, warmth_level } = item;
+  const { thought, user } = item;
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
 
   const openUserProfile = (event: GestureResponderEvent) => {
@@ -51,7 +41,7 @@ export function ThoughtCard({ item }: ThoughtCardProps) {
       activeOpacity={1}
     >
       <View style={styles.cardInner}>
-        <WarmthBar warmthLevel={warmth_level} height={imageHeight + 56} />
+        <WarmthBar height={imageHeight + 56} />
         <View
           style={[
             styles.imageWrap,
@@ -122,14 +112,11 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   sentence: {
-    fontFamily: fontFamily.sentientBold,
+    ...typography.thoughtDisplay,
     position: "absolute",
     left: 16,
     right: 16,
     bottom: 22,
-    fontSize: 29,
-    lineHeight: 33,
-    letterSpacing: -0.35,
     color: colors.TYPE_WHITE,
   },
   sentenceNoPhoto: {
@@ -176,19 +163,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.TYPE_MUTED,
   },
   name: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 11.5,
-    lineHeight: 13.5,
-    letterSpacing: 1,
+    ...typography.label,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
     flex: 1,
   },
   timestamp: {
-    fontFamily: typography.metadata.fontFamily,
-    fontSize: 9.5,
-    lineHeight: 11.5,
-    letterSpacing: 0.8,
+    ...typography.metadata,
     color: colors.TYPE_MUTED,
   },
 });

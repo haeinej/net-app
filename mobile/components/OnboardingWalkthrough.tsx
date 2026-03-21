@@ -101,10 +101,10 @@ const STEPS: WalkthroughStep[] = [
     tooltipPosition: "above",
   },
   {
-    id: "collaborative-card",
+    id: "crossing",
     section: "05",
-    title: "collaborative cards",
-    body: "when a conversation deepens, you can make a shared card together.\nit becomes a visible trace of what changed between two people.",
+    title: "crossings",
+    body: "when a conversation deepens, you can make a crossing together.\nit becomes a visible trace of how the conversation changed you.",
     cta: "begin",
     targetTestID: null,
     tooltipPosition: "center",

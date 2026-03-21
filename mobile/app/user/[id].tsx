@@ -6,58 +6,144 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  useWindowDimensions,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography } from "../../theme";
-import { ProfileThoughtCard } from "../../components/ProfileThoughtCard";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  colors,
+  spacing,
+  typography,
+  primitives,
+  radii,
+} from "../../theme";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
-import { CollaborativeCard } from "../../components/CollaborativeCard";
-import { ScreenExitButton } from "../../components/ScreenExitButton";
+import { CardDeck } from "../../components/CardDeck";
 import {
   fetchProfile,
+  ApiError,
+  isSessionInvalidError,
+  setCachedUserId,
+  blockUser,
+  unblockUser,
+  checkBlockStatus,
+  getMyUserId,
   type ProfileResponse,
+  type FeedItemThought,
   type FeedItemCrossing,
-  type FeedItemCollaborative,
 } from "../../lib/api";
+import { clearAuth } from "../../lib/auth-store";
+import { ReportModal } from "../../components/ReportModal";
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("Could not load profile");
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const [reportVisible, setReportVisible] = useState(false);
+  const { containerStyle } = useResponsiveLayout();
+  const targetId = Array.isArray(id) ? id[0] : id;
+
+  const resetBrokenSession = useCallback(async () => {
+    await clearAuth();
+    setCachedUserId(null);
+    router.replace("/login");
+  }, [router]);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!targetId) {
+      setProfile(null);
+      setErrorMessage("Missing user");
+      setLoading(false);
+      return;
+    }
+    if (!UUID_PATTERN.test(targetId)) {
+      setProfile(null);
+      setErrorMessage("Profile not found");
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const data = await fetchProfile(id);
+      setErrorMessage("Could not load profile");
+      const [data, myId] = await Promise.all([
+        fetchProfile(targetId),
+        getMyUserId(),
+      ]);
       setProfile(data);
-    } catch {
+      setIsOwnProfile(myId === targetId);
+      if (myId !== targetId) {
+        checkBlockStatus(targetId).then(setIsBlocked).catch(() => {});
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setProfile(null);
+        setErrorMessage("Profile not found");
+        return;
+      }
+      if (isSessionInvalidError(error)) {
+        await resetBrokenSession();
+        return;
+      }
       setProfile(null);
+      setErrorMessage(error instanceof Error ? error.message : "Could not load profile");
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [resetBrokenSession, targetId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const navigationHeader = (
-    <View style={styles.header}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backArrow}>←</Text>
-      </TouchableOpacity>
-      <ScreenExitButton onPress={() => router.back()} style={styles.headerExit} />
-    </View>
-  );
+  const handleBlock = useCallback(async () => {
+    if (!targetId) return;
+    if (isBlocked) {
+      Alert.alert("Unblock user?", "You will see their content again.", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unblock",
+          onPress: async () => {
+            try {
+              await unblockUser(targetId);
+              setIsBlocked(false);
+            } catch {}
+          },
+        },
+      ]);
+    } else {
+      Alert.alert(
+        "Block user?",
+        "Their content will be removed from your feed immediately. The ohm. team will be notified and will review the account.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Block",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await blockUser(targetId);
+                setIsBlocked(true);
+              } catch {}
+            },
+          },
+        ]
+      );
+    }
+  }, [targetId, isBlocked]);
 
-  if (!id) {
+  if (!targetId) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.centered}>
@@ -70,8 +156,10 @@ export default function UserProfileScreen() {
   if (loading && !profile) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-        {navigationHeader}
-        <View style={[styles.photoWrap, styles.skeletonPhoto]} />
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
+        <View style={styles.skeletonPhoto} />
         <View style={styles.skeletonName} />
         <ActivityIndicator size="small" color={colors.TYPE_MUTED} style={styles.loader} />
       </View>
@@ -81,9 +169,11 @@ export default function UserProfileScreen() {
   if (!profile) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-        {navigationHeader}
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>Could not load profile</Text>
+          <Text style={styles.errorText}>{errorMessage}</Text>
           <TouchableOpacity onPress={load}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
@@ -92,202 +182,300 @@ export default function UserProfileScreen() {
     );
   }
 
-  const hasDeckContent =
-    profile.thoughts.length > 0 ||
-    (profile.collaborative_cards?.length ?? 0) > 0 ||
-    (profile.crossings?.length ?? 0) > 0;
+  const deckItems: Array<
+    | { kind: "thought"; date: string; data: (typeof profile.thoughts)[number] }
+    | { kind: "crossing"; date: string; data: NonNullable<typeof profile.crossings>[number] }
+  > = [];
+
+  for (const thought of profile.thoughts) {
+    deckItems.push({
+      kind: "thought",
+      date: thought.created_at ?? new Date(0).toISOString(),
+      data: thought,
+    });
+  }
+
+  for (const crossing of profile.crossings ?? []) {
+    deckItems.push({
+      kind: "crossing",
+      date: crossing.created_at ?? new Date(0).toISOString(),
+      data: crossing,
+    });
+  }
+
+  deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <ScrollView
-      style={[styles.container, { paddingTop: insets.top + 8 }]}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {navigationHeader}
+    <View style={styles.screen}>
+      <LinearGradient
+        colors={[
+          "rgba(255,252,245,0.035)",
+          "rgba(255,252,245,0.015)",
+          "transparent",
+          "rgba(0,0,0,0.08)",
+        ]}
+        locations={[0, 0.15, 0.4, 1]}
+        style={styles.backgroundGlow}
+        pointerEvents="none"
+      />
 
-      <View style={styles.card}>
-        <View style={styles.photoWrap}>
-          {profile.photo_url ? (
-            <Image source={{ uri: profile.photo_url }} style={styles.photo} />
-          ) : (
-            <View style={[styles.photo, styles.photoEmpty]} />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
+
+        <View style={styles.photoOuter}>
+          <View style={styles.photoInner}>
+            {profile.photo_url ? (
+              <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
+            ) : (
+              <View style={styles.photoEmpty} />
+            )}
+          </View>
+        </View>
+
+        <Text style={styles.name}>{profile.name || "—"}</Text>
+
+        <View style={styles.actionRow}>
+          {!isOwnProfile && (
+            <>
+              <TouchableOpacity
+                style={styles.glassBtn}
+                onPress={() => setReportVisible(true)}
+              >
+                <Text style={styles.glassBtnText}>Report</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.glassBtn, isBlocked && styles.glassBtnActive]}
+                onPress={handleBlock}
+              >
+                <Text
+                  style={[
+                    styles.glassBtnText,
+                    isBlocked && styles.glassBtnActiveText,
+                  ]}
+                >
+                  {isBlocked ? "Blocked" : "Block"}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {isOwnProfile && (
+            <View style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>Your profile</Text>
+            </View>
           )}
         </View>
-        <Text style={styles.name}>{profile.name || "—"}</Text>
-      </View>
 
-      <Text style={styles.deckTitle}>Deck</Text>
-      {!hasDeckContent ? (
-        <Text style={styles.emptyDeck}>No deck yet.</Text>
-      ) : (
-        profile.thoughts.map((t) => (
-          <View key={t.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
-            <ProfileThoughtCard
-              thought={t}
-              authorName={profile.name ?? undefined}
-              authorPhotoUrl={profile.photo_url}
-              authorUserId={profile.id}
-            />
-          </View>
-        ))
-      )}
-      {profile.collaborative_cards?.map((c) => {
-        const collaborativeItem: FeedItemCollaborative = {
-          type: "collaborative",
-          collaborative: {
-            id: c.id,
-            created_at: c.created_at ?? new Date().toISOString(),
-          },
-          participant_a: c.participant_a ?? {
-            id: "",
-            name: null,
-            photo_url: null,
-            before: "",
-            after: "",
-          },
-          participant_b: c.participant_b ?? {
-            id: "",
-            name: null,
-            photo_url: null,
-            before: "",
-            after: "",
-          },
-        };
-        return (
-          <View key={`cc-${c.id}`} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
-            <CollaborativeCard item={collaborativeItem} />
-          </View>
-        );
-      })}
-      {profile.crossings?.map((c) => {
-        const crossingItem: FeedItemCrossing = {
-          type: "crossing",
-          crossing: {
-            id: c.id,
-            sentence: c.sentence,
-            context: c.context,
-            created_at: c.created_at ?? new Date().toISOString(),
-          },
-          participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
-          participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
-          warmth_level: "none",
-        };
-        return (
-          <View key={c.id} style={[styles.thoughtWrap, { width: width - spacing.screenPadding * 2 }]}>
-            <CrossingCard item={crossingItem} visible />
-          </View>
-        );
-      })}
-    </ScrollView>
+        {targetId && (
+          <ReportModal
+            visible={reportVisible}
+            onClose={() => setReportVisible(false)}
+            targetType="user"
+            targetId={targetId}
+            targetUserId={targetId}
+            onBlocked={() => setIsBlocked(true)}
+          />
+        )}
+
+        {deckItems.length === 0 ? (
+          <Text style={styles.emptyDeck}>No deck yet.</Text>
+        ) : (
+          deckItems.map((item) => {
+            if (item.kind === "thought") {
+              const thought = item.data;
+              const feedItem: FeedItemThought = {
+                type: "thought",
+                thought: {
+                  id: thought.id,
+                  sentence: thought.sentence,
+                  photo_url: thought.photo_url,
+                  image_url: thought.image_url,
+                  created_at: thought.created_at ?? new Date().toISOString(),
+                  has_context: false,
+                },
+                user: {
+                  id: profile.id,
+                  name: profile.name,
+                  photo_url: profile.photo_url,
+                },
+              };
+              return (
+                <View key={`t-${thought.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                  <CardDeck>
+                    <SwipeableThoughtCard item={feedItem} visible isOwn={isOwnProfile} />
+                  </CardDeck>
+                </View>
+              );
+            }
+
+            const crossing = item.data;
+            const crossingItem: FeedItemCrossing = {
+              type: "crossing",
+              crossing: {
+                id: crossing.id,
+                sentence: crossing.sentence,
+                context: crossing.context,
+                created_at: crossing.created_at ?? new Date().toISOString(),
+              },
+              participant_a: crossing.participant_a ?? { id: "", name: null, photo_url: null },
+              participant_b: crossing.participant_b ?? { id: "", name: null, photo_url: null },
+            };
+
+            return (
+              <View key={`c-${crossing.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                <CardDeck>
+                  <CrossingCard item={crossingItem} visible ignoreUserId={profile.id} />
+                </CardDeck>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.TYPE_DARK,
+  },
   container: {
     flex: 1,
-    backgroundColor: colors.WARM_GROUND,
+    backgroundColor: "transparent",
+  },
+  backgroundGlow: {
+    ...StyleSheet.absoluteFillObject,
   },
   content: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: 8,
-    paddingBottom: 40,
-  },
-  header: {
-    flexDirection: "row",
+    paddingBottom: 48,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-    marginBottom: 8,
+    flexGrow: 1,
   },
   backBtn: {
+    alignSelf: "flex-start",
     padding: 10,
+    marginLeft: spacing.screenPadding,
+    marginBottom: 8,
   },
   backArrow: {
     fontSize: 36,
-    color: colors.TYPE_DARK,
+    color: colors.WARM_GROUND,
   },
-  headerExit: {
-    marginLeft: 12,
-  },
-  card: {
-    backgroundColor: colors.CARD_GROUND,
-    borderRadius: 12,
-    padding: 24,
-    marginBottom: 24,
+  photoOuter: {
+    alignSelf: "center",
+    marginBottom: 12,
+    width: 164,
+    height: 164,
     alignItems: "center",
+    justifyContent: "center",
+    borderTopLeftRadius: 74,
+    borderTopRightRadius: 90,
+    borderBottomRightRadius: 78,
+    borderBottomLeftRadius: 86,
+    transform: [{ rotate: "-2deg" }],
+    shadowColor: colors.PANEL_DEEP,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 8,
+    backgroundColor: colors.TYPE_DARK,
   },
-  photoWrap: {
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  photo: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  photoInner: {
+    width: 164,
+    height: 164,
     overflow: "hidden",
+    borderTopLeftRadius: 74,
+    borderTopRightRadius: 90,
+    borderBottomRightRadius: 78,
+    borderBottomLeftRadius: 86,
+  },
+  photoImage: {
+    width: "100%",
+    height: "100%",
   },
   photoEmpty: {
-    backgroundColor: colors.TYPE_MUTED,
-    opacity: 0.5,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(245,240,234,0.06)",
+  },
+  name: {
+    ...typography.headingLg,
+    color: colors.WARM_GROUND,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  actionRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12,
+    paddingHorizontal: spacing.screenPadding,
+    marginBottom: 36,
+  },
+  glassBtn: {
+    ...primitives.buttonGlass,
+  },
+  glassBtnText: {
+    ...primitives.buttonGlassText,
+  },
+  glassBtnActive: {
+    backgroundColor: "rgba(235, 65, 1, 0.15)",
+  },
+  glassBtnActiveText: {
+    color: "rgba(235, 65, 1, 0.7)",
+  },
+  thoughtWrap: {
+    width: "100%",
+    alignItems: "center",
+    marginBottom: spacing.cardGap + 4,
+  },
+  emptyDeck: {
+    ...typography.body,
+    color: "rgba(245,240,234,0.35)",
+    textAlign: "center",
+    marginTop: 12,
   },
   skeletonPhoto: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.CARD_GROUND,
-    opacity: 0.6,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    alignSelf: "center",
+    backgroundColor: "rgba(245,240,234,0.04)",
   },
   skeletonName: {
     width: 120,
-    height: 18,
-    backgroundColor: colors.CARD_GROUND,
-    opacity: 0.6,
+    height: 20,
+    backgroundColor: "rgba(245,240,234,0.06)",
+    borderRadius: radii.pill,
+    alignSelf: "center",
+    marginTop: 18,
     marginBottom: 16,
   },
-  loader: { marginTop: 16 },
-  name: {
-    ...typography.label,
-    fontSize: 14,
-    color: colors.TYPE_DARK,
-    marginBottom: 8,
-  },
-  deckTitle: {
-    ...typography.label,
-    fontSize: 8,
-    color: colors.TYPE_MUTED,
-    marginBottom: 12,
-  },
-  thoughtWrap: {
-    marginBottom: spacing.cardGap,
-  },
-  emptyDeck: {
-    ...typography.replyInput,
-    fontSize: 11,
-    color: colors.TYPE_MUTED,
-    textAlign: "center",
-    marginTop: 8,
+  loader: {
+    marginTop: 16,
+    alignSelf: "center",
   },
   centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
+    ...primitives.centered,
   },
   hint: {
-    ...typography.context,
-    color: colors.TYPE_MUTED,
+    ...typography.body,
+    color: "rgba(245,240,234,0.4)",
+    textAlign: "center",
   },
   errorText: {
-    ...typography.context,
-    color: colors.TYPE_DARK,
+    ...typography.body,
+    color: "rgba(245,240,234,0.6)",
     marginBottom: 12,
   },
   retryText: {
-    color: colors.OLIVE,
     ...typography.label,
+    textTransform: "uppercase",
+    color: colors.WARM_GROUND,
   },
 });

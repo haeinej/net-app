@@ -7,7 +7,7 @@ import {
   SUPPORT_LAST_UPDATED,
   SUPPORT_SECTIONS,
 } from "../lib/legal";
-import { colors, spacing, typography } from "../theme";
+import { colors, spacing, typography, radii } from "../theme";
 
 function ActionCard({
   title,
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   },
   actionCard: {
     backgroundColor: colors.CARD_GROUND,
-    borderRadius: 16,
+    borderRadius: radii.card,
     paddingHorizontal: 16,
     paddingVertical: 16,
     flexDirection: "row",

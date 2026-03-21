@@ -23,12 +23,11 @@ import Animated, {
   withSequence,
   runOnJS,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily, shadows, glass } from "../../theme";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
-import { WarmthBar, type WarmthLevel } from "../../components/WarmthBar";
+import { WarmthBar } from "../../components/WarmthBar";
 import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
 import {
   deleteReply,
@@ -38,10 +37,11 @@ import {
   postReply,
   type ThoughtDetailResponse,
 } from "../../lib/api";
+import { ReportModal } from "../../components/ReportModal";
 import { useEngagementTracking } from "../../hooks/useEngagementTracking";
 import { pickPrompt, REPLY_PROMPTS, REPLY_SAFETY_TEXT } from "../../constants/prompts";
 
-const REPLY_MIN_LENGTH = 50;
+const REPLY_MIN_LENGTH = 30;
 const REPLY_MAX_LENGTH = 300;
 
 export default function ThoughtDetailScreen() {
@@ -56,7 +56,15 @@ export default function ThoughtDetailScreen() {
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [replyPlaceholder] = useState(() => pickPrompt(REPLY_PROMPTS));
+  const [reportVisible, setReportVisible] = useState(false);
   const pulseOpacity = useSharedValue(0);
+  const sendSwipeProgress = useSharedValue(0);
+  const sendHapticArmed = useSharedValue(0);
+  const sendTriggered = useSharedValue(0);
+  const replyLengthValue = useSharedValue(0);
+  const canReplyValue = useSharedValue(0);
+  const sendingValue = useSharedValue(0);
+  const panelIndexValue = useSharedValue(0);
 
   const translateX = useSharedValue(0);
   const gestureStartX = useSharedValue(0);
@@ -103,8 +111,9 @@ export default function ThoughtDetailScreen() {
     (index: number) => {
       lastPanelIndex.current = index;
       setCurrentPanelIndex(index);
+      panelIndexValue.value = index;
     },
-    []
+    [panelIndexValue]
   );
 
   const handleSwipeToPanel = useCallback(
@@ -126,12 +135,31 @@ export default function ThoughtDetailScreen() {
     (targetIndex: number) => {
       const target = -targetIndex * screenWidth;
       translateX.value = withTiming(target, { duration: 280 });
+      sendSwipeProgress.value = withTiming(0, { duration: 140 });
+      sendHapticArmed.value = 0;
+      sendTriggered.value = 0;
       const fromIndex = lastPanelIndex.current;
       handleSwipeToPanel(fromIndex, targetIndex);
       applyPanel(targetIndex);
     },
-    [screenWidth, translateX, handleSwipeToPanel, applyPanel]
+    [
+      screenWidth,
+      translateX,
+      sendSwipeProgress,
+      sendHapticArmed,
+      sendTriggered,
+      handleSwipeToPanel,
+      applyPanel,
+    ]
   );
+
+  // ── Stable-identity wrappers for runOnJS (prevents Hermes crash from GC'd closures) ──
+  const snapToPanelRef = useRef(snapToPanel);
+  snapToPanelRef.current = snapToPanel;
+  const handleBackRef = useRef(handleBack);
+  handleBackRef.current = handleBack;
+  const jsSnapToPanel = useCallback((i: number) => { snapToPanelRef.current(i); }, []);
+  const jsHandleBack = useCallback(() => { handleBackRef.current(); }, []);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -140,20 +168,26 @@ export default function ThoughtDetailScreen() {
     .onUpdate((e) => {
       const min = -2 * screenWidth;
       const max = 0;
-      const next = Math.min(max, Math.max(min, gestureStartX.value + e.translationX));
+      const rawNext = gestureStartX.value + e.translationX;
+      sendSwipeProgress.value = 0;
+      sendHapticArmed.value = 0;
+      const next = Math.min(max, Math.max(min, rawNext));
       translateX.value = next;
     })
     .onEnd((e) => {
       const current = translateX.value;
       const velocity = e.velocityX;
+
+      sendSwipeProgress.value = withTiming(0, { duration: 120 });
+      sendHapticArmed.value = 0;
       let targetIndex = Math.round(-current / screenWidth);
       if (targetIndex < 0) targetIndex = 0;
       if (targetIndex > 2) targetIndex = 2;
       if (targetIndex === 0 && current > -screenWidth * 0.2 && (velocity > 80 || current > 20)) {
-        runOnJS(handleBack)();
+        runOnJS(jsHandleBack)();
         return;
       }
-      runOnJS(snapToPanel)(targetIndex);
+      runOnJS(jsSnapToPanel)(targetIndex);
     });
 
   const animatedRowStyle = useAnimatedStyle(() => ({
@@ -167,8 +201,21 @@ export default function ThoughtDetailScreen() {
   const panelWidth = screenWidth;
   const imageHeight = panelWidth / IMAGE_ASPECT_RATIO;
   const fullPanelHeight = screenHeight - insets.top - insets.bottom;
+  const trimmedReplyLength = replyText.trim().length;
 
-  const handleSendReply = useCallback(async () => {
+  useEffect(() => {
+    replyLengthValue.value = trimmedReplyLength;
+  }, [replyLengthValue, trimmedReplyLength]);
+
+  useEffect(() => {
+    canReplyValue.value = data?.panel_3.can_reply ? 1 : 0;
+  }, [canReplyValue, data?.panel_3.can_reply]);
+
+  useEffect(() => {
+    sendingValue.value = sending ? 1 : 0;
+  }, [sending, sendingValue]);
+
+  const submitReply = useCallback(async () => {
     const text = replyText.trim();
     if (
       !text ||
@@ -177,31 +224,55 @@ export default function ThoughtDetailScreen() {
       !data?.panel_3.can_reply ||
       sending
     ) {
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapToPanel(2);
       return;
     }
+    sendingValue.value = 1;
     setSending(true);
     try {
       await postReply(id, text);
       recordReplySent({ reply_length_chars: text.length });
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      } catch {}
       pulseOpacity.value = withSequence(
         withTiming(0.25, { duration: 100 }),
         withTiming(0, { duration: 300 })
       );
       setReplyText("");
       setIsTyping(false);
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      sendTriggered.value = 0;
       translateX.value = withTiming(0, { duration: 220 });
       applyPanel(0);
       await refreshThought();
     } catch {
+      sendTriggered.value = 0;
+      sendSwipeProgress.value = withTiming(0, { duration: 100 });
+      sendHapticArmed.value = 0;
+      snapToPanel(2);
       setSending(false);
     } finally {
+      sendingValue.value = 0;
       setSending(false);
     }
-  }, [id, replyText, data?.panel_3.can_reply, sending, recordReplySent, translateX, applyPanel, refreshThought]);
-
+  }, [
+    sendingValue,
+    id,
+    replyText,
+    data?.panel_3.can_reply,
+    sending,
+    recordReplySent,
+    pulseOpacity,
+    sendSwipeProgress,
+    sendHapticArmed,
+    sendTriggered,
+    translateX,
+    applyPanel,
+    snapToPanel,
+    refreshThought,
+  ]);
   const handleDeleteReply = useCallback(
     (replyId: string) => {
       Alert.alert("Delete reply", "Remove this reply from your thought?", [
@@ -224,6 +295,44 @@ export default function ThoughtDetailScreen() {
   const handleOwnerCardMenu = useCallback(() => {
     if (!id || !data?.panel_3.viewer_is_author) return;
 
+    const openContextPrompt = (nextSentence: string) => {
+      Alert.prompt(
+        "Edit context",
+        "Update the context:",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Save",
+            onPress: async (newContext?: string) => {
+              const nextContext = newContext?.trim() ?? "";
+
+              try {
+                await editThought(id, {
+                  sentence: nextSentence,
+                  context: nextContext,
+                });
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        panel_1: { ...prev.panel_1, sentence: nextSentence },
+                        panel_2: {
+                          ...prev.panel_2,
+                          sentence: nextSentence,
+                          context: nextContext,
+                        },
+                      }
+                    : prev
+                );
+              } catch {}
+            },
+          },
+        ],
+        "plain-text",
+        data.panel_2.context ?? ""
+      );
+    };
+
     Alert.alert("Thought", undefined, [
       {
         text: "Edit",
@@ -234,23 +343,11 @@ export default function ThoughtDetailScreen() {
             [
               { text: "Cancel", style: "cancel" },
               {
-                text: "Save",
+                text: "Next",
                 onPress: async (newSentence?: string) => {
                   const nextSentence = newSentence?.trim();
                   if (!nextSentence) return;
-
-                  try {
-                    await editThought(id, { sentence: nextSentence });
-                    setData((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            panel_1: { ...prev.panel_1, sentence: nextSentence },
-                            panel_2: { ...prev.panel_2, sentence: nextSentence },
-                          }
-                        : prev
-                    );
-                  } catch {}
+                  openContextPrompt(nextSentence);
                 },
               },
             ],
@@ -314,7 +411,6 @@ export default function ThoughtDetailScreen() {
   const p1 = data.panel_1;
   const p2 = data.panel_2;
   const p3 = data.panel_3;
-  const warmthForBar: WarmthLevel = isTyping ? "full" : p1.warmth_level;
   const p1HasPhoto = Boolean(p1.photo_url ?? p1.image_url);
 
   return (
@@ -324,7 +420,7 @@ export default function ThoughtDetailScreen() {
           {/* Panel 1 */}
           <View style={[styles.panel, { width: panelWidth, minHeight: fullPanelHeight }]}>
             <View style={styles.panel1Inner}>
-              <WarmthBar warmthLevel={warmthForBar} height={imageHeight + 56} />
+              <WarmthBar height={imageHeight + 56} />
               <View
                 style={[
                   styles.panel1ImageWrap,
@@ -380,7 +476,15 @@ export default function ThoughtDetailScreen() {
                 >
                   <Text style={styles.ownerActionText}>•••</Text>
                 </TouchableOpacity>
-              ) : null}
+              ) : (
+                <TouchableOpacity
+                  style={styles.ownerActionBtn}
+                  onPress={() => setReportVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.ownerActionText}>•••</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -475,13 +579,31 @@ export default function ThoughtDetailScreen() {
                   maxLength={REPLY_MAX_LENGTH}
                 />
                 <Text style={styles.replySafety}>{REPLY_SAFETY_TEXT}</Text>
-                <TouchableOpacity
-                  style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                  onPress={handleSendReply}
-                  disabled={replyText.trim().length < REPLY_MIN_LENGTH || sending}
-                >
-                  <Text style={styles.sendBtnText}>Send</Text>
-                </TouchableOpacity>
+                <View style={styles.replyActionRow}>
+                  <Text style={styles.replyHintText}>
+                    {sending
+                      ? "sending..."
+                      : trimmedReplyLength < REPLY_MIN_LENGTH
+                        ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
+                        : "ready to send"}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.replySendButton,
+                      (sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3.can_reply) &&
+                        styles.replySendButtonDisabled,
+                    ]}
+                    onPress={() => {
+                      void submitReply();
+                    }}
+                    disabled={sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3.can_reply}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.replySendButtonText}>
+                      {sending ? "POSTING" : "POST"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </KeyboardAvoidingView>
             )}
           </View>
@@ -504,6 +626,17 @@ export default function ThoughtDetailScreen() {
         style={[styles.exitButton, { top: insets.top + 12 }]}
         variant="dark"
       />
+
+      {id && !p3.viewer_is_author && (
+        <ReportModal
+          visible={reportVisible}
+          onClose={() => setReportVisible(false)}
+          targetType="thought"
+          targetId={id}
+          targetUserId={p1.user?.id}
+          onReported={() => setReportVisible(false)}
+        />
+      )}
     </View>
   );
 }
@@ -715,20 +848,28 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 0,
-    paddingBottom: 24,
+    paddingTop: 8,
+    paddingBottom: 26,
     backgroundColor: colors.PANEL_DEEP,
   },
   replyLabel: {
     ...typography.replyInput,
+    fontSize: 9.5,
+    lineHeight: 14,
     color: colors.VERMILLION,
     marginBottom: 6,
   },
   replyInput: {
     ...typography.replyInput,
+    fontSize: 12.5,
+    lineHeight: 18,
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.2)",
-    paddingVertical: 8,
+    minHeight: 34,
+    paddingHorizontal: 0,
+    paddingTop: Platform.OS === "ios" ? 8 : 6,
+    paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
   replySafety: {
     ...typography.metadata,
@@ -736,17 +877,35 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: "italic",
   },
-  sendBtn: {
-    marginTop: 12,
-    paddingVertical: 10,
+  replyActionRow: {
+    marginTop: 10,
+    flexDirection: "row",
     alignItems: "center",
-    borderRadius: 10,
-    backgroundColor: colors.OLIVE,
-    ...shadows.raised,
+    justifyContent: "space-between",
+    gap: 12,
   },
-  sendBtnDisabled: { opacity: 0.5 },
-  sendBtnText: {
+  replyHintText: {
+    ...typography.metadata,
+    fontSize: 11,
+    color: "rgba(245,240,234,0.45)",
+    textAlign: "left",
+    flex: 1,
+  },
+  replySendButton: {
+    minWidth: 92,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: colors.VERMILLION,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  replySendButtonDisabled: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  replySendButtonText: {
     ...typography.label,
+    fontSize: 8.5,
     color: colors.TYPE_WHITE,
   },
   indicator: {

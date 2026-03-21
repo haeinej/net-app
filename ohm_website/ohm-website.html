@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ohm. — Thoughts that find someone</title>
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  if (!params.get('token_hash')) return;
+  var type = (params.get('type') || '').toLowerCase();
+  var target = type === 'recovery' ? '/reset-password/' : '/verify-email/';
+  window.location.replace(target + '?' + params.toString());
+})();
+</script>
 <style>
 @font-face { font-family: 'Comico'; src: url('Fonts/OTF/Comico-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: 'Sentient'; src: url('Fonts/OTF/Sentient-Extralight.otf') format('opentype'); font-weight: 200; font-style: normal; font-display: swap; }
@@ -101,7 +110,13 @@ nav.scrolled {
 .hero-sub {
   font-family: 'Comico', serif; font-style: normal;
   font-size: clamp(13px, 1.54vw, 19px); color: rgba(255,255,255,0.55);
-  letter-spacing: 0.5px; opacity: 0; animation: fadeUp 1s 0.65s forwards;
+  letter-spacing: 0.35px;
+  line-height: 1.3;
+  display: inline-block;
+  max-width: none;
+  margin: 0 auto;
+  white-space: nowrap;
+  opacity: 0; animation: fadeUp 1s 0.65s forwards;
 }
 
 .scroll-arrow {
@@ -166,29 +181,34 @@ nav.scrolled {
   font-family: 'Comico', serif;
   line-height: 1.08;
   letter-spacing: -1px;
+  text-wrap: balance;
 }
 
 .m-1 {
   font-size: clamp(26px, 3.84vw, 50px);
   color: var(--type-muted);
   text-align: left;
+  max-width: 8ch;
 }
 .m-2 {
   font-size: clamp(29px, 4.03vw, 54px);
   color: var(--type-dark);
   text-align: right;
+  max-width: 12ch;
+  margin-left: auto;
 }
 .m-3 {
   font-size: clamp(31px, 4.32vw, 58px);
   color: var(--type-dark);
   text-align: left;
   padding-left: 10%;
+  max-width: 14ch;
 }
 .m-result {
   font-size: clamp(35px, 5.28vw, 70px);
   color: var(--vermillion);
   text-align: center;
-  max-width: 780px;
+  max-width: 11ch;
   margin: 0 auto;
   letter-spacing: -2px;
   line-height: 1.05;
@@ -688,6 +708,22 @@ nav.scrolled {
   white-space: nowrap;
 }
 .subscribe-form button:hover { background: #d63a01; transform: translateY(-2px); }
+.subscribe-form button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+}
+.subscribe-status {
+  min-height: 24px;
+  margin-top: 16px;
+  font-family: 'Sentient', serif;
+  font-weight: 300;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--type-muted);
+}
+.subscribe-status[data-tone="success"] { color: var(--type-dark); }
+.subscribe-status[data-tone="error"] { color: var(--vermillion); }
 
 /* ========== FOOTER ========== */
 footer { background: var(--deep); padding: 80px 60px 0; }
@@ -730,13 +766,16 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   nav { padding: 16px 24px; }
   .hero-content { padding: 0 24px; }
   .hero-tagline { letter-spacing: -2.5px; }
+  .hero-sub { font-size: clamp(11px, 3.2vw, 15px); max-width: none; }
   .scroll-arrow { bottom: 140px; }
   .mechanic { padding: 160px 24px 140px; }
   .what-wave-top { height: 60px; }
   .thread-divider { padding: 28px 0; }
   .section-indicator { margin-bottom: 80px; }
+  .m-1, .m-2, .m-3 { max-width: 12ch; }
   .m-2 { text-align: left; }
   .m-3 { padding-left: 0; }
+  .m-result { max-width: 10ch; font-size: clamp(32px, 10vw, 56px); }
   .mech-arrow { padding: 20px 0; }
   .mech-arrow svg { width: clamp(160px, 60vw, 280px); }
   .why, .what { padding-left: 24px; padding-right: 24px; }
@@ -781,7 +820,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
 <!-- NAV -->
 <nav id="nav">
   <a href="#" class="nav-logo">ohm<span>.</span></a>
-  <a href="ohm. Manifesto.pdf" download class="nav-link">Manifesto</a>
+  <a href="ohm. Manifesto v2.pdf" download class="nav-link">Manifesto</a>
 </nav>
 
 <!-- ==================== HERO ==================== -->
@@ -790,7 +829,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   <div class="hero-content">
     <img src="images/logo_nobackground.png" class="hero-mark" alt="">
     <h1 class="hero-tagline">OHM.</h1>
-    <p class="hero-sub">Thoughts that find someone.</p>
+    <p class="hero-sub">Find the right minds for your thinking.</p>
   </div>
   <div class="scroll-arrow" aria-hidden="true">
     <svg viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -807,7 +846,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
 <section class="mechanic" id="how">
   <div class="section-indicator reveal">How it works</div>
 
-  <div class="mech-step m-1 reveal" data-delay="80">Post a thought.</div>
+  <div class="mech-step m-1 reveal" data-delay="80">You think.</div>
 
   <!-- Arrow 1: diagonal right — wobbly hand-drawn, from left text toward right text -->
   <div class="mech-arrow reveal" data-delay="160" aria-hidden="true">
@@ -817,7 +856,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
     </svg>
   </div>
 
-  <div class="mech-step m-2 reveal" data-delay="260">Someone replies.</div>
+  <div class="mech-step m-2 reveal" data-delay="260">You write it down.</div>
 
   <!-- Arrow 2: diagonal left — wobbly, right text toward left text -->
   <div class="mech-arrow reveal" data-delay="360" aria-hidden="true">
@@ -827,7 +866,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
     </svg>
   </div>
 
-  <div class="mech-step m-3 reveal" data-delay="460">You accept.</div>
+  <div class="mech-step m-3 reveal" data-delay="460">ohm. finds the mind that resonates.</div>
 
   <!-- Arrow 3: diagonal toward center — vermillion payoff -->
   <div class="mech-arrow reveal" data-delay="560" aria-hidden="true">
@@ -837,7 +876,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
     </svg>
   </div>
 
-  <div class="mech-step m-result reveal" data-delay="700">The most unexpected, yet genuine conversation happens.</div>
+  <div class="mech-step m-result reveal" data-delay="700">Conversation that changes how you think starts from there.</div>
 </section>
 
 <div class="thread-divider thread-warm" aria-hidden="true">
@@ -859,7 +898,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
       <p class="why-lead reveal">The feeling of being truly heard, what makes us human, is rarer than ever.</p>
       <p class="why-next reveal" data-delay="100">We're designing what comes next.</p>
       <p class="why-vision reveal" data-delay="220">We envision a new form of human relationship — born entirely from resonance between two present individuals, without any titles.</p>
-      <a href="ohm. Manifesto.pdf" download class="bridge-link reveal" data-delay="340">
+      <a href="ohm. Manifesto v2.pdf" download class="bridge-link reveal" data-delay="340">
         Read our manifesto
         <svg width="20" height="12" viewBox="0 0 20 12" fill="none">
           <path d="M0,6 L15,6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
@@ -939,7 +978,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
     </div>
 
     <blockquote class="ithoud-quote reveal" data-delay="500">
-      <em>when two people meet as full human beings</em> — with no agenda, nothing to gain — just the pure experience of <em>being heard</em> and <em>understood.</em>
+      <em>when two people meet through how they think</em> — no titles, no profiles, no agenda — just the encounter that <em>changes what you think</em> and <em>how you think.</em>
     </blockquote>
 
   </div>
@@ -1003,10 +1042,11 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   <div class="subscribe-inner">
     <p class="subscribe-heading reveal">Be the first to know.</p>
     <p class="subscribe-text reveal" data-delay="100">ohm. is coming. Leave your email and we'll let you know when it launches.</p>
-    <form class="subscribe-form reveal" data-delay="200" onsubmit="return false;">
-      <input type="email" placeholder="your@email.com" required>
+    <form class="subscribe-form reveal" data-delay="200" id="subscribeForm">
+      <input id="subscribeEmail" type="email" name="email" placeholder="your@email.com" autocomplete="email" required>
       <button type="submit">Join</button>
     </form>
+    <p class="subscribe-status" id="subscribeStatus" aria-live="polite"></p>
   </div>
 </section>
 
@@ -1018,7 +1058,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
       <a href="#how">How it works</a>
       <a href="#why">Why now</a>
       <a href="#what">What is ohm.</a>
-      <a href="ohm. Manifesto.pdf" download>Manifesto</a>
+      <a href="ohm. Manifesto v2.pdf" download>Manifesto</a>
     </div>
     <div class="footer-col">
       <p class="footer-col-title">Connect</p>
@@ -1094,6 +1134,75 @@ if (track && dots.length) {
     });
     dots.forEach((d, i) => d.classList.toggle('active', i === closest));
   }, { passive: true });
+}
+
+const subscribeForm = document.getElementById('subscribeForm');
+const subscribeEmail = document.getElementById('subscribeEmail');
+const subscribeStatus = document.getElementById('subscribeStatus');
+const subscribeButton = subscribeForm ? subscribeForm.querySelector('button[type="submit"]') : null;
+const subscribeEndpoint = window.location.hostname.endsWith('ohmmmm.com')
+  ? 'https://api.ohmmmm.com/api/waitlist'
+  : 'https://ohm-api.onrender.com/api/waitlist';
+
+function setSubscribeStatus(message, tone) {
+  if (!subscribeStatus) return;
+  subscribeStatus.textContent = message;
+  if (tone) {
+    subscribeStatus.setAttribute('data-tone', tone);
+  } else {
+    subscribeStatus.removeAttribute('data-tone');
+  }
+}
+
+if (subscribeForm && subscribeEmail && subscribeStatus) {
+  subscribeForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const email = subscribeEmail.value.trim();
+    if (!email) {
+      setSubscribeStatus('Enter an email address first.', 'error');
+      return;
+    }
+
+    subscribeForm.classList.add('is-submitting');
+    if (subscribeButton) subscribeButton.disabled = true;
+    setSubscribeStatus('Saving your email...', null);
+
+    try {
+      const response = await fetch(subscribeEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          source: window.location.hostname || 'website',
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload && payload.error ? payload.error : 'Could not save your email right now.');
+      }
+
+      setSubscribeStatus(
+        payload && payload.already_subscribed
+          ? 'You are already on the list.'
+          : 'You are in. Your email is saved.',
+        'success'
+      );
+
+      if (!(payload && payload.already_subscribed)) {
+        subscribeForm.reset();
+      }
+    } catch (error) {
+      setSubscribeStatus(
+        error instanceof Error ? error.message : 'Could not save your email right now.',
+        'error'
+      );
+    } finally {
+      subscribeForm.classList.remove('is-submitting');
+      if (subscribeButton) subscribeButton.disabled = false;
+    }
+  });
 }
 </script>
 </body>

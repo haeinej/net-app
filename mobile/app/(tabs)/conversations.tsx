@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
@@ -13,27 +13,15 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography, fontFamily } from "../../theme";
+import { colors, spacing, typography, fontFamily, primitives, opacity, radii } from "../../theme";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
   fetchConversations,
   type ConversationListItem,
 } from "../../lib/api";
+import { formatRelativeTime } from "../../lib/format";
 
-function formatTimeAgo(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const mins = Math.floor(diffMs / 60000);
-  const hours = Math.floor(diffMs / 3600000);
-  const days = Math.floor(diffMs / 86400000);
-  if (mins < 60) return `${mins}m`;
-  if (hours < 24) return `${hours}h`;
-  if (days < 30) return `${days}d`;
-  return "30d+";
-}
-
-function ConversationRow({
+const ConversationRow = React.memo(function ConversationRow({
   item,
   onPress,
   onProfilePress,
@@ -89,7 +77,7 @@ function ConversationRow({
               isDormant && styles.textMuted,
             ]}
           >
-            {formatTimeAgo(item.last_message_at)}
+            {item.last_message_at ? formatRelativeTime(item.last_message_at) : ""}
           </Text>
         </View>
         <Text
@@ -105,11 +93,12 @@ function ConversationRow({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 export default function ConversationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { containerStyle } = useResponsiveLayout();
   const [list, setList] = useState<ConversationListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -119,7 +108,7 @@ export default function ConversationsScreen() {
   const load = useCallback(
     async (opts: { isRefresh?: boolean } = {}) => {
       if (inFlight.current) {
-        // ignore overlapping calls
+        return inFlight.current;
       }
 
       const { isRefresh } = opts;
@@ -142,7 +131,7 @@ export default function ConversationsScreen() {
       })();
 
       inFlight.current = p;
-      await p;
+      return p;
     },
     []
   );
@@ -186,6 +175,17 @@ export default function ConversationsScreen() {
       "If neither person replies for 2 weeks, the chat history clears automatically."
     );
   }, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: ConversationListItem }) => (
+      <ConversationRow
+        item={item}
+        onPress={() => onPressRow(item)}
+        onProfilePress={() => onPressProfile(item)}
+      />
+    ),
+    [onPressRow, onPressProfile]
+  );
 
   const header = (
     <View style={styles.screenHeader}>
@@ -245,14 +245,8 @@ export default function ConversationsScreen() {
       <FlatList
         data={list}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ConversationRow
-            item={item}
-            onPress={() => onPressRow(item)}
-            onProfilePress={() => onPressProfile(item)}
-          />
-        )}
-        contentContainerStyle={styles.listContent}
+        renderItem={renderItem}
+        contentContainerStyle={[styles.listContent, containerStyle]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -278,9 +272,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
   },
   screenTitle: {
-    fontFamily: fontFamily.comico,
-    fontSize: 28,
-    letterSpacing: -0.6,
+    ...typography.heading,
     color: colors.TYPE_DARK,
   },
   infoButton: {
@@ -305,16 +297,16 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: spacing.cardRadius,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    borderRadius: radii.card,
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: 14,
+    marginBottom: spacing.cardGap,
+    minHeight: 86,
   },
   rowUnread: {
-    backgroundColor: "rgba(26,26,22,0.08)",
+    backgroundColor: colors.CARD_GROUND,
     borderWidth: 1,
-    borderColor: "rgba(26,26,22,0.06)",
-    opacity: 0.82,
+    borderColor: colors.CARD_BORDER,
   },
   rowRead: {
     backgroundColor: colors.VERMILLION,
@@ -325,16 +317,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   rowDormant: {
-    opacity: 0.58,
+    opacity: opacity.dormant,
   },
   avatarWrap: {
     position: "relative",
     marginRight: 14,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
   avatarPlc: {
     backgroundColor: colors.PANEL_DEEP,
@@ -347,14 +339,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   name: {
     ...typography.label,
-    fontSize: 13,
-    letterSpacing: 1.1,
+    textTransform: "uppercase",
     flex: 1,
-    marginRight: 8,
+    marginRight: 12,
   },
   nameUnread: {
     color: colors.TYPE_DARK,
@@ -363,9 +354,7 @@ const styles = StyleSheet.create({
     color: colors.TYPE_WHITE,
   },
   time: {
-    fontFamily: fontFamily.comico,
-    fontSize: 10,
-    letterSpacing: 0.5,
+    ...typography.metadata,
   },
   timeUnread: {
     color: colors.TYPE_MUTED,
@@ -374,28 +363,22 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.8)",
   },
   preview: {
-    ...typography.context,
-    fontSize: 14,
-    lineHeight: 18,
+    ...typography.bodySmall,
   },
   previewUnread: {
-    color: "rgba(26,26,22,0.55)",
+    color: colors.TYPE_MUTED,
   },
   previewRead: {
     color: "rgba(255,255,255,0.88)",
   },
   textMuted: {
-    color: "rgba(26,26,22,0.36)",
+    color: colors.TYPE_MUTED,
   },
   centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
+    ...primitives.centered,
   },
   emptyText: {
-    ...typography.replyInput,
-    fontSize: 15,
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
     textAlign: "center",
   },
@@ -406,16 +389,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   retryText: {
-    color: colors.OLIVE,
     ...typography.label,
-    fontSize: 13,
+    textTransform: "uppercase",
+    color: colors.OLIVE,
   },
   skeletonRow: {
-    height: 78,
+    height: 86,
     backgroundColor: colors.CARD_GROUND,
     marginHorizontal: spacing.screenPadding,
-    marginBottom: 12,
-    borderRadius: spacing.cardRadius,
+    marginBottom: spacing.cardGap,
+    borderRadius: radii.card,
     opacity: 0.6,
   },
   loader: {

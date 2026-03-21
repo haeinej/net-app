@@ -3,7 +3,7 @@
  * Table names still use the legacy "question" wording for compatibility.
  */
 
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql, desc } from "drizzle-orm";
 import {
   db,
   thoughts,
@@ -12,6 +12,8 @@ import {
   conversations,
   replies,
 } from "../db";
+import { invalidateFeedCache } from "../feed";
+import { invalidateViewerFeedProfile } from "../feed/viewer-profile";
 import { llmConfig, complete } from "../llm";
 import { learningConfig } from "./config";
 import { kmeanspp, nearestToCenter } from "./kmeans";
@@ -24,12 +26,40 @@ const {
   kmeansMaxIter,
 } = learningConfig;
 
+// Guardrail: don't load an unbounded number of embeddings into memory.
+// We bias toward recency to keep clusters representative of the current surface.
+const MAX_WEEKLY_THOUGHTS = 5_000;
+// Guardrail: avoid serial LLM labeling over many clusters.
+const MAX_LLM_LABEL_CONCURRENCY = 3;
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  const maxWorkers = Math.min(limit, items.length);
+  let index = 0;
+
+  const workers = Array.from({ length: maxWorkers }, async () => {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const current = index++;
+      if (current >= items.length) break;
+      // eslint-disable-next-line no-await-in-loop
+      await worker(items[current]!);
+    }
+  });
+
+  await Promise.all(workers);
+}
+
 /**
  * Discover resonance clusters via k-means++ on question_embedding vectors.
  * Labels each cluster using LLM on sample thought sentences.
  */
 export async function runQuestionClusterDiscovery(): Promise<Record<string, unknown>> {
-  // Fetch all thoughts with resonance embeddings
+  // Fetch a bounded window of thoughts with resonance embeddings (most recent first)
   const rows = await db
     .select({
       id: thoughts.id,
@@ -37,7 +67,9 @@ export async function runQuestionClusterDiscovery(): Promise<Record<string, unkn
       questionEmbedding: thoughts.questionEmbedding,
     })
     .from(thoughts)
-    .where(sql`${thoughts.questionEmbedding} IS NOT NULL`);
+    .where(sql`${thoughts.questionEmbedding} IS NOT NULL`)
+    .orderBy(desc(thoughts.createdAt))
+    .limit(MAX_WEEKLY_THOUGHTS);
 
   const total = rows.length;
   if (total < weeklyMinThoughtsWithEmbedding) {
@@ -78,12 +110,14 @@ export async function runQuestionClusterDiscovery(): Promise<Record<string, unkn
   await db.delete(crossClusterAffinity);
   await db.delete(questionClusters);
 
-  // Insert new clusters + label via LLM
+  // Insert new clusters + label via LLM (with bounded parallelism)
   const clusterIdMap: Map<number, string> = new Map(); // k-means index → DB uuid
-  for (let c = 0; c < centroids.length; c++) {
+  const clusterIndices = Array.from({ length: centroids.length }, (_, i) => i);
+
+  await runWithConcurrency(clusterIndices, MAX_LLM_LABEL_CONCURRENCY, async (c) => {
     const centroid = centroids[c]!;
     const group = clusterThoughts.get(c);
-    if (!group || group.ids.length === 0) continue;
+    if (!group || group.ids.length === 0) return;
 
     // Pick sample thoughts nearest to centroid
     const nearestIdx = nearestToCenter(vectors, centroid, samplesPerCluster);
@@ -95,8 +129,13 @@ export async function runQuestionClusterDiscovery(): Promise<Record<string, unkn
     // Label cluster via LLM
     let label = `Cluster ${c + 1}`;
     try {
-      const system = "You are labeling a group of related thoughts. Return ONLY a short 3-6 word descriptive label, nothing else.";
-      const user = `These thoughts share a common theme:\n${sampleSentences.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\nWhat is the theme?`;
+      const system =
+        "You are labeling a group of related thoughts. Return ONLY a short 3-6 word descriptive label, nothing else.";
+      const user = `These thoughts share a common theme:\n${sampleSentences
+        .map((s, i) => `${i + 1}. ${s}`)
+        .join("\n")}\n\nWhat is the theme?`;
+      // Serial within each worker, but workers run in parallel.
+      // eslint-disable-next-line no-await-in-loop
       label = await complete(llmConfig.provider, system, user);
       // Clean up: take first line, strip quotes
       label = label.split("\n")[0]!.replace(/^["']|["']$/g, "").trim() || label;
@@ -104,6 +143,7 @@ export async function runQuestionClusterDiscovery(): Promise<Record<string, unkn
       // Fallback to generic label
     }
 
+    // eslint-disable-next-line no-await-in-loop
     const [inserted] = await db
       .insert(questionClusters)
       .values({
@@ -117,7 +157,7 @@ export async function runQuestionClusterDiscovery(): Promise<Record<string, unkn
     if (inserted) {
       clusterIdMap.set(c, inserted.id);
     }
-  }
+  });
 
   // Update thoughts.cluster_id
   for (const [c, dbId] of clusterIdMap) {
@@ -132,6 +172,11 @@ export async function runQuestionClusterDiscovery(): Promise<Record<string, unkn
         .where(inArray(thoughts.id, chunk));
     }
   }
+
+  await Promise.all([
+    invalidateViewerFeedProfile(),
+    invalidateFeedCache(),
+  ]);
 
   return {
     skipped: false,

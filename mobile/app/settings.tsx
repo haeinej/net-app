@@ -1,12 +1,14 @@
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useState, useEffect, useCallback } from "react";
+import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import Constants from "expo-constants";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandLockup } from "../components/BrandLockup";
 import { ScreenExitButton } from "../components/ScreenExitButton";
-import { clearAuth } from "../lib/auth-store";
+import { clearAuth, resetIntroForLogout } from "../lib/auth-store";
 import { setCachedUserId } from "../lib/api";
-import { colors, spacing, typography } from "../theme";
+import { requestPushPermissionIfNeeded, unregisterPushToken, getStoredPushToken } from "../lib/notifications";
+import { colors, spacing, typography, radii } from "../theme";
 
 function SettingsRow({
   title,
@@ -36,6 +38,38 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const appVersion = Constants.expoConfig?.version ?? "1.0.0";
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
+  useEffect(() => {
+    getStoredPushToken().then((t) => setPushEnabled(Boolean(t)));
+  }, []);
+
+  const togglePush = useCallback(async (value: boolean) => {
+    setPushLoading(true);
+    try {
+      if (value) {
+        const granted = await requestPushPermissionIfNeeded();
+        if (!granted) {
+          Alert.alert(
+            "Notifications Disabled",
+            "Enable notifications in your device Settings to receive updates from ohm.",
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open Settings", onPress: () => Linking.openSettings() },
+            ]
+          );
+          return;
+        }
+        setPushEnabled(true);
+      } else {
+        await unregisterPushToken();
+        setPushEnabled(false);
+      }
+    } finally {
+      setPushLoading(false);
+    }
+  }, []);
 
   const handleLogout = () => {
     Alert.alert("Log out", "You will need to sign in again to use ohm..", [
@@ -44,9 +78,11 @@ export default function SettingsScreen() {
         text: "Log out",
         style: "destructive",
         onPress: async () => {
+          await unregisterPushToken();
           await clearAuth();
+          await resetIntroForLogout();
           setCachedUserId(null);
-          router.replace("/login");
+          router.replace("/");
         },
       },
     ]);
@@ -78,6 +114,11 @@ export default function SettingsScreen() {
             onPress={() => router.push("/support" as Href)}
           />
           <SettingsRow
+            title="Terms of Use"
+            subtitle="Review the rules for using ohm. and its zero-tolerance content policy."
+            onPress={() => router.push("/terms" as Href)}
+          />
+          <SettingsRow
             title="Privacy Policy"
             subtitle="Read how ohm. stores and uses account and conversation data."
             onPress={() => router.push("/privacy" as Href)}
@@ -88,6 +129,25 @@ export default function SettingsScreen() {
             onPress={() => router.push("/delete-account" as Href)}
             destructive
           />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Notifications</Text>
+          <View style={styles.row}>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Push Notifications</Text>
+              <Text style={styles.rowSubtitle}>
+                Receive updates when someone resonates with your thought or sends you a message.
+              </Text>
+            </View>
+            <Switch
+              value={pushEnabled}
+              onValueChange={togglePush}
+              disabled={pushLoading}
+              trackColor={{ false: "rgba(26,26,22,0.08)", true: colors.VERMILLION }}
+              thumbColor={colors.TYPE_WHITE}
+            />
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -153,7 +213,7 @@ const styles = StyleSheet.create({
   },
   row: {
     backgroundColor: colors.CARD_GROUND,
-    borderRadius: 16,
+    borderRadius: radii.card,
     paddingHorizontal: 16,
     paddingVertical: 16,
     flexDirection: "row",

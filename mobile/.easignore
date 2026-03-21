@@ -1,0 +1,11 @@
+.expo/
+android/
+ios/
+ios/build/
+node_modules/
+node_modules.bad.*/
+node_modules.repair-backup*/
+expo 2/
+*.log
+xcodebuild.log
+xcodebuild-error.log

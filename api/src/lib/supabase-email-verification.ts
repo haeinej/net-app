@@ -4,17 +4,31 @@ type SendVerificationEmailParams = {
   userId: string;
 };
 
+type SendPasswordRecoveryEmailParams = {
+  email: string;
+};
+
+
 type VerifyEmailParams =
   | {
       email: string;
       code: string;
       tokenHash?: never;
+      accessToken?: never;
       type?: string | null;
     }
   | {
       email?: string;
       code?: string;
       tokenHash: string;
+      accessToken?: never;
+      type?: string | null;
+    }
+  | {
+      email?: string;
+      code?: string;
+      tokenHash?: never;
+      accessToken: string;
       type?: string | null;
     };
 
@@ -23,6 +37,10 @@ type SupabaseVerifyResponse = {
     email?: string | null;
   } | null;
 };
+
+const DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL = "https://www.ohmmmm.com/verify-email/";
+const DEFAULT_PASSWORD_RESET_REDIRECT_URL = "https://www.ohmmmm.com/reset-password/";
+
 
 function readRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -41,7 +59,38 @@ function getSupabaseAnonKey(): string {
 }
 
 function getRedirectUrl(): string {
-  return process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim() || "ohm://verify-email";
+  const configured = process.env.EMAIL_VERIFICATION_REDIRECT_URL?.trim();
+
+  // Accept either the app deep link or the dedicated web handoff page.
+  // The web page immediately forwards into the app and provides a fallback button
+  // for environments where custom schemes are not clickable in the email client.
+  if (configured?.startsWith("ohm://")) {
+    return configured;
+  }
+  if (
+    configured?.startsWith("https://www.ohmmmm.com/verify-email") ||
+    configured?.startsWith("https://ohmmmm.com/verify-email")
+  ) {
+    return configured;
+  }
+
+  return DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL;
+}
+
+function getPasswordResetRedirectUrl(): string {
+  const configured = process.env.PASSWORD_RESET_REDIRECT_URL?.trim();
+
+  if (configured?.startsWith("ohm://")) {
+    return configured;
+  }
+  if (
+    configured?.startsWith("https://www.ohmmmm.com/reset-password") ||
+    configured?.startsWith("https://ohmmmm.com/reset-password")
+  ) {
+    return configured;
+  }
+
+  return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
 }
 
 function getHeaders(): Record<string, string> {
@@ -91,17 +140,41 @@ async function postSupabaseAuth<T>(
     body: JSON.stringify(body),
   });
 
-  const payload = (await response.json().catch(() => null)) as
-    | T
-    | Record<string, unknown>
-    | null;
-
+  const payload = (await response.json().catch(() => null)) as T | Record<string, unknown> | null;
   if (!response.ok) {
     throw new Error(normalizeErrorMessage(payload, fallbackError));
   }
 
   return (payload ?? {}) as T;
 }
+
+async function getSupabaseUserEmailFromAccessToken(accessToken: string): Promise<string> {
+  const response = await fetch(`${getSupabaseUrl()}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      ...getHeaders(),
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const payload =
+    (await response.json().catch(() => null)) as
+      | SupabaseVerifyResponse
+      | Record<string, unknown>
+      | null;
+  if (!response.ok) {
+    throw new Error(normalizeErrorMessage(payload, "Could not verify password reset"));
+  }
+
+  const verifiedPayload = payload as SupabaseVerifyResponse | null;
+  const email = verifiedPayload?.user?.email?.trim().toLowerCase();
+  if (!email) {
+    throw new Error("Could not verify password reset");
+  }
+
+  return email;
+}
+
 
 export async function sendSupabaseVerificationEmail(
   params: SendVerificationEmailParams
@@ -120,6 +193,20 @@ export async function sendSupabaseVerificationEmail(
     "Could not send verification email"
   );
 }
+
+export async function sendSupabasePasswordRecoveryEmail(
+  params: SendPasswordRecoveryEmailParams
+): Promise<void> {
+  await postSupabaseAuth<unknown>(
+    "/recover",
+    {
+      email: params.email,
+      redirect_to: getPasswordResetRedirectUrl(),
+    },
+    "Could not send password reset email"
+  );
+}
+
 
 export async function verifySupabaseEmail(
   params: VerifyEmailParams
@@ -142,6 +229,38 @@ export async function verifySupabaseEmail(
   const email = payload.user?.email?.trim().toLowerCase();
   if (!email) {
     throw new Error("Could not verify email");
+  }
+
+  return { email };
+}
+
+
+export async function verifySupabaseRecovery(
+  params: VerifyEmailParams
+): Promise<{ email: string }> {
+  if (params.accessToken) {
+    const email = await getSupabaseUserEmailFromAccessToken(params.accessToken);
+    return { email };
+  }
+
+  const payload = await postSupabaseAuth<SupabaseVerifyResponse>(
+    "/verify",
+    params.tokenHash
+      ? {
+          token_hash: params.tokenHash,
+          type: "recovery",
+        }
+      : {
+          email: params.email,
+          token: params.code,
+          type: "recovery",
+        },
+    "Could not verify password reset"
+  );
+
+  const email = payload.user?.email?.trim().toLowerCase();
+  if (!email) {
+    throw new Error("Could not verify password reset");
   }
 
   return { email };

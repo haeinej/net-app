@@ -1,8 +1,9 @@
+import { useEffect } from "react";
 import { Tabs } from "expo-router";
-import { View, StyleSheet, useWindowDimensions } from "react-native";
-import { Image } from "expo-image";
+import { View, StyleSheet, useWindowDimensions, Image } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors } from "../../theme";
+import { requestPushPermissionIfNeeded } from "../../lib/notifications";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../../assets/images/ohm-logo.png");
@@ -19,8 +20,8 @@ function ConvoIcon({ focused }: { focused: boolean }) {
   return (
     <Image
       source={ohmLogo}
-      style={[iconStyles.iconLift, iconStyles.ohmIcon, { opacity: focused ? 1 : 0.4 }]}
-      contentFit="contain"
+      style={[iconStyles.ohmIcon, { opacity: focused ? 1 : 0.4 }]}
+      resizeMode="contain"
     />
   );
 }
@@ -36,30 +37,53 @@ function MeIcon({ focused }: { focused: boolean }) {
   );
 }
 
-const WAVE_HEIGHT = 18;
+const WAVE_HEIGHT = 16;
+const TAB_BAR_HEIGHT = 74;
 
 function WavyTabBackground() {
   const { width } = useWindowDimensions();
+  const w = width;
+  const h = WAVE_HEIGHT;
+
+  // Single smooth asymmetric curve — gentle, organic, not busy
+  const wavePath = `
+    M0,${h}
+    L0,${h * 0.6}
+    Q${w * 0.25},${-h * 0.15}
+     ${w * 0.52},${h * 0.35}
+    Q${w * 0.78},${h * 0.85}
+     ${w},${h * 0.2}
+    L${w},${h}
+    Z
+  `;
+
   return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.WARM_GROUND }]}>
-      <View style={{ position: "absolute", top: -WAVE_HEIGHT, left: 0, right: 0 }}>
-        <Svg width={width} height={WAVE_HEIGHT} viewBox={`0 0 ${width} ${WAVE_HEIGHT}`}>
-          <Path
-            d={`M0 ${WAVE_HEIGHT} C${width * 0.15} ${WAVE_HEIGHT * 0.2}, ${width * 0.3} ${WAVE_HEIGHT * 0.7}, ${width * 0.5} ${WAVE_HEIGHT * 0.35} S${width * 0.8} ${WAVE_HEIGHT * 0.05}, ${width} ${WAVE_HEIGHT * 0.6} L${width} ${WAVE_HEIGHT} Z`}
-            fill={colors.WARM_GROUND}
-          />
-        </Svg>
-      </View>
+    <View style={StyleSheet.absoluteFill}>
+      <Svg
+        width={w}
+        height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        style={{ position: "absolute", top: -h + 1 }}
+      >
+        <Path d={wavePath} fill={colors.WARM_GROUND} />
+      </Svg>
+      <View style={{ flex: 1, backgroundColor: colors.WARM_GROUND }} />
     </View>
   );
 }
 
 export default function TabLayout() {
+  // Register push token on every app launch (idempotent — server upserts)
+  useEffect(() => {
+    requestPushPermissionIfNeeded().catch(() => {});
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
+        tabBarItemStyle: styles.tabBarItem,
         tabBarActiveTintColor: colors.TYPE_DARK,
         tabBarInactiveTintColor: colors.TYPE_MUTED,
         tabBarShowLabel: false,
@@ -85,6 +109,7 @@ export default function TabLayout() {
         options={{
           title: "Me",
           tabBarIcon: ({ focused }) => <MeIcon focused={focused} />,
+          sceneStyle: { backgroundColor: colors.TYPE_DARK },
         }}
       />
     </Tabs>
@@ -96,38 +121,38 @@ const iconStyles = StyleSheet.create({
     transform: [{ translateY: -6 }],
   },
   blob: {
-    width: 32,
-    height: 29,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 12,
-    borderBottomLeftRadius: 13,
-    borderBottomRightRadius: 18,
-    borderWidth: 1.5,
+    width: 22,
+    height: 20,
+    borderTopLeftRadius: 11,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 13,
+    borderWidth: 1.6,
     alignItems: "center",
     justifyContent: "center",
     transform: [{ translateY: -6 }, { rotate: "-4deg" }],
   },
   dot: {
-    width: 8,
-    height: 9,
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 3,
-    borderBottomLeftRadius: 3.5,
-    borderBottomRightRadius: 4,
+    width: 6,
+    height: 6,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 2,
+    borderBottomLeftRadius: 3,
+    borderBottomRightRadius: 3,
     transform: [{ rotate: "6deg" }],
   },
   ohmIcon: {
-    width: 30,
-    height: 30,
+    width: 21,
+    height: 21,
   },
   meBlob: {
-    width: 29,
-    height: 26,
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 15,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 10,
-    transform: [{ translateY: -6 }, { rotate: "3deg" }],
+    width: 20,
+    height: 18,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 11,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 8,
+    transform: [{ rotate: "3deg" }],
   },
 });
 
@@ -137,9 +162,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     elevation: 0,
     shadowOpacity: 0,
-    paddingTop: 4,
-    paddingBottom: 10,
-    height: 62,
+    paddingTop: 6,
+    paddingBottom: 18,
+    height: TAB_BAR_HEIGHT,
     overflow: "visible",
+  },
+  tabBarItem: {
+    paddingTop: 2,
   },
 });
