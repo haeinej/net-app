@@ -141,7 +141,6 @@ nav.scrolled {
 .wavy-rule.wavy-light svg path { stroke: rgba(245,240,234,0.04); }
 
 /* ========== SECTION DIVIDERS ========== */
-/* (wave-to-dark replaced by inline .what-wave-top) */
 /* Animated vermillion thread between dark sections */
 .thread-divider {
   background: var(--deep);
@@ -321,92 +320,17 @@ nav.scrolled {
 .bridge-link svg { transition: transform 0.3s ease; }
 .bridge-link:hover svg { transform: translateX(4px); }
 
-/* ========== WHAT — THE RESONANCE CIRCLE ========== */
-.what {
-  min-height: 100vh;
+.warm-to-dark-wave {
+  position: relative;
   background: var(--warm-ground);
-  padding: 220px 60px 280px;
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  line-height: 0;
+  margin-top: -1px;
 }
-.what-wave-top {
-  position: absolute;
-  top: -1px; left: 0;
+.warm-to-dark-wave svg {
   width: 100%;
   height: clamp(100px, 12vw, 160px);
   display: block;
-  z-index: 3;
-  pointer-events: none;
 }
-
-/* The resonance shape — organic olive blob */
-.what-circle {
-  width: min(92vw, 820px);
-  height: min(72vw, 620px);
-  border-radius: 48% 52% 42% 58% / 40% 45% 55% 60%;
-  background: var(--olive);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  z-index: 2;
-  margin-top: -40px;
-  box-shadow: 0 40px 100px rgba(151,156,91,0.15);
-}
-
-/* Concentric resonance rings — ◎ radiating outward */
-.what-rings {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100%; height: 100%;
-  z-index: 1;
-  pointer-events: none;
-}
-.what-ring {
-  position: absolute;
-  border-radius: 48% 52% 42% 58% / 40% 45% 55% 60%;
-  border: 1px solid var(--olive);
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-/* Bottom wave — transition to dark I-Thou */
-.what-wave-bottom {
-  position: absolute;
-  bottom: -1px; left: 0;
-  width: 100%;
-  height: clamp(100px, 12vw, 160px);
-  display: block;
-  z-index: 3;
-  pointer-events: none;
-}
-
-.what-inner {
-  text-align: center;
-  padding: 48px 40px;
-  max-width: 460px;
-}
-.what-label {
-  font-family: 'Comico', serif;
-  font-size: clamp(50px, 6.7vw, 92px); color: rgba(255,255,255,0.95);
-  letter-spacing: -3px; margin-bottom: 16px; line-height: 0.9;
-}
-.what-label .dot { color: var(--vermillion); }
-.what-line {
-  width: 80px; height: 16px; margin: 0 auto 40px;
-  background: none; border: none;
-}
-.what-line svg { width: 100%; height: 100%; }
-.what-def {
-  font-family: 'Comico', serif;
-  font-size: clamp(16px, 2.2vw, 26px); line-height: 1.6;
-  color: rgba(255,255,255,0.5); max-width: 380px; margin: 0 auto;
-}
-.what-def em { font-style: normal; color: rgba(255,255,255,0.92); }
 /* Manifesto text highlights */
 .highlight-vermillion { color: var(--vermillion); }
 .highlight-chartreuse { color: var(--chartreuse); }
@@ -769,7 +693,6 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   .hero-sub { font-size: clamp(11px, 3.2vw, 15px); max-width: none; }
   .scroll-arrow { bottom: 140px; }
   .mechanic { padding: 160px 24px 140px; }
-  .what-wave-top { height: 60px; }
   .thread-divider { padding: 28px 0; }
   .section-indicator { margin-bottom: 80px; }
   .m-1, .m-2, .m-3 { max-width: 12ch; }
@@ -778,22 +701,16 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   .m-result { max-width: 10ch; font-size: clamp(32px, 10vw, 56px); }
   .mech-arrow { padding: 20px 0; }
   .mech-arrow svg { width: clamp(160px, 60vw, 280px); }
-  .why, .what { padding-left: 24px; padding-right: 24px; }
+  .why { padding-left: 24px; padding-right: 24px; }
   .why-layout { grid-template-columns: 1fr; gap: 34px; }
   .why { padding-top: 130px; }
   .why-visual { min-height: 280px; aspect-ratio: 4 / 5; }
-  .what { min-height: auto; padding-top: 110px; padding-bottom: 160px; }
-  .what-circle { width: min(96vw, 540px); height: min(108vw, 560px); }
-  .what-inner { max-width: 430px; padding: 42px 34px; }
-  .what-label { font-size: clamp(34px, 9vw, 48px); letter-spacing: -1.5px; }
-  .what-def { font-size: clamp(12px, 3.25vw, 15px); max-width: 400px; line-height: 1.55; }
-  .what-wave-bottom { height: 60px; }
+  .warm-to-dark-wave svg { height: 60px; }
   .ithoud-content { padding: 100px 24px; }
   .ithoud-glyph { letter-spacing: -2px; }
   .ithoud-pair { margin-bottom: 100px; }
   .ithoud-thread { height: 48px; }
   .ithoud-quote { font-size: clamp(14px, 3.84vw, 22px); }
-  .what-label { letter-spacing: -2px; }
   .beyond-intro, .beyond-close { padding-left: 24px; padding-right: 24px; }
   .beyond-label { font-size: clamp(29px, 9.6vw, 65px); letter-spacing: -2px; }
   .beyond-track { padding: 0 24px; gap: 16px; }
@@ -829,7 +746,7 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   <div class="hero-content">
     <img src="images/logo_nobackground.png" class="hero-mark" alt="">
     <h1 class="hero-tagline">OHM.</h1>
-    <p class="hero-sub">Find the right minds for your thinking.</p>
+    <p class="hero-sub">Find the right minds for your thoughts.</p>
   </div>
   <div class="scroll-arrow" aria-hidden="true">
     <svg viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -914,33 +831,11 @@ footer { background: var(--deep); padding: 80px 60px 0; }
   </div>
 </section>
 
-<section class="what" id="what">
-  <!-- Top wave — transition from hero -->
-  <svg class="what-wave-top" viewBox="0 0 1440 160" preserveAspectRatio="none" aria-hidden="true">
-    <path d="M0,80 C200,140 400,30 600,95 C800,160 1000,40 1200,100 C1320,138 1400,60 1440,90 L1440,0 L0,0 Z" fill="var(--warm-ground)"/>
-  </svg>
-
-  <!-- Concentric resonance rings — ◎ -->
-  <div class="what-rings" aria-hidden="true">
-    <div class="what-ring" style="width: min(95vw, 760px); height: min(95vw, 760px); opacity: 0.07;"></div>
-    <div class="what-ring" style="width: min(110vw, 880px); height: min(110vw, 880px); opacity: 0.04;"></div>
-    <div class="what-ring" style="width: min(125vw, 1000px); height: min(125vw, 1000px); opacity: 0.025;"></div>
-  </div>
-
-  <!-- The circle -->
-  <div class="what-circle reveal">
-    <div class="what-inner">
-      <p class="what-label">ohm<span class="dot">.</span> is</p>
-      <div class="what-line"><svg viewBox="0 0 120 16" preserveAspectRatio="none"><path d="M4,10 C20,4 40,14 60,8 C80,2 100,14 116,8" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-opacity="0.35"/></svg></div>
-      <p class="what-def">A space where shared <em>thoughts</em> become <em>invitations</em> for one-on-one <em>conversations</em> with strangers who <em>resonate.</em></p>
-    </div>
-  </div>
-
-  <!-- Bottom wave — transition to dark I-Thou -->
-  <svg class="what-wave-bottom" viewBox="0 0 1440 160" preserveAspectRatio="none" aria-hidden="true">
+<div class="warm-to-dark-wave" aria-hidden="true">
+  <svg viewBox="0 0 1440 160" preserveAspectRatio="none">
     <path d="M0,70 C180,20 360,130 540,65 C720,0 900,120 1080,55 C1200,15 1360,100 1440,70 L1440,160 L0,160 Z" fill="var(--deep)"/>
   </svg>
-</section>
+</div>
 
 <!-- ==================== I-THOU — "CO-REGULATION" ==================== -->
 <!-- Two minds breathing at different rates, finding resonance through a living thread -->
@@ -1057,7 +952,6 @@ footer { background: var(--deep); padding: 80px 60px 0; }
       <p class="footer-col-title">Explore</p>
       <a href="#how">How it works</a>
       <a href="#why">Why now</a>
-      <a href="#what">What is ohm.</a>
       <a href="ohm. Manifesto v2.pdf" download>Manifesto</a>
     </div>
     <div class="footer-col">
