@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   Alert,
   Share,
+  Modal,
+  Pressable,
+  Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -51,6 +54,20 @@ export default function MeScreen() {
   const [saving, setSaving] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const menuSlide = useState(() => new Animated.Value(0))[0];
+
+  const openMenu = useCallback(() => {
+    setMenuVisible(true);
+    Animated.spring(menuSlide, { toValue: 1, useNativeDriver: true, damping: 20, stiffness: 200 }).start();
+  }, [menuSlide]);
+
+  const closeMenu = useCallback((cb?: () => void) => {
+    Animated.timing(menuSlide, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setMenuVisible(false);
+      if (cb) cb();
+    });
+  }, [menuSlide]);
 
   const resetBrokenSession = useCallback(async () => {
     await clearAuth();
@@ -299,6 +316,11 @@ export default function MeScreen() {
 
   deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  const sheetTranslateY = menuSlide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [300, 0],
+  });
+
   return (
     <View style={styles.screen}>
       <LinearGradient
@@ -307,6 +329,18 @@ export default function MeScreen() {
         style={styles.backgroundGlow}
         pointerEvents="none"
       />
+
+      {/* ☰ Hamburger menu — top right */}
+      <TouchableOpacity
+        style={[styles.hamburger, { top: insets.top + 12 }]}
+        onPress={openMenu}
+        activeOpacity={0.6}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <View style={styles.hamburgerLine} />
+        <View style={styles.hamburgerLine} />
+        <View style={styles.hamburgerLine} />
+      </TouchableOpacity>
 
       <ScrollView
         style={styles.container}
@@ -327,8 +361,8 @@ export default function MeScreen() {
         {/* Name */}
         <Text style={styles.name}>{profile.name || "—"}</Text>
 
-        {/* Action buttons */}
-        {editing ? (
+        {/* Edit mode (inline) */}
+        {editing && (
           <View style={styles.editSection}>
             <TouchableOpacity onPress={pickPhoto} style={styles.editPhotoWrap} activeOpacity={0.7}>
               <View style={[styles.editPhotoCircle]}>
@@ -359,26 +393,6 @@ export default function MeScreen() {
                 <Text style={styles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        ) : (
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.glassBtn} onPress={startEdit}>
-              <Text style={styles.glassBtnText}>Edit Profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.glassBtn} onPress={handleInvite}>
-              <Text style={styles.glassBtnText}>Invite</Text>
-              {inviteRemaining !== null && (
-                <Text style={styles.glassBtnSub}>
-                  {inviteRemaining > 0 ? `${inviteRemaining} left` : "No invites"}
-                </Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.glassBtn}
-              onPress={() => router.push("/settings" as Href)}
-            >
-              <Text style={styles.glassBtnText}>Settings</Text>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -442,6 +456,52 @@ export default function MeScreen() {
           })
         )}
       </ScrollView>
+
+      {/* ─── Bottom sheet menu ─── */}
+      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={() => closeMenu()}>
+        <Pressable style={styles.menuOverlay} onPress={() => closeMenu()}>
+          <Animated.View
+            style={[styles.menuSheet, { transform: [{ translateY: sheetTranslateY }] }]}
+            onStartShouldSetResponder={() => true}
+          >
+            {/* Drag handle */}
+            <View style={styles.menuHandle} />
+
+            <TouchableOpacity
+              style={styles.menuRow}
+              activeOpacity={0.6}
+              onPress={() => closeMenu(() => startEdit())}
+            >
+              <Text style={styles.menuRowText}>Edit Profile</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSep} />
+
+            <TouchableOpacity
+              style={styles.menuRow}
+              activeOpacity={0.6}
+              onPress={() => closeMenu(() => handleInvite())}
+            >
+              <Text style={styles.menuRowText}>Invite Friends</Text>
+              {inviteRemaining !== null && inviteRemaining > 0 && (
+                <View style={styles.menuBadge}>
+                  <Text style={styles.menuBadgeText}>{inviteRemaining}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.menuSep} />
+
+            <TouchableOpacity
+              style={styles.menuRow}
+              activeOpacity={0.6}
+              onPress={() => closeMenu(() => router.push("/settings" as Href))}
+            >
+              <Text style={styles.menuRowText}>Settings</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -511,24 +571,82 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  /* ── Action pills ── */
-  actionRow: {
-    flexDirection: "row",
+  /* ── Hamburger icon ── */
+  hamburger: {
+    position: "absolute",
+    right: 20,
+    zIndex: 20,
+    width: 44,
+    height: 44,
+    alignItems: "center",
     justifyContent: "center",
-    gap: 12,
-    paddingHorizontal: spacing.screenPadding,
-    marginBottom: 36,
   },
+  hamburgerLine: {
+    width: 22,
+    height: 2,
+    backgroundColor: warmAlpha(0.5),
+    borderRadius: 1,
+    marginVertical: 2.5,
+  },
+
+  /* ── Bottom sheet menu ── */
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  menuSheet: {
+    backgroundColor: colors.WARM_GROUND,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 40,
+    paddingTop: 12,
+  },
+  menuHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(0,0,0,0.12)",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  menuRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  menuRowText: {
+    ...typography.body,
+    color: colors.TYPE_DARK,
+    flex: 1,
+  },
+  menuSep: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(0,0,0,0.08)",
+    marginHorizontal: 24,
+  },
+  menuBadge: {
+    backgroundColor: colors.VERMILLION,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  menuBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#fff",
+  },
+
+  /* ── Glass buttons (edit mode) ── */
   glassBtn: {
     ...primitives.buttonGlass,
   },
   glassBtnText: {
     ...primitives.buttonGlassText,
-  },
-  glassBtnSub: {
-    ...typography.metadataSmall,
-    color: warmAlpha(0.4),
-    marginTop: 2,
   },
 
   /* ── Edit mode ── */
