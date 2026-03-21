@@ -13,12 +13,21 @@ type VerifyEmailParams =
       email: string;
       code: string;
       tokenHash?: never;
+      accessToken?: never;
       type?: string | null;
     }
   | {
       email?: string;
       code?: string;
       tokenHash: string;
+      accessToken?: never;
+      type?: string | null;
+    }
+  | {
+      email?: string;
+      code?: string;
+      tokenHash?: never;
+      accessToken: string;
       type?: string | null;
     };
 
@@ -137,6 +146,28 @@ async function postSupabaseAuth<T>(
   return (payload ?? {}) as T;
 }
 
+async function getSupabaseUserEmailFromAccessToken(accessToken: string): Promise<string> {
+  const response = await fetch(`${getSupabaseUrl()}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      ...getHeaders(),
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const payload = (await response.json().catch(() => null)) as SupabaseVerifyResponse | Record<string, unknown> | null;
+  if (!response.ok) {
+    throw new Error(normalizeErrorMessage(payload, "Could not verify password reset"));
+  }
+
+  const email = payload?.user?.email?.trim().toLowerCase();
+  if (!email) {
+    throw new Error("Could not verify password reset");
+  }
+
+  return email;
+}
+
 export async function sendSupabaseVerificationEmail(
   params: SendVerificationEmailParams
 ): Promise<void> {
@@ -197,6 +228,11 @@ export async function verifySupabaseEmail(
 export async function verifySupabaseRecovery(
   params: VerifyEmailParams
 ): Promise<{ email: string }> {
+  if (params.accessToken) {
+    const email = await getSupabaseUserEmailFromAccessToken(params.accessToken);
+    return { email };
+  }
+
   const payload = await postSupabaseAuth<SupabaseVerifyResponse>(
     "/verify",
     params.tokenHash

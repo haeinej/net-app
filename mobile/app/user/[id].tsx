@@ -206,11 +206,7 @@ export default function UserProfileScreen() {
   deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={styles.screen}>
       <LinearGradient
         colors={[
           "rgba(255,252,245,0.035)",
@@ -219,133 +215,147 @@ export default function UserProfileScreen() {
           "rgba(0,0,0,0.08)",
         ]}
         locations={[0, 0.15, 0.4, 1]}
-        style={StyleSheet.absoluteFill}
+        style={styles.backgroundGlow}
         pointerEvents="none"
       />
 
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backArrow}>←</Text>
-      </TouchableOpacity>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backArrow}>←</Text>
+        </TouchableOpacity>
 
-      <View style={styles.photoOuter}>
-        <View style={styles.photoInner}>
-          {profile.photo_url ? (
-            <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
-          ) : (
-            <View style={styles.photoEmpty} />
+        <View style={styles.photoOuter}>
+          <View style={styles.photoInner}>
+            {profile.photo_url ? (
+              <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
+            ) : (
+              <View style={styles.photoEmpty} />
+            )}
+          </View>
+        </View>
+
+        <Text style={styles.name}>{profile.name || "—"}</Text>
+
+        <View style={styles.actionRow}>
+          {!isOwnProfile && (
+            <>
+              <TouchableOpacity
+                style={styles.glassBtn}
+                onPress={() => setReportVisible(true)}
+              >
+                <Text style={styles.glassBtnText}>Report</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.glassBtn, isBlocked && styles.glassBtnActive]}
+                onPress={handleBlock}
+              >
+                <Text
+                  style={[
+                    styles.glassBtnText,
+                    isBlocked && styles.glassBtnActiveText,
+                  ]}
+                >
+                  {isBlocked ? "Blocked" : "Block"}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {isOwnProfile && (
+            <View style={styles.glassBtn}>
+              <Text style={styles.glassBtnText}>Your profile</Text>
+            </View>
           )}
         </View>
-      </View>
 
-      <Text style={styles.name}>{profile.name || "—"}</Text>
-
-      <View style={styles.actionRow}>
-        {!isOwnProfile && (
-          <>
-            <TouchableOpacity
-              style={styles.glassBtn}
-              onPress={() => setReportVisible(true)}
-            >
-              <Text style={styles.glassBtnText}>Report</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.glassBtn, isBlocked && styles.glassBtnActive]}
-              onPress={handleBlock}
-            >
-              <Text
-                style={[
-                  styles.glassBtnText,
-                  isBlocked && styles.glassBtnActiveText,
-                ]}
-              >
-                {isBlocked ? "Blocked" : "Block"}
-              </Text>
-            </TouchableOpacity>
-          </>
+        {targetId && (
+          <ReportModal
+            visible={reportVisible}
+            onClose={() => setReportVisible(false)}
+            targetType="user"
+            targetId={targetId}
+            targetUserId={targetId}
+            onBlocked={() => setIsBlocked(true)}
+          />
         )}
-        {isOwnProfile && (
-          <View style={styles.glassBtn}>
-            <Text style={styles.glassBtnText}>Your profile</Text>
-          </View>
-        )}
-      </View>
 
-      {targetId && (
-        <ReportModal
-          visible={reportVisible}
-          onClose={() => setReportVisible(false)}
-          targetType="user"
-          targetId={targetId}
-          targetUserId={targetId}
-          onBlocked={() => setIsBlocked(true)}
-        />
-      )}
+        {deckItems.length === 0 ? (
+          <Text style={styles.emptyDeck}>No deck yet.</Text>
+        ) : (
+          deckItems.map((item) => {
+            if (item.kind === "thought") {
+              const thought = item.data;
+              const feedItem: FeedItemThought = {
+                type: "thought",
+                thought: {
+                  id: thought.id,
+                  sentence: thought.sentence,
+                  photo_url: thought.photo_url,
+                  image_url: thought.image_url,
+                  created_at: thought.created_at ?? new Date().toISOString(),
+                  has_context: false,
+                },
+                user: {
+                  id: profile.id,
+                  name: profile.name,
+                  photo_url: profile.photo_url,
+                },
+              };
+              return (
+                <View key={`t-${thought.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                  <CardDeck>
+                    <SwipeableThoughtCard item={feedItem} visible isOwn={isOwnProfile} />
+                  </CardDeck>
+                </View>
+              );
+            }
 
-      {deckItems.length === 0 ? (
-        <Text style={styles.emptyDeck}>No deck yet.</Text>
-      ) : (
-        deckItems.map((item) => {
-          if (item.kind === "thought") {
-            const thought = item.data;
-            const feedItem: FeedItemThought = {
-              type: "thought",
-              thought: {
-                id: thought.id,
-                sentence: thought.sentence,
-                photo_url: thought.photo_url,
-                image_url: thought.image_url,
-                created_at: thought.created_at ?? new Date().toISOString(),
-                has_context: false,
+            const crossing = item.data;
+            const crossingItem: FeedItemCrossing = {
+              type: "crossing",
+              crossing: {
+                id: crossing.id,
+                sentence: crossing.sentence,
+                context: crossing.context,
+                created_at: crossing.created_at ?? new Date().toISOString(),
               },
-              user: {
-                id: profile.id,
-                name: profile.name,
-                photo_url: profile.photo_url,
-              },
+              participant_a: crossing.participant_a ?? { id: "", name: null, photo_url: null },
+              participant_b: crossing.participant_b ?? { id: "", name: null, photo_url: null },
             };
+
             return (
-              <View key={`t-${thought.id}`} style={[styles.thoughtWrap, containerStyle]}>
+              <View key={`c-${crossing.id}`} style={[styles.thoughtWrap, containerStyle]}>
                 <CardDeck>
-                  <SwipeableThoughtCard item={feedItem} visible isOwn={isOwnProfile} />
+                  <CrossingCard item={crossingItem} visible ignoreUserId={profile.id} />
                 </CardDeck>
               </View>
             );
-          }
-
-          const crossing = item.data;
-          const crossingItem: FeedItemCrossing = {
-            type: "crossing",
-            crossing: {
-              id: crossing.id,
-              sentence: crossing.sentence,
-              context: crossing.context,
-              created_at: crossing.created_at ?? new Date().toISOString(),
-            },
-            participant_a: crossing.participant_a ?? { id: "", name: null, photo_url: null },
-            participant_b: crossing.participant_b ?? { id: "", name: null, photo_url: null },
-          };
-
-          return (
-            <View key={`c-${crossing.id}`} style={[styles.thoughtWrap, containerStyle]}>
-              <CardDeck>
-                <CrossingCard item={crossingItem} visible ignoreUserId={profile.id} />
-              </CardDeck>
-            </View>
-          );
-        })
-      )}
-    </ScrollView>
+          })
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: colors.TYPE_DARK,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  backgroundGlow: {
+    ...StyleSheet.absoluteFillObject,
   },
   content: {
     paddingBottom: 48,
     alignItems: "center",
+    flexGrow: 1,
   },
   backBtn: {
     alignSelf: "flex-start",

@@ -274,139 +274,141 @@ export default function MeScreen() {
   deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Subtle depth gradient — warm glow behind profile, fading into depth */}
+    <View style={styles.screen}>
       <LinearGradient
         colors={["rgba(255,252,245,0.035)", "rgba(255,252,245,0.015)", "transparent", "rgba(0,0,0,0.08)"]}
         locations={[0, 0.15, 0.4, 1]}
-        style={StyleSheet.absoluteFill}
+        style={styles.backgroundGlow}
         pointerEvents="none"
       />
-      {/* Profile photo — organic asymmetric round shape */}
-      <View style={styles.photoOuter}>
-        <View style={styles.photoInner}>
-          {profile.photo_url ? (
-            <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
-          ) : (
-            <View style={styles.photoEmpty} />
-          )}
-        </View>
-      </View>
 
-      {/* Name */}
-      <Text style={styles.name}>{profile.name || "—"}</Text>
-
-      {/* Action buttons */}
-      {editing ? (
-        <View style={styles.editSection}>
-          <TouchableOpacity onPress={pickPhoto} style={styles.editPhotoWrap} activeOpacity={0.7}>
-            <View style={[styles.editPhotoCircle]}>
-              {editPhotoUrl ? (
-                <Image source={{ uri: editPhotoUrl }} style={styles.editPhotoImage} contentFit="cover" />
-              ) : (
-                <View style={[styles.editPhotoImage, styles.photoEmpty]} />
-              )}
-            </View>
-            <Text style={styles.changePhotoText}>Change Photo</Text>
-          </TouchableOpacity>
-          <TextInput
-            style={styles.nameInput}
-            placeholder="Name"
-            placeholderTextColor="rgba(245,240,234,0.3)"
-            value={editName}
-            onChangeText={setEditName}
-          />
-          <View style={styles.editActions}>
-            <TouchableOpacity style={styles.glassBtn} onPress={cancelEdit}>
-              <Text style={styles.glassBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-              onPress={saveEdit}
-              disabled={saving}
-            >
-              <Text style={styles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
-            </TouchableOpacity>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile photo — organic asymmetric round shape */}
+        <View style={styles.photoOuter}>
+          <View style={styles.photoInner}>
+            {profile.photo_url ? (
+              <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
+            ) : (
+              <View style={styles.photoEmpty} />
+            )}
           </View>
         </View>
-      ) : (
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.glassBtn} onPress={startEdit}>
-            <Text style={styles.glassBtnText}>Edit Profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.glassBtn}
-            onPress={() => router.push("/settings" as Href)}
-          >
-            <Text style={styles.glassBtnText}>Settings</Text>
-          </TouchableOpacity>
-        </View>
-      )}
 
-      {deckItems.length === 0 ? (
-        <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
-      ) : (
-        deckItems.map((item) => {
-          if (item.kind === "thought") {
-            const t = item.data;
-            const feedItem: FeedItemThought = {
-              type: "thought",
-              thought: {
-                id: t.id,
-                sentence: t.sentence,
-                photo_url: t.photo_url,
-                image_url: t.image_url,
-                created_at: t.created_at ?? new Date().toISOString(),
-                has_context: false,
-              },
-              user: {
-                id: myUserId ?? "",
-                name: profile.name,
-                photo_url: profile.photo_url,
-              },
-            };
-            return (
-              <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                <CardDeck>
-                  <SwipeableThoughtCard
-                    item={feedItem}
-                    visible
-                    isOwn
-                    onDelete={handleDeleteThought}
-                    onEdit={handleEditThought}
-                  />
-                </CardDeck>
+        {/* Name */}
+        <Text style={styles.name}>{profile.name || "—"}</Text>
+
+        {/* Action buttons */}
+        {editing ? (
+          <View style={styles.editSection}>
+            <TouchableOpacity onPress={pickPhoto} style={styles.editPhotoWrap} activeOpacity={0.7}>
+              <View style={[styles.editPhotoCircle]}>
+                {editPhotoUrl ? (
+                  <Image source={{ uri: editPhotoUrl }} style={styles.editPhotoImage} contentFit="cover" />
+                ) : (
+                  <View style={[styles.editPhotoImage, styles.photoEmpty]} />
+                )}
               </View>
-            );
-          }
-          if (item.kind === "crossing") {
-            const c = item.data;
-            const crossingItem: FeedItemCrossing = {
-              type: "crossing",
-              crossing: {
-                id: c.id,
-                sentence: c.sentence,
-                context: c.context,
-                created_at: c.created_at ?? new Date().toISOString(),
-              },
-              participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
-              participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
-            };
-            return (
-              <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                <CardDeck>
-                  <CrossingCard item={crossingItem} visible myUserId={myUserId} />
-                </CardDeck>
-              </View>
-            );
-          }
-        })
-      )}
-    </ScrollView>
+              <Text style={styles.changePhotoText}>Change Photo</Text>
+            </TouchableOpacity>
+            <TextInput
+              style={styles.nameInput}
+              placeholder="Name"
+              placeholderTextColor="rgba(245,240,234,0.3)"
+              value={editName}
+              onChangeText={setEditName}
+            />
+            <View style={styles.editActions}>
+              <TouchableOpacity style={styles.glassBtn} onPress={cancelEdit}>
+                <Text style={styles.glassBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+                onPress={saveEdit}
+                disabled={saving}
+              >
+                <Text style={styles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.glassBtn} onPress={startEdit}>
+              <Text style={styles.glassBtnText}>Edit Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.glassBtn}
+              onPress={() => router.push("/settings" as Href)}
+            >
+              <Text style={styles.glassBtnText}>Settings</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {deckItems.length === 0 ? (
+          <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
+        ) : (
+          deckItems.map((item) => {
+            if (item.kind === "thought") {
+              const t = item.data;
+              const feedItem: FeedItemThought = {
+                type: "thought",
+                thought: {
+                  id: t.id,
+                  sentence: t.sentence,
+                  photo_url: t.photo_url,
+                  image_url: t.image_url,
+                  created_at: t.created_at ?? new Date().toISOString(),
+                  has_context: false,
+                },
+                user: {
+                  id: myUserId ?? "",
+                  name: profile.name,
+                  photo_url: profile.photo_url,
+                },
+              };
+              return (
+                <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                  <CardDeck>
+                    <SwipeableThoughtCard
+                      item={feedItem}
+                      visible
+                      isOwn
+                      onDelete={handleDeleteThought}
+                      onEdit={handleEditThought}
+                    />
+                  </CardDeck>
+                </View>
+              );
+            }
+            if (item.kind === "crossing") {
+              const c = item.data;
+              const crossingItem: FeedItemCrossing = {
+                type: "crossing",
+                crossing: {
+                  id: c.id,
+                  sentence: c.sentence,
+                  context: c.context,
+                  created_at: c.created_at ?? new Date().toISOString(),
+                },
+                participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
+                participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
+              };
+              return (
+                <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                  <CardDeck>
+                    <CrossingCard item={crossingItem} visible myUserId={myUserId} />
+                  </CardDeck>
+                </View>
+              );
+            }
+          })
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -415,14 +417,22 @@ const WARM = colors.WARM_GROUND; // #F5F0EA
 const warmAlpha = (a: number) => `rgba(245,240,234,${a})`;
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: colors.TYPE_DARK,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  backgroundGlow: {
+    ...StyleSheet.absoluteFillObject,
   },
   content: {
     paddingBottom: 64,
     alignItems: "center",
     paddingTop: 16,
+    flexGrow: 1,
   },
 
   /* ── Photo — organic asymmetric shape ── */

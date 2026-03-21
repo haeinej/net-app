@@ -32,6 +32,14 @@ interface DeleteAccountBody {
   password?: string;
 }
 
+type DeleteRootTable =
+  | "users"
+  | "thoughts"
+  | "replies"
+  | "conversations"
+  | "crossings"
+  | "crossing_drafts";
+
 const OPTIONAL_DELETE_TABLES = [
   "email_verification_codes",
   "reports",
@@ -44,6 +52,137 @@ const OPTIONAL_DELETE_TABLES = [
   "shift_drafts",
   "shifts",
 ] as const;
+
+const DELETE_ROOT_TABLES: readonly DeleteRootTable[] = [
+  "users",
+  "thoughts",
+  "replies",
+  "conversations",
+  "crossings",
+  "crossing_drafts",
+] as const;
+
+const MANUALLY_HANDLED_DELETE_TABLES = new Set<string>([
+  ...OPTIONAL_DELETE_TABLES,
+  ...DELETE_ROOT_TABLES,
+  "messages",
+  "user_recommendation_weights",
+  "image_generations",
+  "engagement_events",
+  "failed_processing_jobs",
+]);
+
+const DELETE_ROOT_ID_SELECTS: Record<DeleteRootTable, string> = {
+  users: "select $1::uuid as id",
+  thoughts: `
+    select id
+    from public.thoughts
+    where user_id = $1::uuid
+  `,
+  replies: `
+    select id
+    from public.replies
+    where replier_id = $1::uuid
+       or thought_id in (
+         select id
+         from public.thoughts
+         where user_id = $1::uuid
+       )
+  `,
+  conversations: `
+    select id
+    from public.conversations
+    where participant_a = $1::uuid
+       or participant_b = $1::uuid
+       or thought_id in (
+         select id
+         from public.thoughts
+         where user_id = $1::uuid
+       )
+       or reply_id in (
+         select id
+         from public.replies
+         where replier_id = $1::uuid
+            or thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+       )
+  `,
+  crossing_drafts: `
+    select id
+    from public.crossing_drafts
+    where initiator_id = $1::uuid
+       or auto_posted_thought_id in (
+         select id
+         from public.thoughts
+         where user_id = $1::uuid
+       )
+       or conversation_id in (
+         select id
+         from public.conversations
+         where participant_a = $1::uuid
+            or participant_b = $1::uuid
+            or thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+            or reply_id in (
+              select id
+              from public.replies
+              where replier_id = $1::uuid
+                 or thought_id in (
+                   select id
+                   from public.thoughts
+                   where user_id = $1::uuid
+                 )
+            )
+       )
+  `,
+  crossings: `
+    select id
+    from public.crossings
+    where participant_a = $1::uuid
+       or participant_b = $1::uuid
+       or conversation_id in (
+         select id
+         from public.conversations
+         where participant_a = $1::uuid
+            or participant_b = $1::uuid
+            or thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+            or reply_id in (
+              select id
+              from public.replies
+              where replier_id = $1::uuid
+                 or thought_id in (
+                   select id
+                   from public.thoughts
+                   where user_id = $1::uuid
+                 )
+            )
+       )
+       or source_draft_id in (
+         select id
+         from public.crossing_drafts
+         where initiator_id = $1::uuid
+            or auto_posted_thought_id in (
+              select id
+              from public.thoughts
+              where user_id = $1::uuid
+            )
+       )
+  `,
+};
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replace(/"/g, "\"\"")}"`;
+}
 
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
@@ -340,6 +479,37 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
                    where participant_a = ${userId} or participant_b = ${userId}
                  )
             `;
+          }
+
+          const dependentForeignKeyRows = await sqlTx<{
+            table_name: string;
+            column_name: string;
+            foreign_table_name: DeleteRootTable;
+          }[]>`
+            select tc.table_name, kcu.column_name, ccu.table_name as foreign_table_name
+            from information_schema.table_constraints tc
+            join information_schema.key_column_usage kcu
+              on tc.constraint_name = kcu.constraint_name
+             and tc.table_schema = kcu.table_schema
+            join information_schema.constraint_column_usage ccu
+              on ccu.constraint_name = tc.constraint_name
+             and ccu.table_schema = tc.table_schema
+            where tc.constraint_type = 'FOREIGN KEY'
+              and tc.table_schema = 'public'
+              and ccu.table_name = any(${[...DELETE_ROOT_TABLES]})
+          `;
+
+          for (const row of dependentForeignKeyRows) {
+            if (MANUALLY_HANDLED_DELETE_TABLES.has(row.table_name)) continue;
+
+            const idSelect = DELETE_ROOT_ID_SELECTS[row.foreign_table_name];
+            if (!idSelect) continue;
+
+            await sqlTx.unsafe(
+              `delete from public.${quoteIdentifier(row.table_name)}
+               where ${quoteIdentifier(row.column_name)} in (${idSelect})`,
+              [userId]
+            );
           }
 
           await sqlTx`

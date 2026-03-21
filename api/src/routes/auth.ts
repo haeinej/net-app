@@ -305,7 +305,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   );
 
   app.post<{
-    Body: { email?: string; code?: string; token_hash?: string; type?: string; password?: string };
+    Body: {
+      email?: string;
+      code?: string;
+      token_hash?: string;
+      access_token?: string;
+      type?: string;
+      password?: string;
+    };
   }>(
     "/api/auth/reset-password",
     {
@@ -323,6 +330,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       const email = emailRaw ? normalizeEmail(emailRaw) : "";
       const code = readTrimmedString(body.code);
       const tokenHash = readOptionalTrimmedString(body.token_hash);
+      const accessToken = readOptionalTrimmedString(body.access_token);
       const password = typeof body.password === "string" ? body.password : "";
 
       const passwordError = validateStrongPassword(password);
@@ -330,7 +338,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: passwordError });
       }
 
-      if (!tokenHash && (!email || !/^\d{6,8}$/.test(code))) {
+      if (!tokenHash && !accessToken && (!email || !/^\d{6,8}$/.test(code))) {
         return reply.status(400).send({
           error: "Open the reset link or enter your email and reset code",
         });
@@ -342,6 +350,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
               tokenHash,
               type: body.type,
             })
+          : accessToken
+            ? await verifySupabaseRecovery({
+                accessToken,
+                type: body.type,
+              })
           : await verifySupabaseRecovery({
               email,
               code,

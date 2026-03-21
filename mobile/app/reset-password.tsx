@@ -33,14 +33,17 @@ export default function ResetPasswordScreen() {
   const params = useLocalSearchParams<{
     email?: string;
     token_hash?: string;
+    access_token?: string;
     type?: string;
     error?: string;
     error_description?: string;
   }>();
 
   const tokenHash = typeof params.token_hash === "string" ? params.token_hash.trim() : "";
+  const accessToken =
+    typeof params.access_token === "string" ? params.access_token.trim() : "";
   const resetType = typeof params.type === "string" ? params.type.trim() : undefined;
-  const hasLinkToken = tokenHash.length > 0;
+  const hasLinkToken = tokenHash.length > 0 || accessToken.length > 0;
   const deepLinkError =
     typeof params.error_description === "string"
       ? params.error_description
@@ -102,11 +105,19 @@ export default function ResetPasswordScreen() {
     setResetting(true);
     try {
       if (hasLinkToken) {
-        await resetPassword({
-          password,
-          tokenHash,
-          type: resetType,
-        });
+        await resetPassword(
+          tokenHash
+            ? {
+                password,
+                tokenHash,
+                type: resetType,
+              }
+            : {
+                password,
+                accessToken,
+                type: resetType,
+              }
+        );
       } else {
         await resetPassword({
           email: cleanEmail,
@@ -123,7 +134,7 @@ export default function ResetPasswordScreen() {
     } finally {
       setResetting(false);
     }
-  }, [cleanEmail, code, confirmPassword, hasLinkToken, password, resetType, tokenHash]);
+  }, [accessToken, cleanEmail, code, confirmPassword, hasLinkToken, password, resetType, tokenHash]);
 
   return (
     <KeyboardAvoidingView

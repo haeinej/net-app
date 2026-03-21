@@ -136,15 +136,20 @@
   </style>
   <script>
     (function () {
-      var params = new URLSearchParams(window.location.search);
-      var tokenHash = params.get("token_hash");
-      var type = params.get("type") || "recovery";
-      var error = params.get("error");
-      var errorDescription = params.get("error_description");
+      var queryParams = new URLSearchParams(window.location.search);
+      var hash = window.location.hash.replace(/^#/, "");
+      var hashParams = new URLSearchParams(hash);
+      var tokenHash = queryParams.get("token_hash") || hashParams.get("token_hash");
+      var accessToken = queryParams.get("access_token") || hashParams.get("access_token");
+      var type = queryParams.get("type") || hashParams.get("type") || "recovery";
+      var error = queryParams.get("error") || hashParams.get("error");
+      var errorDescription =
+        queryParams.get("error_description") || hashParams.get("error_description");
 
       function buildAppUrl() {
         var appParams = new URLSearchParams();
         if (tokenHash) appParams.set("token_hash", tokenHash);
+        if (accessToken) appParams.set("access_token", accessToken);
         if (type) appParams.set("type", type);
         if (error) appParams.set("error", error);
         if (errorDescription) appParams.set("error_description", errorDescription);
@@ -153,7 +158,7 @@
 
       window.__OHM_RESET_HANDOFF__ = {
         appUrl: buildAppUrl(),
-        hasToken: !!tokenHash,
+        hasToken: !!(tokenHash || accessToken),
       };
 
       if (window.__OHM_RESET_HANDOFF__.hasToken) {
@@ -195,7 +200,7 @@
 
       if (!handoff.hasToken) {
         title.textContent = "Reset link is incomplete";
-        copy.textContent = "This link is missing the password reset token. Please return to the latest password reset email and try again.";
+        copy.textContent = "This link is missing the password reset session. Please return to the latest password reset email and try again.";
         detail.classList.remove("hidden");
         return;
       }

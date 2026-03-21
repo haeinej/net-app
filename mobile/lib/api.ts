@@ -1013,12 +1013,22 @@ type ResetPasswordPayload =
       type?: string;
       email?: never;
       code?: never;
+      accessToken?: never;
+    }
+  | {
+      password: string;
+      accessToken: string;
+      type?: string;
+      email?: never;
+      code?: never;
+      tokenHash?: never;
     }
   | {
       password: string;
       email: string;
       code: string;
       tokenHash?: never;
+      accessToken?: never;
       type?: never;
     };
 
@@ -1029,6 +1039,12 @@ export async function resetPassword(payload: ResetPasswordPayload): Promise<void
         token_hash: payload.tokenHash,
         type: payload.type,
       }
+    : "accessToken" in payload
+      ? {
+          password: payload.password,
+          access_token: payload.accessToken,
+          type: payload.type,
+        }
     : {
         password: payload.password,
         email: payload.email,
