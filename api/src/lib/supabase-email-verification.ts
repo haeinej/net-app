@@ -155,12 +155,17 @@ async function getSupabaseUserEmailFromAccessToken(accessToken: string): Promise
     },
   });
 
-  const payload = (await response.json().catch(() => null)) as SupabaseVerifyResponse | Record<string, unknown> | null;
+  const payload =
+    (await response.json().catch(() => null)) as
+      | SupabaseVerifyResponse
+      | Record<string, unknown>
+      | null;
   if (!response.ok) {
     throw new Error(normalizeErrorMessage(payload, "Could not verify password reset"));
   }
 
-  const email = payload?.user?.email?.trim().toLowerCase();
+  const verifiedPayload = payload as SupabaseVerifyResponse | null;
+  const email = verifiedPayload?.user?.email?.trim().toLowerCase();
   if (!email) {
     throw new Error("Could not verify password reset");
   }
