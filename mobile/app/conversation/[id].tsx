@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
@@ -18,9 +19,8 @@ import {
 import { Image } from "expo-image";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, spacing, typography } from "../../theme";
+import { colors, spacing, typography, primitives, opacity } from "../../theme";
 import { fontFamily } from "../../theme/typography";
-import { SwipeConfirm } from "../../components/SwipeConfirm";
 import {
   fetchConversationMessages,
   postConversationMessage,
@@ -436,13 +436,20 @@ export default function ConversationThreadScreen() {
     if (!crossingDraft && !crossingOpen) {
       return (
         <View style={styles.crossingWrap}>
-          <SwipeConfirm
-            label="Crossing?"
-            hint="Swipe to make a crossing from this conversation."
-            completionLabel="Start crossing"
-            loading={crossingSubmitting}
-            onComplete={handleStartCrossing}
-          />
+          <Text style={styles.crossingHint}>
+            Crossing: a card of two new thoughts — yours and theirs — from one conversation.
+          </Text>
+          <TouchableOpacity
+            style={[styles.crossingPostBtn, crossingSubmitting && styles.crossingPostBtnDisabled]}
+            onPress={handleStartCrossing}
+            disabled={crossingSubmitting}
+          >
+            {crossingSubmitting ? (
+              <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+            ) : (
+              <Text style={styles.crossingPostBtnText}>START CROSSING</Text>
+            )}
+          </TouchableOpacity>
         </View>
       );
     }
@@ -595,7 +602,7 @@ export default function ConversationThreadScreen() {
             }}
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: crossingOpen || canCreateCrossing ? 180 : 92 },
+              { paddingBottom: crossingOpen ? 440 : canCreateCrossing ? 180 : 92 },
             ]}
           />
 
@@ -607,99 +614,121 @@ export default function ConversationThreadScreen() {
             {renderCrossingBanner()}
 
             {crossingOpen && convDetail ? (
-              <View style={styles.flowPanel}>
-                <Text style={styles.flowTitle}>Crossing</Text>
-                <Text style={styles.flowLabel}>One crossing</Text>
-                <TextInput
-                  style={styles.flowInput}
-                  placeholder="what changed between you because of this conversation"
-                  placeholderTextColor={colors.TYPE_MUTED}
-                  value={crossingSentence}
-                  onChangeText={setCrossingSentence}
-                  maxLength={500}
-                  editable={!crossingSubmitting && !canApproveCrossing}
-                />
-                <Text style={styles.flowLabel}>Context</Text>
-                <TextInput
-                  style={styles.flowInput}
-                  placeholder="Optional context"
-                  placeholderTextColor={colors.TYPE_MUTED}
-                  value={crossingContext}
-                  onChangeText={setCrossingContext}
-                  maxLength={600}
-                  editable={!crossingSubmitting && !canApproveCrossing}
-                  multiline
-                />
+              <ScrollView
+                style={styles.crossingPanel}
+                contentContainerStyle={styles.crossingPanelContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.fieldBlock}>
+                  <Text style={styles.fieldLabel}>One crossing</Text>
+                  <Text style={styles.fieldHint}>
+                    what changed between you because of this conversation
+                  </Text>
+                  <TextInput
+                    style={[styles.textArea, styles.crossingSentenceInput]}
+                    placeholder="the thing that hit different the second time"
+                    placeholderTextColor={colors.TYPE_MUTED}
+                    value={crossingSentence}
+                    onChangeText={(t) => setCrossingSentence(t.slice(0, 500))}
+                    maxLength={500}
+                    multiline
+                    numberOfLines={5}
+                    editable={!crossingSubmitting && !canApproveCrossing}
+                  />
+                </View>
+
+                <View style={styles.fieldBlock}>
+                  <Text style={styles.fieldLabel}>Context</Text>
+                  <TextInput
+                    style={[styles.textArea, styles.crossingContextInput]}
+                    placeholder="Where it came from, what triggered it, what is underneath it."
+                    placeholderTextColor={colors.TYPE_MUTED}
+                    value={crossingContext}
+                    onChangeText={(t) => setCrossingContext(t.slice(0, 600))}
+                    maxLength={600}
+                    multiline
+                    numberOfLines={3}
+                    editable={!crossingSubmitting && !canApproveCrossing}
+                  />
+                </View>
+
                 {waitingForOtherParticipant ? (
-                  <Text style={styles.flowStatus}>
+                  <Text style={styles.crossingStatus}>
                     {crossingAutoPostLabel
-                      ? `Waiting for the other person. If they do nothing by ${crossingAutoPostLabel}, this posts as your thought with your profile photo.`
-                      : "Waiting for the other person. If they do nothing, this posts as your thought with your profile photo."}
+                      ? `Waiting for the other person. If they do nothing by ${crossingAutoPostLabel}, this posts as your thought.`
+                      : "Waiting for the other person. If they do nothing, this posts as your thought."}
                   </Text>
                 ) : null}
                 {canApproveCrossing ? (
-                  <Text style={styles.flowStatus}>
-                    If you agree, this becomes a shared crossing. If you do nothing, it will post as their thought after 3 days.
+                  <Text style={styles.crossingStatus}>
+                    If you agree, this becomes a shared crossing. If you do nothing, it posts as their thought after 3 days.
                   </Text>
                 ) : null}
-                <View style={styles.flowRow}>
+
+                <TouchableOpacity
+                  style={[styles.crossingPostBtn, (!crossingSentence.trim() && !canApproveCrossing || crossingSubmitting) && styles.crossingPostBtnDisabled]}
+                  onPress={handleCreateCrossing}
+                  disabled={crossingSubmitting || (!canApproveCrossing && !crossingSentence.trim())}
+                >
+                  {crossingSubmitting ? (
+                    <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+                  ) : (
+                    <Text style={styles.crossingPostBtnText}>
+                      {canApproveCrossing
+                        ? "MAKE CROSSING"
+                        : waitingForOtherParticipant
+                          ? "UPDATE CROSSING"
+                          : "CREATE CROSSING"}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.crossingSecondaryRow}>
                   {!canApproveCrossing ? (
                     <TouchableOpacity
-                      style={[styles.flowBtn, styles.flowBtnSecondary]}
+                      style={styles.crossingSecondaryBtn}
                       onPress={handleSaveCrossingDraft}
                       disabled={crossingSubmitting}
                     >
-                      <Text style={styles.flowBtnTextSecondary}>
+                      <Text style={styles.crossingSecondaryText}>
                         {waitingForOtherParticipant ? "Save changes" : "Save draft"}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
                   <TouchableOpacity
-                    style={[styles.flowBtn, styles.flowBtnPrimary]}
-                    onPress={handleCreateCrossing}
-                    disabled={crossingSubmitting || (!canApproveCrossing && !crossingSentence.trim())}
+                    style={styles.crossingSecondaryBtn}
+                    onPress={canApproveCrossing ? () => setCrossingOpen(false) : handleAbandonCrossing}
                   >
-                    <Text style={styles.flowBtnTextPrimary}>
-                      {crossingSubmitting
-                        ? "..."
-                        : canApproveCrossing
-                          ? "Make crossing"
-                          : waitingForOtherParticipant
-                            ? "Update crossing"
-                            : "Create crossing"}
+                    <Text style={styles.crossingSecondaryText}>
+                      {canApproveCrossing ? "Close" : "Discard draft"}
                     </Text>
                   </TouchableOpacity>
                 </View>
+              </ScrollView>
+            ) : null}
+
+            {!crossingOpen ? (
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="..."
+                  placeholderTextColor={colors.TYPE_MUTED}
+                  value={text}
+                  onChangeText={setText}
+                  onSubmitEditing={sendMessage}
+                  returnKeyType="send"
+                  editable={!sending}
+                />
                 <TouchableOpacity
-                  onPress={canApproveCrossing ? () => setCrossingOpen(false) : handleAbandonCrossing}
-                  style={styles.flowClose}
+                  style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+                  onPress={sendMessage}
+                  disabled={!text.trim() || sending}
                 >
-                  <Text style={styles.flowBtnTextSecondary}>
-                    {canApproveCrossing ? "Close" : "Discard draft"}
-                  </Text>
+                  <Text style={styles.sendBtnText}>Send</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
-
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.input}
-                placeholder="..."
-                placeholderTextColor={colors.TYPE_MUTED}
-                value={text}
-                onChangeText={setText}
-                onSubmitEditing={sendMessage}
-                returnKeyType="send"
-                editable={!sending}
-              />
-              <TouchableOpacity
-                style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
-                onPress={sendMessage}
-                disabled={!text.trim() || sending}
-              >
-                <Text style={styles.sendBtnText}>Send</Text>
-              </TouchableOpacity>
-            </View>
             <View style={{ height: Math.max(insets.bottom, 10) }} />
           </KeyboardAvoidingView>
         </>
@@ -879,6 +908,11 @@ const styles = StyleSheet.create({
   crossingWrap: {
     marginBottom: 10,
   },
+  crossingHint: {
+    ...typography.metadata,
+    color: colors.TYPE_MUTED,
+    marginBottom: 8,
+  },
   ignoreRow: {
     paddingVertical: 8,
     paddingHorizontal: 4,
@@ -920,73 +954,69 @@ const styles = StyleSheet.create({
     color: colors.OLIVE,
     marginBottom: 8,
   },
-  flowPanel: {
-    paddingTop: 12,
-    marginBottom: 10,
+  crossingPanel: {
+    maxHeight: 420,
     borderTopWidth: 1,
     borderTopColor: "rgba(26,26,22,0.06)",
   },
-  flowTitle: {
-    ...typography.label,
-    fontSize: 14,
-    color: colors.TYPE_DARK,
-    marginBottom: 8,
+  crossingPanelContent: {
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  flowLabel: {
-    ...typography.metadata,
-    fontSize: 11,
+  fieldBlock: {
+    ...primitives.fieldBlock,
+  },
+  fieldLabel: {
+    ...primitives.fieldLabel,
+  },
+  fieldHint: {
+    ...typography.bodySmall,
     color: colors.TYPE_MUTED,
-    marginTop: 6,
-    marginBottom: 4,
+    marginBottom: 10,
   },
-  flowStatus: {
-    ...typography.context,
-    fontSize: 14,
-    lineHeight: 19,
+  textArea: {
+    ...primitives.textArea,
+  },
+  crossingSentenceInput: {
+    ...typography.thoughtDisplay,
     color: colors.TYPE_DARK,
-    marginTop: 6,
-    marginBottom: 2,
+    minHeight: 120,
+    textAlignVertical: "top",
   },
-  flowInput: {
-    ...typography.replyInput,
-    fontSize: 16,
+  crossingContextInput: {
+    ...typography.body,
     color: colors.TYPE_DARK,
-    backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 6,
+    minHeight: 80,
+    textAlignVertical: "top",
   },
-  flowRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 8,
+  crossingStatus: {
+    ...typography.bodySmall,
+    color: colors.TYPE_MUTED,
+    marginBottom: 12,
   },
-  flowBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  flowBtnPrimary: {
+  crossingPostBtn: {
+    ...primitives.buttonPrimary,
     backgroundColor: colors.OLIVE,
+    marginTop: 4,
   },
-  flowBtnSecondary: {
-    backgroundColor: colors.CARD_GROUND,
+  crossingPostBtnDisabled: {
+    opacity: opacity.disabled,
   },
-  flowBtnTextPrimary: {
+  crossingPostBtnText: {
+    ...primitives.buttonPrimaryText,
+  },
+  crossingSecondaryRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 24,
+    marginTop: 12,
+  },
+  crossingSecondaryBtn: {
+    paddingVertical: 8,
+  },
+  crossingSecondaryText: {
     ...typography.label,
-    fontSize: 11,
-    color: colors.TYPE_WHITE,
-  },
-  flowBtnTextSecondary: {
-    ...typography.metadata,
-    fontSize: 11,
     color: colors.TYPE_MUTED,
-  },
-  flowClose: {
-    marginTop: 8,
-    paddingVertical: 4,
   },
   inputRow: {
     flexDirection: "row",
