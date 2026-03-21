@@ -38,7 +38,6 @@ export function NotificationPanel({
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Pending replies</Text>
-      <Text style={styles.caption}>Your own thought view shows the full reply inbox.</Text>
       {items.map((n) => (
         <View key={n.reply_id} style={styles.row}>
           <TouchableOpacity
@@ -112,11 +111,6 @@ const styles = StyleSheet.create({
     ...typography.label,
     textTransform: "uppercase",
     color: colors.TYPE_DARK,
-    marginBottom: 4,
-  },
-  caption: {
-    ...typography.metadata,
-    color: colors.TYPE_MUTED,
     marginBottom: 14,
   },
   avatar: {

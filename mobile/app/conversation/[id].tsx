@@ -381,7 +381,7 @@ export default function ConversationThreadScreen() {
 
   const handleMoreMenu = useCallback(() => {
     if (!otherId) return;
-    Alert.alert(undefined, undefined, [
+    Alert.alert("Conversation options", undefined, [
       {
         text: "Report",
         onPress: () => setReportVisible(true),
