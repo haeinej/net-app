@@ -89,6 +89,7 @@ export function CrossingCard({
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
   const swipeSendQueuedRef = useRef(false);
+  const submitReplyRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replyLengthValue = useSharedValue(0);
   const canReplyValue = useSharedValue(0);
   const sendingValue = useSharedValue(0);
@@ -124,6 +125,14 @@ export function CrossingCard({
     }
   }, [crossing.id]);
 
+  // ── Stable-identity wrappers for runOnJS (prevents Hermes crash from GC'd closures) ──
+  const loadDetailRef = useRef(loadDetail);
+  loadDetailRef.current = loadDetail;
+  const rememberPanelRef = useRef(rememberPanel);
+  rememberPanelRef.current = rememberPanel;
+  const jsLoadDetail = useCallback(() => { loadDetailRef.current(); }, []);
+  const jsRememberPanel = useCallback((p: number) => { rememberPanelRef.current(p); }, []);
+
   // Rubber-band function (matches SwipeableThoughtCard)
   const rubberBand = (offset: number, limit: number) => {
     "worklet";
@@ -142,17 +151,17 @@ export function CrossingCard({
       sendTriggered.value = 0;
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
-      runOnJS(rememberPanel)(target);
-      if (from === 0 && target === 1) runOnJS(loadDetail)();
+      runOnJS(jsRememberPanel)(target);
+      if (from === 0 && target === 1) runOnJS(jsLoadDetail)();
     },
     [
       cardWidth,
       currentPanel,
       indicatorProgress,
-      loadDetail,
+      jsLoadDetail,
       panel2X,
       panel3X,
-      rememberPanel,
+      jsRememberPanel,
       sendHapticArmed,
       sendTriggered,
       sendSwipeProgress,
@@ -404,13 +413,16 @@ export function CrossingCard({
     loadDetail,
   ]);
 
+  submitReplyRef.current = submitReply;
+
+  // Stable identity — safe for runOnJS even when submitReply is recreated by React
   const queueSwipeSend = useCallback(() => {
     if (swipeSendQueuedRef.current) return;
     swipeSendQueuedRef.current = true;
-    void submitReply().finally(() => {
+    void submitReplyRef.current().finally(() => {
       swipeSendQueuedRef.current = false;
     });
-  }, [submitReply]);
+  }, []);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);

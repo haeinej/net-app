@@ -65,6 +65,7 @@ export default function ThoughtDetailScreen() {
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
   const swipeSendQueuedRef = useRef(false);
+  const submitReplyRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replyLengthValue = useSharedValue(0);
   const canReplyValue = useSharedValue(0);
   const sendingValue = useSharedValue(0);
@@ -157,6 +158,14 @@ export default function ThoughtDetailScreen() {
     ]
   );
 
+  // ── Stable-identity wrappers for runOnJS (prevents Hermes crash from GC'd closures) ──
+  const snapToPanelRef = useRef(snapToPanel);
+  snapToPanelRef.current = snapToPanel;
+  const handleBackRef = useRef(handleBack);
+  handleBackRef.current = handleBack;
+  const jsSnapToPanel = useCallback((i: number) => { snapToPanelRef.current(i); }, []);
+  const jsHandleBack = useCallback(() => { handleBackRef.current(); }, []);
+
   const panGesture = Gesture.Pan()
     .onStart(() => {
       gestureStartX.value = translateX.value;
@@ -224,7 +233,7 @@ export default function ThoughtDetailScreen() {
         sendSwipeProgress.value = withTiming(0, { duration: 120 });
         sendHapticArmed.value = 0;
         translateX.value = withTiming(min, { duration: 120 });
-        runOnJS(queueSwipeSend)();
+        runOnJS(jsQueueSwipeSend)();
         return;
       }
 
@@ -234,10 +243,10 @@ export default function ThoughtDetailScreen() {
       if (targetIndex < 0) targetIndex = 0;
       if (targetIndex > 2) targetIndex = 2;
       if (targetIndex === 0 && current > -screenWidth * 0.2 && (velocity > 80 || current > 20)) {
-        runOnJS(handleBack)();
+        runOnJS(jsHandleBack)();
         return;
       }
-      runOnJS(snapToPanel)(targetIndex);
+      runOnJS(jsSnapToPanel)(targetIndex);
     });
 
   const animatedRowStyle = useAnimatedStyle(() => ({
@@ -324,13 +333,16 @@ export default function ThoughtDetailScreen() {
     refreshThought,
   ]);
 
-  const queueSwipeSend = useCallback(() => {
+  submitReplyRef.current = submitReply;
+
+  // Stable identity — safe for runOnJS even when submitReply is recreated by React
+  const jsQueueSwipeSend = useCallback(() => {
     if (swipeSendQueuedRef.current) return;
     swipeSendQueuedRef.current = true;
-    void submitReply().finally(() => {
+    void submitReplyRef.current().finally(() => {
       swipeSendQueuedRef.current = false;
     });
-  }, [submitReply]);
+  }, []);
 
   const handleDeleteReply = useCallback(
     (replyId: string) => {

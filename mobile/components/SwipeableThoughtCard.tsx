@@ -95,6 +95,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   const sendHapticArmed = useSharedValue(0);
   const sendTriggered = useSharedValue(0);
   const swipeSendQueuedRef = useRef(false);
+  const submitReplyRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replyLengthValue = useSharedValue(0);
   const canReplyValue = useSharedValue(0);
   const sendingValue = useSharedValue(0);
@@ -145,6 +146,23 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     [cardKey]
   );
 
+  // ── Stable-identity wrappers for runOnJS (prevents Hermes crash from GC'd closures) ──
+  // When React re-renders (e.g. every keystroke), useCallback recreates closures.
+  // Gesture worklets capture these via runOnJS — if the old closure is GC'd mid-swipe,
+  // Hermes crashes with throwPendingError. Refs ensure the worklet always calls a live function.
+  const loadDetailRef = useRef(loadDetail);
+  loadDetailRef.current = loadDetail;
+  const rememberPanelRef = useRef(rememberPanel);
+  rememberPanelRef.current = rememberPanel;
+  const recordSwipeP2Ref = useRef(recordSwipeP2);
+  recordSwipeP2Ref.current = recordSwipeP2;
+  const recordSwipeP3Ref = useRef(recordSwipeP3);
+  recordSwipeP3Ref.current = recordSwipeP3;
+  const jsLoadDetail = useCallback(() => { loadDetailRef.current(); }, []);
+  const jsRememberPanel = useCallback((p: number) => { rememberPanelRef.current(p); }, []);
+  const jsRecordSwipeP2 = useCallback(() => { recordSwipeP2Ref.current(); }, []);
+  const jsRecordSwipeP3 = useCallback(() => { recordSwipeP3Ref.current(); }, []);
+
   const snapTo = useCallback(
     (target: number, from: number) => {
       "worklet";
@@ -170,23 +188,23 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
 
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
-      runOnJS(rememberPanel)(target);
+      runOnJS(jsRememberPanel)(target);
 
       if (from === 0 && target === 1) {
-        runOnJS(recordSwipeP2)();
-        runOnJS(loadDetail)();
+        runOnJS(jsRecordSwipeP2)();
+        runOnJS(jsLoadDetail)();
       } else if (from === 1 && target === 2) {
-        runOnJS(recordSwipeP3)();
+        runOnJS(jsRecordSwipeP3)();
       }
     },
     [
       cardWidth,
       currentPanel,
       indicatorProgress,
-      loadDetail,
+      jsLoadDetail,
       panel2X,
       panel3X,
-      rememberPanel,
+      jsRememberPanel,
       sendHapticArmed,
       sendTriggered,
       sendSwipeProgress,
@@ -479,13 +497,16 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     refreshDetail,
   ]);
 
+  submitReplyRef.current = submitReply;
+
+  // Stable identity — safe for runOnJS even when submitReply is recreated by React
   const queueSwipeSend = useCallback(() => {
     if (swipeSendQueuedRef.current) return;
     swipeSendQueuedRef.current = true;
-    void submitReply().finally(() => {
+    void submitReplyRef.current().finally(() => {
       swipeSendQueuedRef.current = false;
     });
-  }, [submitReply]);
+  }, []);
 
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
