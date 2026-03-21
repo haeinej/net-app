@@ -5,12 +5,13 @@
  */
 import type { FastifyInstance } from "fastify";
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
-import { db, conversations, users, crossingDrafts, crossings, crossingReplies } from "../db";
+import { db, conversations, users, crossingDrafts, crossings, crossingReplies, thoughts } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { invalidateFeedCache } from "../feed";
 import { filterContent } from "../lib/content-filter";
 
 const CROSSING_CONTEXT_MAX = 600;
+const CROSSING_SENTENCE_MAX = 200;
 const CROSSING_MESSAGE_STEP = 10;
 const CROSSING_AUTO_POST_DAYS = 3;
 type CrossingDraftStatus = typeof crossingDrafts.$inferSelect.status;
@@ -80,6 +81,16 @@ function serializeCrossingDraft(
     submitted_at: draft.submittedAt?.toISOString() ?? null,
     auto_post_at: draft.autoPostAt?.toISOString() ?? null,
     auto_posted_thought_id: draft.autoPostedThoughtId ?? null,
+  };
+}
+
+function serializeCrossing(crossing: typeof crossings.$inferSelect) {
+  return {
+    id: crossing.id,
+    sentence: crossing.sentence,
+    context: crossing.context ?? null,
+    image_url: crossing.imageUrl ?? null,
+    created_at: crossing.createdAt?.toISOString() ?? null,
   };
 }
 
@@ -457,6 +468,141 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ ok: true });
     }
   );
+
+  app.put<{
+    Params: { id: string };
+    Body: { sentence?: string; context?: string };
+  }>("/api/crossings/:id", async (request, reply) => {
+    const userId = getUserId(request);
+    if (!userId) return reply.status(401).send();
+
+    const crossingId = request.params.id;
+    const [crossing] = await db
+      .select()
+      .from(crossings)
+      .where(eq(crossings.id, crossingId))
+      .limit(1);
+    if (!crossing) return reply.status(404).send();
+
+    const isParticipant =
+      crossing.participantA === userId || crossing.participantB === userId;
+    if (!isParticipant) {
+      return reply.status(403).send({ error: "only participants can edit this crossing" });
+    }
+
+    const body = request.body ?? {};
+    const sentence =
+      typeof body.sentence === "string" ? body.sentence.trim() : undefined;
+    const context =
+      typeof body.context === "string"
+        ? body.context.slice(0, CROSSING_CONTEXT_MAX).trim()
+        : undefined;
+
+    if (sentence !== undefined && !sentence) {
+      return reply.status(400).send({ error: "sentence required" });
+    }
+    if (sentence && sentence.length > CROSSING_SENTENCE_MAX) {
+      return reply
+        .status(400)
+        .send({ error: `sentence max ${CROSSING_SENTENCE_MAX} chars` });
+    }
+    if (context !== undefined && context.length > CROSSING_CONTEXT_MAX) {
+      return reply
+        .status(400)
+        .send({ error: `context max ${CROSSING_CONTEXT_MAX} chars` });
+    }
+
+    if (sentence !== undefined) {
+      const sentenceFilter = filterContent(sentence);
+      if (sentenceFilter.flagged) {
+        return reply.status(400).send({
+          error:
+            "Your crossing was flagged for potentially objectionable content. Please revise and try again.",
+        });
+      }
+    }
+    if (context) {
+      const contextFilter = filterContent(context);
+      if (contextFilter.flagged) {
+        return reply.status(400).send({
+          error:
+            "Your context was flagged for potentially objectionable content. Please revise and try again.",
+        });
+      }
+    }
+
+    if (sentence === undefined && context === undefined) {
+      return reply.send(serializeCrossing(crossing));
+    }
+
+    await db
+      .update(crossings)
+      .set({
+        ...(sentence !== undefined ? { sentence } : {}),
+        ...(context !== undefined ? { context: context || null } : {}),
+      })
+      .where(eq(crossings.id, crossingId));
+
+    const [updated] = await db
+      .select()
+      .from(crossings)
+      .where(eq(crossings.id, crossingId))
+      .limit(1);
+    if (!updated) return reply.status(404).send();
+
+    void invalidateFeedCache(crossing.participantA);
+    void invalidateFeedCache(crossing.participantB);
+
+    return reply.send(serializeCrossing(updated));
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/crossings/:id", async (request, reply) => {
+    const userId = getUserId(request);
+    if (!userId) return reply.status(401).send();
+
+    const crossingId = request.params.id;
+    const [crossing] = await db
+      .select()
+      .from(crossings)
+      .where(eq(crossings.id, crossingId))
+      .limit(1);
+    if (!crossing) return reply.status(404).send();
+
+    const isParticipant =
+      crossing.participantA === userId || crossing.participantB === userId;
+    if (!isParticipant) {
+      return reply.status(403).send({ error: "only participants can delete this crossing" });
+    }
+
+    const otherId =
+      crossing.participantA === userId ? crossing.participantB : crossing.participantA;
+
+    // Look up the other participant's photo for the new thought
+    const [otherUser] = await db
+      .select({ photoUrl: users.photoUrl })
+      .from(users)
+      .where(eq(users.id, otherId))
+      .limit(1);
+
+    await db.transaction(async (tx) => {
+      // Create a regular thought for the other participant
+      await tx.insert(thoughts).values({
+        userId: otherId,
+        sentence: crossing.sentence,
+        context: crossing.context,
+        photoUrl: otherUser?.photoUrl ?? null,
+      });
+
+      // Remove the crossing
+      await tx.delete(crossingReplies).where(eq(crossingReplies.crossingId, crossingId));
+      await tx.delete(crossings).where(eq(crossings.id, crossingId));
+    });
+
+    void invalidateFeedCache(crossing.participantA);
+    void invalidateFeedCache(crossing.participantB);
+
+    return reply.status(200).send({ ok: true });
+  });
 
   // ——— Crossing Detail + Reply ———
 

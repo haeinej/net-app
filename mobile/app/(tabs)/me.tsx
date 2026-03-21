@@ -34,6 +34,8 @@ import {
   updateProfile,
   deleteThought,
   editThought,
+  deleteCrossing,
+  editCrossing,
   fetchMyInvites,
   generateInvite,
   type ProfileResponse,
@@ -272,6 +274,86 @@ export default function MeScreen() {
     [profile]
   );
 
+  const handleDeleteCrossing = useCallback(async (crossingId: string) => {
+    try {
+      await deleteCrossing(crossingId);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              crossings: (prev.crossings ?? []).filter((crossing) => crossing.id !== crossingId),
+            }
+          : null
+      );
+    } catch {
+      Alert.alert("Error", "Could not delete crossing");
+    }
+  }, []);
+
+  const handleEditCrossing = useCallback(
+    (crossingId: string) => {
+      const crossing = profile?.crossings?.find((item) => item.id === crossingId);
+      if (!crossing) return;
+
+      const openContextPrompt = (nextSentence: string, existingContext: string) => {
+        Alert.prompt(
+          "Edit context",
+          "Update the context:",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Save",
+              onPress: async (newContext?: string) => {
+                const nextContext = newContext?.trim() ?? "";
+                try {
+                  await editCrossing(crossingId, {
+                    sentence: nextSentence,
+                    context: nextContext,
+                  });
+                  setProfile((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          crossings: (prev.crossings ?? []).map((item) =>
+                            item.id === crossingId
+                              ? { ...item, sentence: nextSentence, context: nextContext || null }
+                              : item
+                          ),
+                        }
+                      : null
+                  );
+                } catch {
+                  Alert.alert("Error", "Could not edit crossing");
+                }
+              },
+            },
+          ],
+          "plain-text",
+          existingContext
+        );
+      };
+
+      Alert.prompt(
+        "Edit crossing",
+        "Update the sentence:",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Next",
+            onPress: (newSentence?: string) => {
+              const nextSentence = newSentence?.trim();
+              if (!nextSentence) return;
+              openContextPrompt(nextSentence, crossing.context ?? "");
+            },
+          },
+        ],
+        "plain-text",
+        crossing.sentence
+      );
+    },
+    [profile]
+  );
+
   if (!myUserId) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
@@ -344,7 +426,7 @@ export default function MeScreen() {
 
       {/* ☰ Hamburger menu — top right */}
       <TouchableOpacity
-        style={[styles.hamburger, { top: insets.top + 12 }]}
+        style={[styles.hamburger, { top: insets.top + 24 }]}
         onPress={openMenu}
         activeOpacity={0.6}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -356,7 +438,7 @@ export default function MeScreen() {
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 46 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -471,7 +553,14 @@ export default function MeScreen() {
                 return (
                   <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
                     <CardDeck layers={0}>
-                      <CrossingCard item={crossingItem} visible myUserId={myUserId} />
+                      <CrossingCard
+                        item={crossingItem}
+                        visible
+                        myUserId={myUserId}
+                        isOwn
+                        onDelete={handleDeleteCrossing}
+                        onEdit={handleEditCrossing}
+                      />
                     </CardDeck>
                   </View>
                 );
@@ -556,7 +645,7 @@ const styles = StyleSheet.create({
   profileHeader: {
     width: "100%",
     alignItems: "center",
-    paddingTop: 12,
+    paddingTop: 10,
   },
 
   /* ── Photo — organic asymmetric shape ── */
@@ -598,7 +687,7 @@ const styles = StyleSheet.create({
     ...typography.headingLg,
     color: WARM,
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 28,
   },
 
   /* ── Hamburger icon ── */
@@ -740,7 +829,7 @@ const styles = StyleSheet.create({
   },
   deckSection: {
     width: "100%",
-    marginTop: 24,
+    marginTop: 18,
   },
   thoughtWrap: {
     marginBottom: spacing.cardGap + 6,

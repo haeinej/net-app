@@ -618,6 +618,37 @@ export async function postCrossingReply(
   );
 }
 
+export interface EditCrossingResponse {
+  id: string;
+  sentence: string;
+  context: string | null;
+  image_url: string | null;
+  created_at: string | null;
+}
+
+export async function editCrossing(
+  crossingId: string,
+  updates: { sentence?: string; context?: string }
+): Promise<EditCrossingResponse> {
+  return requestJson<EditCrossingResponse>(
+    `/api/crossings/${crossingId}`,
+    "Edit failed",
+    {
+      method: "PUT",
+      auth: true,
+      headers: JSON_HEADERS,
+      body: JSON.stringify(updates),
+    }
+  );
+}
+
+export async function deleteCrossing(crossingId: string): Promise<void> {
+  await requestVoid(`/api/crossings/${crossingId}`, "Delete failed", {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
 // Conversations
 export interface ConversationListItem {
   id: string;

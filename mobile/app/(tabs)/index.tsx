@@ -27,6 +27,8 @@ import {
   deleteThought,
   editThought,
   fetchThought,
+  deleteCrossing,
+  editCrossing,
   type FeedItem,
   type NotificationItem,
 } from "../../lib/api";
@@ -135,6 +137,78 @@ export default function WorldsScreen() {
         ],
         "plain-text",
         thought.thought.sentence
+      );
+    },
+    [feed]
+  );
+
+  const handleCrossingDelete = useCallback(async (crossingId: string) => {
+    try {
+      await deleteCrossing(crossingId);
+      setFeed((prev) => prev.filter((f) => !(f.type === "crossing" && f.crossing.id === crossingId)));
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const handleCrossingEdit = useCallback(
+    (crossingId: string) => {
+      const item = feed.find((f) => f.type === "crossing" && f.crossing.id === crossingId);
+      if (!item || item.type !== "crossing") return;
+
+      Alert.prompt(
+        "Edit crossing",
+        "Update the sentence:",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Next",
+            onPress: async (newSentence?: string) => {
+              const nextSentence = newSentence?.trim();
+              if (!nextSentence) return;
+
+              Alert.prompt(
+                "Edit context",
+                "Update the context:",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Save",
+                    onPress: async (newContext?: string) => {
+                      const nextContext = newContext?.trim() ?? "";
+                      try {
+                        await editCrossing(crossingId, {
+                          sentence: nextSentence,
+                          context: nextContext || undefined,
+                        });
+                        setFeed((prev) =>
+                          prev.map((f) =>
+                            f.type === "crossing" && f.crossing.id === crossingId
+                              ? {
+                                  ...f,
+                                  crossing: {
+                                    ...f.crossing,
+                                    sentence: nextSentence,
+                                    context: nextContext || null,
+                                  },
+                                }
+                              : f
+                          )
+                        );
+                      } catch {
+                        // keep existing on failure
+                      }
+                    },
+                  },
+                ],
+                "plain-text",
+                item.crossing.context ?? ""
+              );
+            },
+          },
+        ],
+        "plain-text",
+        item.crossing.sentence
       );
     },
     [feed]
@@ -343,7 +417,14 @@ export default function WorldsScreen() {
                     onEdit={handleFeedEdit}
                   />
                 ) : item.type === "crossing" ? (
-                  <CrossingCard item={item} visible myUserId={myUserId} />
+                  <CrossingCard
+                    item={item}
+                    visible
+                    myUserId={myUserId}
+                    isOwn={Boolean(myUserId && (myUserId === item.participant_a.id || myUserId === item.participant_b.id))}
+                    onDelete={handleCrossingDelete}
+                    onEdit={handleCrossingEdit}
+                  />
                 ) : null}
               </CardDeck>
             </View>

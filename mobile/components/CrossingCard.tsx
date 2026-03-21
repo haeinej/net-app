@@ -10,6 +10,7 @@ import {
   ScrollView,
   Platform,
   KeyboardAvoidingView,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -49,6 +50,9 @@ interface CrossingCardProps {
   visible?: boolean;
   myUserId?: string | null;
   ignoreUserId?: string | null;
+  isOwn?: boolean;
+  onDelete?: (crossingId: string) => void;
+  onEdit?: (crossingId: string) => void;
 }
 
 export function CrossingCard({
@@ -56,6 +60,9 @@ export function CrossingCard({
   visible = false,
   myUserId,
   ignoreUserId,
+  isOwn = false,
+  onDelete,
+  onEdit,
 }: CrossingCardProps) {
   const router = useRouter();
   const { contentWidth } = useResponsiveLayout();
@@ -372,6 +379,33 @@ export function CrossingCard({
     setIsTyping(false);
   }, []);
 
+  const showOwnerActions = useCallback(() => {
+    if (!isOwn) return;
+    const options: Array<{
+      text: string;
+      style?: "cancel" | "destructive";
+      onPress?: () => void;
+    }> = [];
+    if (onEdit) {
+      options.push({ text: "Edit", onPress: () => onEdit(crossing.id) });
+    }
+    if (onDelete) {
+      options.push({
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          Alert.alert("Delete crossing", "Are you sure?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: () => onDelete(crossing.id) },
+          ]);
+        },
+      });
+    }
+    if (options.length === 0) return;
+    options.push({ text: "Cancel", style: "cancel" });
+    Alert.alert("Crossing", undefined, options);
+  }, [crossing.id, isOwn, onDelete, onEdit]);
+
   const openUserProfile = useCallback(
     (userId?: string | null) => {
       if (!userId || userId === ignoreUserId) return;
@@ -386,6 +420,16 @@ export function CrossingCard({
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View style={[styles.card, { width: cardWidth }, cardHeightStyle]}>
+        {isOwn ? (
+          <TouchableOpacity
+            style={styles.ownerActionBtn}
+            onPress={showOwnerActions}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.ownerActionText}>•••</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {/* ── Panel 1 — Split halves: person A top, person B bottom ── */}
         <View style={StyleSheet.absoluteFill}>
           {/* Top half — Person A */}
@@ -616,6 +660,24 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: colors.VERMILLION,
     ...shadows.card,
+  },
+  ownerActionBtn: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    zIndex: 20,
+    minWidth: 32,
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.14)",
+  },
+  ownerActionText: {
+    ...typography.label,
+    fontSize: 10,
+    color: "rgba(255,255,255,0.92)",
   },
 
   /* ── Panel 1 — Two halves ── */
