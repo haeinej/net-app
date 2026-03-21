@@ -35,6 +35,7 @@ import {
   getMyUserId,
   deleteThought,
   editThought,
+  fetchThought,
   type FeedItem,
   type NotificationItem,
 } from "../../lib/api";
@@ -89,26 +90,61 @@ export default function WorldsScreen() {
       const thought = feed.find((item) => item.type === "thought" && item.thought.id === thoughtId);
       if (!thought || thought.type !== "thought") return;
 
+      const openContextPrompt = (nextSentence: string, existingContext: string) => {
+        Alert.prompt(
+          "Edit context",
+          "Update the context:",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Save",
+              onPress: async (newContext?: string) => {
+                const nextContext = newContext?.trim() ?? "";
+
+                try {
+                  await editThought(thoughtId, {
+                    sentence: nextSentence,
+                    context: nextContext,
+                  });
+                  setFeed((prev) =>
+                    prev.map((item) =>
+                      item.type === "thought" && item.thought.id === thoughtId
+                        ? {
+                            ...item,
+                            thought: {
+                              ...item.thought,
+                              sentence: nextSentence,
+                              has_context: nextContext.length > 0,
+                            },
+                          }
+                        : item
+                    )
+                  );
+                } catch {
+                  // keep the existing thought on failure
+                }
+              },
+            },
+          ],
+          "plain-text",
+          existingContext
+        );
+      };
+
       Alert.prompt(
         "Edit thought",
         "Update your sentence:",
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Save",
+            text: "Next",
             onPress: async (newSentence?: string) => {
               const nextSentence = newSentence?.trim();
               if (!nextSentence) return;
 
               try {
-                await editThought(thoughtId, { sentence: nextSentence });
-                setFeed((prev) =>
-                  prev.map((item) =>
-                    item.type === "thought" && item.thought.id === thoughtId
-                      ? { ...item, thought: { ...item.thought, sentence: nextSentence } }
-                      : item
-                  )
-                );
+                const thoughtDetail = await fetchThought(thoughtId);
+                openContextPrompt(nextSentence, thoughtDetail.panel_2.context ?? "");
               } catch {
                 // keep the old sentence on failure
               }
