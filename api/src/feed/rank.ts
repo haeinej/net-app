@@ -162,6 +162,7 @@ function clusterNoveltyScore(
 
 export type ReplyQualityMap = Map<string, number>;
 
+
 /**
  * Build reply quality scores in batch for a set of thought IDs.
  *
@@ -223,6 +224,7 @@ export async function buildReplyQualityMap(
 
     map.set(thoughtId, Math.min(1, r));
   }
+
 
   return map;
 }

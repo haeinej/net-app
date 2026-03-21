@@ -38,6 +38,8 @@ import { ReportModal } from "../../components/ReportModal";
 
 const CROSSING_MESSAGE_STEP = 10;
 
+const COLLABORATIVE_CARD_MESSAGE_STEP = 8;
+
 function formatMessageTime(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -738,9 +740,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   headerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   headerAvatarPlc: {
     backgroundColor: colors.CARD_GROUND,

@@ -365,6 +365,7 @@ export async function recordFeedServe(
     }))
   );
 
+
   if (pendingFeedServeRows.length >= FEED_SERVE_FLUSH_BATCH_SIZE) {
     void flushPendingFeedServes();
     return;

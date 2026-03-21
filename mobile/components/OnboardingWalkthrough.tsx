@@ -381,6 +381,25 @@ export function OnboardingWalkthrough({
         )}
       </View>
 
+      {step && (
+        <TouchableOpacity
+          onPress={handleSkip}
+          style={[
+            styles.floatingCloseButton,
+            {
+              top: Math.max(insets.top + 10, 18),
+            },
+          ]}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={isLastStep ? "Close walkthrough" : "Skip walkthrough"}
+        >
+          <Text style={styles.floatingCloseText}>
+            {currentStep === 0 ? "skip" : isLastStep ? "close" : "skip"}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Tooltip card */}
       {step && (
         <Animated.View
@@ -467,6 +486,28 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 12,
     zIndex: 20,
+  },
+
+  floatingCloseButton: {
+    position: "absolute",
+    right: 18,
+    zIndex: 30,
+    backgroundColor: "rgba(245, 240, 232, 0.96)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    shadowColor: colors.PANEL_DEEP,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  floatingCloseText: {
+    fontFamily: fontFamily.comico,
+    fontSize: 13,
+    lineHeight: 16,
+    color: colors.TYPE_DARK,
+    letterSpacing: 0.1,
   },
 
   welcomeLogo: {

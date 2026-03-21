@@ -448,6 +448,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     snapTo,
     refreshDetail,
   ]);
+
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
     recordTypeStart();
@@ -480,6 +481,10 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
     Alert.alert("Thought", undefined, options);
   }, [isOwn, onEdit, onDelete, thought.id]);
 
+  const handleLongPress = useCallback(() => {
+    showOwnerActions();
+  }, [showOwnerActions]);
+
   const handleDeleteReply = useCallback(
     (replyId: string) => {
       Alert.alert("Delete reply", "Remove this reply from your thought?", [
@@ -500,6 +505,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
   );
 
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
+
   const openUserProfile = useCallback(
     (userId?: string | null) => {
       if (!userId) return;

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
   type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
@@ -168,6 +169,13 @@ export default function ConversationsScreen() {
     [router]
   );
 
+  const openHistoryInfo = useCallback(() => {
+    Alert.alert(
+      "Conversation history",
+      "If neither person replies for 2 weeks, the chat history clears automatically."
+    );
+  }, []);
+
   const renderItem = useCallback(
     ({ item }: { item: ConversationListItem }) => (
       <ConversationRow
@@ -179,9 +187,23 @@ export default function ConversationsScreen() {
     [onPressRow, onPressProfile]
   );
 
+  const header = (
+    <View style={styles.screenHeader}>
+      <Text style={styles.screenTitle}>Conversations</Text>
+      <TouchableOpacity
+        style={styles.infoButton}
+        activeOpacity={0.8}
+        onPress={openHistoryInfo}
+      >
+        <Text style={styles.infoButtonText}>i</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   if (loading && list.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {header}
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
         <View style={styles.skeletonRow} />
@@ -193,6 +215,7 @@ export default function ConversationsScreen() {
   if (error && list.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {header}
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={() => { setLoading(true); load(); }}>
@@ -206,6 +229,7 @@ export default function ConversationsScreen() {
   if (list.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+        {header}
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
             When you accept a reply, the conversation begins here.
@@ -217,9 +241,7 @@ export default function ConversationsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Conversations</Text>
-      </View>
+      {header}
       <FlatList
         data={list}
         keyExtractor={(item) => item.id}
@@ -243,6 +265,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.WARM_GROUND,
   },
   screenHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: spacing.screenPadding,
     paddingVertical: 18,
   },
@@ -250,10 +275,24 @@ const styles = StyleSheet.create({
     ...typography.heading,
     color: colors.TYPE_DARK,
   },
+  infoButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.CARD_GROUND,
+  },
+  infoButtonText: {
+    fontFamily: fontFamily.comico,
+    fontSize: 22,
+    color: colors.TYPE_DARK,
+    marginTop: -1,
+  },
   listContent: {
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: 0,
-    paddingBottom: spacing.cardGap,
+    paddingTop: 4,
+    paddingBottom: spacing.cardGap + 10,
   },
   row: {
     flexDirection: "row",
@@ -345,6 +384,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.context,
+    fontSize: 16,
     color: colors.TYPE_DARK,
     marginBottom: 12,
   },

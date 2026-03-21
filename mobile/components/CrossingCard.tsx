@@ -171,7 +171,6 @@ export function CrossingCard({
       "worklet";
       const ci = currentPanel.value;
       const tx = e.translationX;
-      const sendDistance = cardWidth * 0.28;
 
       // Update indicator progress during drag
       if (ci === 0) {
@@ -364,6 +363,7 @@ export function CrossingCard({
     snapTo,
     loadDetail,
   ]);
+
   const onReplyFocus = useCallback(() => {
     setIsTyping(true);
   }, []);

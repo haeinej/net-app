@@ -68,6 +68,7 @@ async function main() {
     );
   });
 
+
   console.log("[boot] registering cors...");
   await app.register(cors, {
     origin(origin, callback) {

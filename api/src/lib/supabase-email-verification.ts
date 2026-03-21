@@ -8,6 +8,7 @@ type SendPasswordRecoveryEmailParams = {
   email: string;
 };
 
+
 type VerifyEmailParams =
   | {
       email: string;
@@ -39,6 +40,7 @@ type SupabaseVerifyResponse = {
 
 const DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL = "https://www.ohmmmm.com/verify-email/";
 const DEFAULT_PASSWORD_RESET_REDIRECT_URL = "https://www.ohmmmm.com/reset-password/";
+
 
 function readRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -173,6 +175,7 @@ async function getSupabaseUserEmailFromAccessToken(accessToken: string): Promise
   return email;
 }
 
+
 export async function sendSupabaseVerificationEmail(
   params: SendVerificationEmailParams
 ): Promise<void> {
@@ -204,6 +207,7 @@ export async function sendSupabasePasswordRecoveryEmail(
   );
 }
 
+
 export async function verifySupabaseEmail(
   params: VerifyEmailParams
 ): Promise<{ email: string }> {
@@ -229,6 +233,7 @@ export async function verifySupabaseEmail(
 
   return { email };
 }
+
 
 export async function verifySupabaseRecovery(
   params: VerifyEmailParams

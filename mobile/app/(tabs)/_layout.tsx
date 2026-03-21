@@ -117,6 +117,9 @@ export default function TabLayout() {
 }
 
 const iconStyles = StyleSheet.create({
+  iconLift: {
+    transform: [{ translateY: -6 }],
+  },
   blob: {
     width: 22,
     height: 20,
@@ -127,7 +130,7 @@ const iconStyles = StyleSheet.create({
     borderWidth: 1.6,
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ rotate: "-4deg" }],
+    transform: [{ translateY: -6 }, { rotate: "-4deg" }],
   },
   dot: {
     width: 6,

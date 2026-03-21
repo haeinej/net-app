@@ -28,7 +28,6 @@ import {
   type RegisterBody,
 } from "../lib/api";
 import {
-  setAuth,
   setOnboardingComplete,
   setOnboardingStep,
   getOnboardingStep,

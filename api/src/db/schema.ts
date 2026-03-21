@@ -343,6 +343,7 @@ export const feedSnapshots = pgTable(
   ]
 );
 
+
 // 8. question_clusters (legacy name; currently used as resonance clusters)
 export const questionClusters = pgTable("question_clusters", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -403,6 +404,7 @@ export const userFeedProfiles = pgTable(
   },
   (table) => [index("user_feed_profiles_updated_idx").on(table.updatedAt.desc())]
 );
+
 
 // 11. failed_processing_jobs (Phase 3 + 4 — embedding pipeline or image generation retry)
 export const failedProcessingJobs = pgTable(
@@ -607,6 +609,7 @@ export const crossingReplies = pgTable(
       .where(sql`${table.status} = 'pending'`),
   ]
 );
+
 
 // 20. reports (user-flagged objectionable content)
 export const reports = pgTable(

@@ -551,6 +551,7 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+
     const [crossing] = await db.select().from(crossings).where(eq(crossings.id, crossingId)).limit(1);
     if (!crossing) return reply.status(404).send();
 

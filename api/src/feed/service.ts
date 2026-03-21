@@ -191,6 +191,7 @@ export async function invalidateFeedCache(userId?: string): Promise<void> {
   await db.delete(feedSnapshots).where(eq(feedSnapshots.viewerId, userId));
 }
 
+
 let totalEngagementEventsCache: { value: number; expiresAt: number } | null = null;
 
 async function getTotalEngagementEvents(
@@ -247,13 +248,13 @@ async function loadViewerEmbeddingsAndProfile(
 
   const weights: RecommendationWeights = weightsRow[0]
     ? {
-        qWeight: weightsRow[0].qWeight ?? defaultWeights.qWeight,
-        dWeight: weightsRow[0].dWeight ?? defaultWeights.dWeight,
-        fWeight: weightsRow[0].fWeight ?? defaultWeights.fWeight,
-        rWeight: weightsRow[0].rWeight ?? defaultWeights.rWeight,
-        alpha: weightsRow[0].alpha ?? defaultWeights.alpha,
+        qWeight: weightsRow[0].qWeight ?? config.defaultWeights.qWeight,
+        dWeight: weightsRow[0].dWeight ?? config.defaultWeights.dWeight,
+        fWeight: weightsRow[0].fWeight ?? config.defaultWeights.fWeight,
+        rWeight: weightsRow[0].rWeight ?? config.defaultWeights.rWeight,
+        alpha: weightsRow[0].alpha ?? config.defaultWeights.alpha,
       }
-    : defaultWeights;
+    : config.defaultWeights;
 
   return {
     embeddings: viewerFeedProfile.embeddings,
@@ -451,6 +452,7 @@ async function buildFeedSnapshot(
     thoughtAuthorConcMap.set(thought.id, thought.authorConcentration ?? null);
   }
   const replyQualityMap = await buildReplyQualityMap(candidateThoughtIds, thoughtAuthorConcMap);
+
 
   const withRank: Array<{
     thought: ThoughtCandidate;

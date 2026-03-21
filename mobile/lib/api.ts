@@ -238,7 +238,22 @@ export interface FeedItemCrossing {
   participant_b: FeedItemUser;
 }
 
-export type FeedItem = FeedItemThought | FeedItemCrossing;
+export interface CollaborativeParticipant extends FeedItemUser {
+  before: string;
+  after: string;
+}
+
+export interface FeedItemCollaborative {
+  type: "collaborative";
+  collaborative: {
+    id: string;
+    created_at: string;
+  };
+  participant_a: CollaborativeParticipant;
+  participant_b: CollaborativeParticipant;
+}
+
+export type FeedItem = FeedItemThought | FeedItemCrossing | FeedItemCollaborative;
 export interface FeedPageResponse {
   items: FeedItem[];
   next_cursor: string | null;
@@ -780,6 +795,13 @@ export interface ProfileCrossing {
   participant_b: FeedItemUser | null;
 }
 
+export interface ProfileCollaborativeCard {
+  id: string;
+  created_at: string | null;
+  participant_a: CollaborativeParticipant | null;
+  participant_b: CollaborativeParticipant | null;
+}
+
 export interface ProfileResponse {
   id: string;
   name: string | null;
@@ -787,6 +809,7 @@ export interface ProfileResponse {
   interests?: string[];
   thoughts: ProfileThought[];
   crossings?: ProfileCrossing[];
+  collaborative_cards?: ProfileCollaborativeCard[];
 }
 
 function normalizeProfileThought(value: unknown): ProfileThought | null {
@@ -928,6 +951,11 @@ export interface RegisterBody {
   email: string;
   password: string;
   terms_accepted: boolean;
+}
+
+export interface RegisterResponse {
+  verification_required: true;
+  verification_email: string;
 }
 
 export interface RegisterResponse {

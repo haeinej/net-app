@@ -20,7 +20,7 @@ import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO, primitives
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { createThought, fetchProfile, getMyUserId } from "../lib/api";
 import { ThoughtImageFrame } from "../components/ThoughtImageFrame";
-import { pickComposePrompt } from "../constants/prompts";
+import { pickComposePrompt, COMPOSE_SUBTITLE } from "../constants/prompts";
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -153,6 +153,7 @@ export default function ComposeScreen() {
 
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>One big thought</Text>
+          <Text style={styles.fieldHint}>{COMPOSE_SUBTITLE}</Text>
           <TextInput
             style={[styles.textArea, styles.sentenceInput]}
             placeholder={composePlaceholder}
