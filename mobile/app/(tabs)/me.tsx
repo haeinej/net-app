@@ -356,30 +356,32 @@ export default function MeScreen() {
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={colors.TYPE_MUTED}
-            progressViewOffset={insets.top + 8}
+            progressViewOffset={insets.top + 16}
           />
         }
       >
-        {/* Profile photo — organic asymmetric round shape */}
-        <View style={styles.photoOuter}>
-          <View style={styles.photoInner}>
-            {profile.photo_url ? (
-              <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
-            ) : (
-              <View style={styles.photoEmpty} />
-            )}
+        <View style={styles.profileHeader}>
+          {/* Profile photo — organic asymmetric round shape */}
+          <View style={styles.photoOuter}>
+            <View style={styles.photoInner}>
+              {profile.photo_url ? (
+                <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
+              ) : (
+                <View style={styles.photoEmpty} />
+              )}
+            </View>
           </View>
-        </View>
 
-        {/* Name */}
-        <Text style={styles.name}>{profile.name || "—"}</Text>
+          {/* Name */}
+          <Text style={styles.name}>{profile.name || "—"}</Text>
+        </View>
 
         {/* Edit mode (inline) */}
         {editing && (
@@ -550,6 +552,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 16,
     flexGrow: 1,
+  },
+  profileHeader: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 12,
   },
 
   /* ── Photo — organic asymmetric shape ── */
