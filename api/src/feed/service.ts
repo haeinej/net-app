@@ -14,7 +14,6 @@ import {
 } from "../db";
 import {
   getBucketedCandidates,
-  getOwnRecentCandidates,
   getVisibleRecentCandidates,
 } from "./retrieve";
 import { scoreThought } from "./score";
@@ -528,21 +527,6 @@ async function buildFeedSnapshot(
     );
 
     for (const thought of additionalThoughts) {
-      selectedThoughts.push({
-        thought,
-        rankScore: Number.NEGATIVE_INFINITY,
-      });
-    }
-  }
-
-  if (selectedThoughts.length < targetTotal) {
-    const ownThoughts = await getOwnRecentCandidates(
-      userId,
-      new Set(selectedThoughts.map((item) => item.thought.id)),
-      targetTotal - selectedThoughts.length
-    );
-
-    for (const thought of ownThoughts) {
       selectedThoughts.push({
         thought,
         rankScore: Number.NEGATIVE_INFINITY,
