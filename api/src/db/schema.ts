@@ -676,7 +676,30 @@ export const pushTokens = pgTable(
   ]
 );
 
-// 22. blocks (user blocks — hides content and notifies developer)
+// 22. manual_boosts (Wizard of Oz — admin-curated feed injections)
+export const manualBoosts = pgTable(
+  "manual_boosts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    targetUserId: uuid("target_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    thoughtId: uuid("thought_id")
+      .notNull()
+      .references(() => thoughts.id, { onDelete: "cascade" }),
+    createdBy: text("created_by").notNull(),
+    reason: text("reason"),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    index("manual_boosts_target_pending_idx")
+      .on(table.targetUserId),
+    index("manual_boosts_created_idx").on(table.createdAt),
+  ]
+);
+
+// 23. blocks (user blocks — hides content and notifies developer)
 export const blocks = pgTable(
   "blocks",
   {

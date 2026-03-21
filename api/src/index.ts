@@ -123,6 +123,7 @@ async function main() {
   const { moderationRoutes } = await import("./routes/moderation");
   const { pushRoutes } = await import("./routes/push");
   const { inviteRoutes } = await import("./routes/invites");
+  const { internalMatchmakerRoutes } = await import("./routes/internal-matchmaker");
 
   await app.register(waitlistRoutes);
   await app.register(authRoutes);
@@ -138,6 +139,7 @@ async function main() {
   await app.register(moderationRoutes);
   await app.register(pushRoutes);
   await app.register(inviteRoutes);
+  await app.register(internalMatchmakerRoutes);
 
   console.log("[boot] routes registered, loading cron...");
   const { cronPlugin } = await import("./plugins/cron");

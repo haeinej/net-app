@@ -3,7 +3,7 @@
  * Three-bucket system with wild card interspersion.
  */
 
-import { eq, inArray, sql, or, desc, and } from "drizzle-orm";
+import { eq, inArray, sql, or, desc, and, isNull } from "drizzle-orm";
 import {
   db,
   users,
@@ -11,6 +11,8 @@ import {
   systemConfig,
   crossings,
   feedSnapshots,
+  manualBoosts,
+  thoughts,
 } from "../db";
 import {
   getBucketedCandidates,
@@ -640,6 +642,50 @@ async function buildFeedSnapshot(
   });
   const hasMore = combinedItems.length > targetTotal || allUserCrossings.length === targetTotal;
   const items = combinedItems.slice(0, targetTotal);
+
+  // ── Manual boost injection (Wizard of Oz) ──
+  const pendingBoosts = await db
+    .select({ boostId: manualBoosts.id, thoughtId: manualBoosts.thoughtId })
+    .from(manualBoosts)
+    .where(and(eq(manualBoosts.targetUserId, userId), isNull(manualBoosts.consumedAt)));
+
+  if (pendingBoosts.length > 0) {
+    const existingIds = new Set(items.filter((i): i is FeedItemThought => i.type === "thought").map((i) => i.thought.id));
+    const boostIds = pendingBoosts.map((b) => b.thoughtId).filter((id) => !existingIds.has(id));
+
+    if (boostIds.length > 0) {
+      const boostedRows = await db
+        .select({ id: thoughts.id, sentence: thoughts.sentence, photoUrl: thoughts.photoUrl, imageUrl: thoughts.imageUrl, context: thoughts.context, createdAt: thoughts.createdAt, userId: thoughts.userId })
+        .from(thoughts)
+        .where(inArray(thoughts.id, boostIds));
+
+      const authorIds = [...new Set(boostedRows.map((t) => t.userId))];
+      const authors = authorIds.length > 0
+        ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, authorIds))
+        : [];
+      const authorMap = new Map(authors.map((u) => [u.id, u]));
+
+      const boostItems: FeedItemThought[] = boostedRows.map((t) => {
+        const author = authorMap.get(t.userId);
+        return {
+          type: "thought" as const,
+          thought: {
+            id: t.id,
+            sentence: t.sentence,
+            photo_url: t.photoUrl,
+            image_url: t.imageUrl,
+            created_at: t.createdAt?.toISOString() ?? new Date().toISOString(),
+            has_context: (t.context ?? "").trim().length > 0,
+          },
+          user: { id: t.userId, name: author?.name ?? null, photo_url: author?.photoUrl ?? null },
+        };
+      });
+
+      items.unshift(...boostItems);
+    }
+
+    await db.update(manualBoosts).set({ consumedAt: new Date() }).where(inArray(manualBoosts.id, pendingBoosts.map((b) => b.boostId)));
+  }
 
   const traces: FeedServeTrace[] = items.map((item, index) => {
     if (item.type === "crossing") {
