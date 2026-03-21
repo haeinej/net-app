@@ -1,10 +1,20 @@
-import { Stack } from "expo-router";
+import { useEffect } from "react";
+import { Stack, useRouter } from "expo-router";
 import { useFonts } from "expo-font";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet, View, ActivityIndicator, Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../theme";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import {
+  setupForegroundHandler,
+  addNotificationResponseListener,
+  getLastNotificationResponse,
+} from "../lib/notifications";
+import { resolveNotificationRoute } from "../lib/notification-routing";
+
+// Must run at module level before any notification arrives
+setupForegroundHandler();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -12,6 +22,28 @@ export default function RootLayout() {
     "Sentient-Bold": require("../assets/fonts/Sentient-Bold.otf"),
     "Comico-Regular": require("../assets/fonts/Comico-Regular.otf"),
   });
+
+  const router = useRouter();
+
+  // Handle notification taps (warm start + cold start)
+  useEffect(() => {
+    // Cold start: check if app was opened from a notification tap
+    getLastNotificationResponse().then((response) => {
+      if (!response) return;
+      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+      const route = resolveNotificationRoute(data);
+      if (route) router.push(route as never);
+    });
+
+    // Warm start: listen for taps while app is in foreground
+    const unsub = addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+      const route = resolveNotificationRoute(data);
+      if (route) router.push(route as never);
+    });
+
+    return unsub;
+  }, [router]);
 
   if (fontError) {
     console.warn("Font loading failed:", fontError);

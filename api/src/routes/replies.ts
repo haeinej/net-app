@@ -90,7 +90,7 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
       ]).catch(() => {});
 
       // Push notification to thought author
-      notifyNewReply(t.userId, userId, t.sentence, text).catch(() => {});
+      notifyNewReply(t.userId, userId, t.sentence, text, thoughtId).catch(() => {});
 
       return reply.status(201).send({
         id: row.id,
@@ -247,7 +247,7 @@ export async function replyRoutes(app: FastifyInstance): Promise<void> {
           const count = stats?.count ?? 0;
           if (count === 10) {
             const [t] = await db.select({ sentence: thoughts.sentence }).from(thoughts).where(eq(thoughts.id, accepted.thoughtId)).limit(1);
-            if (t) notifyResonanceMilestone(accepted.authorId, t.sentence, count).catch(() => {});
+            if (t) notifyResonanceMilestone(accepted.authorId, t.sentence, count, accepted.thoughtId).catch(() => {});
           }
         } catch {}
       })();

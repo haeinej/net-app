@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { View, StyleSheet, useWindowDimensions, Image } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { colors } from "../../theme";
+import { requestPushPermissionIfNeeded } from "../../lib/notifications";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../../assets/images/ohm-logo.png");
@@ -71,6 +73,11 @@ function WavyTabBackground() {
 }
 
 export default function TabLayout() {
+  // Register push token on every app launch (idempotent — server upserts)
+  useEffect(() => {
+    requestPushPermissionIfNeeded().catch(() => {});
+  }, []);
+
   return (
     <Tabs
       screenOptions={{

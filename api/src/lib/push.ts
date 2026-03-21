@@ -89,7 +89,8 @@ export async function notifyNewReply(
   thoughtAuthorId: string,
   replierId: string,
   thoughtSentence: string,
-  replyPreview: string
+  replyPreview: string,
+  thoughtId: string
 ): Promise<void> {
   const tokens = await getTokensForUser(thoughtAuthorId);
   if (tokens.length === 0) return;
@@ -105,7 +106,7 @@ export async function notifyNewReply(
       to: token,
       title: "new reply",
       body: `${replierName} resonated with "${shortThought}"`,
-      data: { type: "reply", thought_sentence: thoughtSentence },
+      data: { type: "reply", thought_id: thoughtId, thought_sentence: thoughtSentence },
       sound: "default",
       priority: "high",
     }))
@@ -149,7 +150,8 @@ export async function notifyNewMessage(
 export async function notifyResonanceMilestone(
   thoughtAuthorId: string,
   thoughtSentence: string,
-  acceptedCount: number
+  acceptedCount: number,
+  thoughtId: string
 ): Promise<void> {
   const tokens = await getTokensForUser(thoughtAuthorId);
   if (tokens.length === 0) return;
@@ -166,6 +168,7 @@ export async function notifyResonanceMilestone(
       body: `"${shortThought}" has ${acceptedCount} connections`,
       data: {
         type: "resonance_milestone",
+        thought_id: thoughtId,
         thought_sentence: thoughtSentence,
         count: acceptedCount,
       },

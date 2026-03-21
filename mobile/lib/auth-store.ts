@@ -56,4 +56,5 @@ export async function clearAuth(): Promise<void> {
   await SecureStore.deleteItemAsync(KEY_USER_ID);
   await SecureStore.deleteItemAsync(KEY_ONBOARDING_COMPLETE);
   await SecureStore.deleteItemAsync(KEY_ONBOARDING_STEP);
+  await SecureStore.deleteItemAsync("ohm.push.token").catch(() => {});
 }
