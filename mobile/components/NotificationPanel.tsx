@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -12,7 +13,7 @@ interface NotificationPanelProps {
   onIgnore: (replyId: string) => void;
 }
 
-export function NotificationPanel({
+export const NotificationPanel = memo(function NotificationPanel({
   items,
   loading,
   acceptingReplyId,
@@ -91,7 +92,7 @@ export function NotificationPanel({
       ))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

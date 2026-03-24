@@ -76,6 +76,7 @@ function serializeCrossingDraft(
     initiator_id: draft.initiatorId,
     initiator_name: initiatorName,
     sentence: draft.sentence,
+    sentence_b: draft.sentenceB ?? null,
     context: draft.context,
     status: draft.status,
     submitted_at: draft.submittedAt?.toISOString() ?? null,
@@ -88,6 +89,8 @@ function serializeCrossing(crossing: typeof crossings.$inferSelect) {
   return {
     id: crossing.id,
     sentence: crossing.sentence,
+    sentence_a: crossing.sentenceA ?? crossing.sentence,
+    sentence_b: crossing.sentenceB ?? null,
     context: crossing.context ?? null,
     image_url: crossing.imageUrl ?? null,
     created_at: crossing.createdAt?.toISOString() ?? null,
@@ -247,22 +250,47 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(crossingDrafts.updatedAt), desc(crossingDrafts.createdAt))
       .limit(1);
     if (!draft) return reply.status(404).send();
-    if (draft.initiatorId !== ctx.userId) {
-      return reply.status(403).send({ error: "only the person who started it can edit it" });
-    }
-    const sentence =
-      typeof body.sentence === "string" ? body.sentence.trim() || null : draft.sentence;
+    const isInitiator = draft.initiatorId === ctx.userId;
+    // Initiator edits sentence_a, other participant edits sentence_b
+    const sentenceField = typeof body.sentence === "string" ? body.sentence.trim() || null : null;
     const context =
       typeof body.context === "string"
         ? body.context.slice(0, CROSSING_CONTEXT_MAX).trim() || null
         : draft.context;
+    if (sentenceField && sentenceField.length > CROSSING_SENTENCE_MAX) {
+      return reply
+        .status(400)
+        .send({ error: `sentence max ${CROSSING_SENTENCE_MAX} chars` });
+    }
+    if (sentenceField) {
+      const sentenceFilter = filterContent(sentenceField);
+      if (sentenceFilter.flagged) {
+        return reply.status(400).send({
+          error: "Your crossing was flagged for potentially objectionable content. Please revise and try again.",
+        });
+      }
+    }
+    if (context) {
+      const contextFilter = filterContent(context);
+      if (contextFilter.flagged) {
+        return reply.status(400).send({
+          error: "Your context was flagged for potentially objectionable content. Please revise and try again.",
+        });
+      }
+    }
+    const updateSet: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+    if (isInitiator) {
+      if (sentenceField !== null) updateSet.sentence = sentenceField;
+      if (context !== undefined) updateSet.context = context;
+    } else {
+      // Other participant can only edit sentence_b
+      if (sentenceField !== null) updateSet.sentenceB = sentenceField;
+    }
     await db
       .update(crossingDrafts)
-      .set({
-        sentence: sentence ?? draft.sentence,
-        context: context !== undefined ? context : draft.context,
-        updatedAt: new Date(),
-      })
+      .set(updateSet)
       .where(eq(crossingDrafts.id, draft.id));
     return reply.send({ ok: true });
   });
@@ -346,17 +374,22 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
         };
       }
 
+      // Other participant provides their own sentence (sentence_b)
+      const otherSentence = inputSentence || draft.sentenceB?.trim() || "";
+
       const [claimedDraft] = await tx
         .update(crossingDrafts)
         .set({
           status: "complete",
           autoPostAt: null,
+          sentenceB: otherSentence || draft.sentenceB,
           updatedAt: new Date(),
         })
         .where(and(eq(crossingDrafts.id, draft.id), eq(crossingDrafts.status, "awaiting_other")))
         .returning({
           id: crossingDrafts.id,
           sentence: crossingDrafts.sentence,
+          sentenceB: crossingDrafts.sentenceB,
           context: crossingDrafts.context,
         });
 
@@ -399,6 +432,8 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
             participantA: ctx.participantA,
             participantB: ctx.participantB,
             sentence,
+            sentenceA: sentence,
+            sentenceB: claimedDraft.sentenceB ?? null,
             context: claimedDraft.context ?? null,
             imageUrl: null,
           })
@@ -427,8 +462,12 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
     if (result.status !== 200) {
       return reply.status(result.status).send(result.body);
     }
-    void invalidateFeedCache(ctx.participantA);
-    void invalidateFeedCache(ctx.participantB);
+    invalidateFeedCache(ctx.participantA).catch((err) => {
+      console.error("[cache] invalidateFeedCache failed:", err instanceof Error ? err.message : String(err));
+    });
+    invalidateFeedCache(ctx.participantB).catch((err) => {
+      console.error("[cache] invalidateFeedCache failed:", err instanceof Error ? err.message : String(err));
+    });
     return reply.send(result.body);
   });
 
@@ -535,10 +574,18 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
       return reply.send(serializeCrossing(crossing));
     }
 
+    // Each participant edits their own sentence
+    const isParticipantA = crossing.participantA === userId;
+    const sentenceUpdate = sentence !== undefined
+      ? {
+          sentence,
+          ...(isParticipantA ? { sentenceA: sentence } : { sentenceB: sentence }),
+        }
+      : {};
     await db
       .update(crossings)
       .set({
-        ...(sentence !== undefined ? { sentence } : {}),
+        ...sentenceUpdate,
         ...(context !== undefined ? { context: context || null } : {}),
       })
       .where(eq(crossings.id, crossingId));
@@ -550,8 +597,12 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!updated) return reply.status(404).send();
 
-    void invalidateFeedCache(crossing.participantA);
-    void invalidateFeedCache(crossing.participantB);
+    invalidateFeedCache(crossing.participantA).catch((err) => {
+      console.error("[cache] invalidateFeedCache failed:", err instanceof Error ? err.message : String(err));
+    });
+    invalidateFeedCache(crossing.participantB).catch((err) => {
+      console.error("[cache] invalidateFeedCache failed:", err instanceof Error ? err.message : String(err));
+    });
 
     return reply.send(serializeCrossing(updated));
   });
@@ -598,8 +649,12 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
       await tx.delete(crossings).where(eq(crossings.id, crossingId));
     });
 
-    void invalidateFeedCache(crossing.participantA);
-    void invalidateFeedCache(crossing.participantB);
+    invalidateFeedCache(crossing.participantA).catch((err) => {
+      console.error("[cache] invalidateFeedCache failed:", err instanceof Error ? err.message : String(err));
+    });
+    invalidateFeedCache(crossing.participantB).catch((err) => {
+      console.error("[cache] invalidateFeedCache failed:", err instanceof Error ? err.message : String(err));
+    });
 
     return reply.status(200).send({ ok: true });
   });
@@ -649,12 +704,16 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
         panel_1: {
           id: crossing.id,
           sentence: crossing.sentence,
+          sentence_a: crossing.sentenceA ?? crossing.sentence,
+          sentence_b: crossing.sentenceB ?? null,
           participant_a: { id: crossing.participantA, name: pA?.name ?? null, photo_url: pA?.photoUrl ?? null },
           participant_b: { id: crossing.participantB, name: pB?.name ?? null, photo_url: pB?.photoUrl ?? null },
           created_at: crossing.createdAt?.toISOString() ?? new Date().toISOString(),
         },
         panel_2: {
           sentence: crossing.sentence,
+          sentence_a: crossing.sentenceA ?? crossing.sentence,
+          sentence_b: crossing.sentenceB ?? null,
           context: crossing.context,
         },
         panel_3: {
@@ -682,7 +741,9 @@ export async function crossingRoutes(app: FastifyInstance): Promise<void> {
     if (!userId) return reply.status(401).send();
     const crossingId = request.params.id;
     const text = typeof request.body?.text === "string" ? request.body.text.trim() : "";
-    const targetId = request.body?.target_participant_id;
+    const targetId = typeof request.body?.target_participant_id === "string"
+      ? request.body.target_participant_id.trim()
+      : "";
     if (text.length < REPLY_TEXT_MIN || text.length > REPLY_TEXT_MAX) {
       return reply
         .status(400)

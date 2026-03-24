@@ -245,11 +245,23 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, crossDraft.initiatorId)).limit(1);
       initiatorName = u?.name ?? null;
     }
+    // Fetch other participant's name and photo for header display
+    const otherId = conv.participantA === userId ? conv.participantB : conv.participantA;
+    const [otherUser] = await db
+      .select({ name: users.name, photoUrl: users.photoUrl })
+      .from(users)
+      .where(eq(users.id, otherId))
+      .limit(1);
     return reply.send({
       id: conv.id,
       message_count: messageCount,
       participant_a_id: conv.participantA,
       participant_b_id: conv.participantB,
+      other_participant: {
+        id: otherId,
+        name: otherUser?.name ?? null,
+        photo_url: otherUser?.photoUrl ?? null,
+      },
       thought: thought
         ? {
             id: thought.id,
@@ -264,6 +276,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
             initiator_id: crossDraft.initiatorId,
             initiator_name: initiatorName,
             sentence: crossDraft.sentence,
+            sentence_b: crossDraft.sentenceB ?? null,
             context: crossDraft.context,
             status: crossDraft.status,
             submitted_at: crossDraft.submittedAt?.toISOString() ?? null,

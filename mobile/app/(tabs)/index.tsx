@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   View,
@@ -347,7 +347,58 @@ export default function WorldsScreen() {
     }
   }, []);
 
+  const handleThoughtReplySent = useCallback((thoughtId: string) => {
+    setFeed((prev) => prev.filter((f) => !(f.type === "thought" && f.thought.id === thoughtId)));
+  }, []);
+
+  const handleCrossingReplySent = useCallback((crossingId: string) => {
+    setFeed((prev) => prev.filter((f) => !(f.type === "crossing" && f.crossing.id === crossingId)));
+  }, []);
+
   const hasNotifications = notifications.length > 0;
+
+  const keyExtractor = useCallback(
+    (item: FeedItem) =>
+      item.type === "thought"
+        ? item.thought.id
+        : item.type === "crossing"
+          ? `crossing-${item.crossing.id}`
+          : "hidden-crossing",
+    []
+  );
+
+  const renderItem = useCallback(
+    ({ item }: { item: FeedItem }) => (
+      <View collapsable={false} style={[styles.cardWrap, containerStyle]}>
+        <CardDeck>
+          {item.type === "thought" ? (
+            <SwipeableThoughtCard
+              item={item}
+              visible
+              isOwn={Boolean(myUserId && item.user?.id && myUserId === item.user.id)}
+              onDelete={handleFeedDelete}
+              onEdit={handleFeedEdit}
+              onReplySent={handleThoughtReplySent}
+            />
+          ) : item.type === "crossing" ? (
+            <CrossingCard
+              item={item}
+              visible
+              myUserId={myUserId}
+              isOwn={Boolean(
+                myUserId &&
+                  (myUserId === item.participant_a.id || myUserId === item.participant_b.id)
+              )}
+              onDelete={handleCrossingDelete}
+              onEdit={handleCrossingEdit}
+              onReplySent={handleCrossingReplySent}
+            />
+          ) : null}
+        </CardDeck>
+      </View>
+    ),
+    [containerStyle, myUserId, handleFeedDelete, handleFeedEdit, handleCrossingDelete, handleCrossingEdit, handleThoughtReplySent, handleCrossingReplySent]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -395,42 +446,14 @@ export default function WorldsScreen() {
       ) : (
         <FlatList
           data={feed}
-          keyExtractor={(item) =>
-            item.type === "thought"
-              ? item.thought.id
-              : item.type === "crossing"
-                ? `crossing-${item.crossing.id}`
-                : "hidden-crossing"
-          }
-          renderItem={({ item }) => (
-            <View
-              collapsable={false}
-              style={[styles.cardWrap, containerStyle]}
-            >
-              <CardDeck>
-                {item.type === "thought" ? (
-                  <SwipeableThoughtCard
-                    item={item}
-                    visible
-                    isOwn={Boolean(myUserId && item.user?.id && myUserId === item.user.id)}
-                    onDelete={handleFeedDelete}
-                    onEdit={handleFeedEdit}
-                  />
-                ) : item.type === "crossing" ? (
-                  <CrossingCard
-                    item={item}
-                    visible
-                    myUserId={myUserId}
-                    isOwn={Boolean(myUserId && (myUserId === item.participant_a.id || myUserId === item.participant_b.id))}
-                    onDelete={handleCrossingDelete}
-                    onEdit={handleCrossingEdit}
-                  />
-                ) : null}
-              </CardDeck>
-            </View>
-          )}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           style={styles.list}
+          removeClippedSubviews
+          initialNumToRender={4}
+          maxToRenderPerBatch={4}
+          windowSize={5}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

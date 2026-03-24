@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
 import {
   View,
   Text,
@@ -39,7 +39,7 @@ import {
 import { getSavedCardPanel, setSavedCardPanel } from "../lib/card-panel-memory";
 
 const REPLY_MIN_LENGTH = 30;
-const REPLY_MAX_LENGTH = 300;
+const REPLY_MAX_LENGTH = 500;
 const CARD_HEIGHT = spacing.compactCardHeight; // 190
 const HALF_HEIGHT = CARD_HEIGHT / 2; // 95
 const PROFILE_SIZE = 28;
@@ -53,9 +53,10 @@ interface CrossingCardProps {
   isOwn?: boolean;
   onDelete?: (crossingId: string) => void;
   onEdit?: (crossingId: string) => void;
+  onReplySent?: (crossingId: string) => void;
 }
 
-export function CrossingCard({
+export const CrossingCard = memo(function CrossingCard({
   item,
   visible = false,
   myUserId,
@@ -63,6 +64,7 @@ export function CrossingCard({
   isOwn = false,
   onDelete,
   onEdit,
+  onReplySent,
 }: CrossingCardProps) {
   const router = useRouter();
   const { contentWidth } = useResponsiveLayout();
@@ -345,6 +347,8 @@ export function CrossingCard({
       setReplyText("");
       setIsTyping(false);
       snapTo(0, 2);
+      // Hide card from feed after reply
+      if (onReplySent) onReplySent(crossing.id);
       fetchedRef.current = false;
       loadDetail();
     } catch {
@@ -446,7 +450,7 @@ export function CrossingCard({
                   {(participant_a.name ?? "—").toUpperCase()}
                 </Text>
                 <Text style={styles.sentence} numberOfLines={3} ellipsizeMode="tail">
-                  {crossing.sentence}
+                  {crossing.sentence_a ?? crossing.sentence}
                 </Text>
               </View>
             </View>
@@ -467,7 +471,7 @@ export function CrossingCard({
                   {(participant_b.name ?? "—").toUpperCase()}
                 </Text>
                 <Text style={styles.sentence} numberOfLines={3} ellipsizeMode="tail">
-                  {crossing.sentence}
+                  {crossing.sentence_b ?? crossing.sentence}
                 </Text>
               </View>
             </View>
@@ -602,7 +606,8 @@ export function CrossingCard({
                 onFocus={onReplyFocus}
                 onBlur={onReplyBlur}
                 editable={!sending}
-                multiline={false}
+                multiline
+                numberOfLines={3}
                 maxLength={REPLY_MAX_LENGTH}
               />
               <View style={styles.replyActionRow}>
@@ -651,7 +656,7 @@ export function CrossingCard({
       </Animated.View>
     </GestureDetector>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
@@ -858,7 +863,7 @@ const styles = StyleSheet.create({
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.35)",
-    minHeight: 34,
+    minHeight: 60,
     paddingHorizontal: 0,
     paddingTop: Platform.OS === "ios" ? 8 : 6,
     paddingBottom: Platform.OS === "ios" ? 10 : 6,

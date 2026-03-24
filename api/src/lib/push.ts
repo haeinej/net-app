@@ -159,7 +159,7 @@ export async function notifyNewMessage(
       to: token,
       title: senderName,
       body: shortMsg,
-      data: { type: "message", conversation_id: conversationId },
+      data: { type: "message", conversation_id: conversationId, sender_id: senderId, sender_name: senderName },
       sound: "default",
       priority: "high",
     }))

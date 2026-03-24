@@ -560,6 +560,7 @@ export const crossingDrafts = pgTable(
       .notNull()
       .references(() => users.id),
     sentence: text("sentence_a"),
+    sentenceB: text("sentence_b"),
     context: text("context"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     autoPostAt: timestamp("auto_post_at", { withTimezone: true }),
@@ -589,6 +590,8 @@ export const crossings = pgTable("crossings", {
     .notNull()
     .references(() => users.id),
   sentence: text("sentence").notNull(),
+  sentenceA: text("sentence_a"),
+  sentenceB: text("sentence_b"),
   context: text("context"),
   imageUrl: text("image_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),

@@ -618,6 +618,8 @@ async function buildFeedSnapshot(
     crossing: {
       id: crossing.id,
       sentence: crossing.sentence,
+      sentence_a: crossing.sentenceA ?? crossing.sentence,
+      sentence_b: crossing.sentenceB ?? null,
       context: crossing.context,
       created_at: crossing.createdAt?.toISOString() ?? new Date().toISOString(),
     },

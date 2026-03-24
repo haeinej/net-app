@@ -33,7 +33,7 @@ export class ApiError extends Error {
 }
 
 export function isSessionInvalidError(error: unknown): boolean {
-  return error instanceof ApiError && (error.status === 401 || error.status === 404);
+  return error instanceof ApiError && error.status === 401;
 }
 
 function buildApiUrl(path: string): string {
@@ -255,6 +255,8 @@ export interface FeedItemCrossing {
   crossing: {
     id: string;
     sentence: string;
+    sentence_a: string | null;
+    sentence_b: string | null;
     context: string | null;
     created_at: string;
   };
@@ -587,11 +589,13 @@ export interface CrossingDetailResponse {
   panel_1: {
     id: string;
     sentence: string;
+    sentence_a: string | null;
+    sentence_b: string | null;
     participant_a: FeedItemUser;
     participant_b: FeedItemUser;
     created_at: string;
   };
-  panel_2: { sentence: string; context: string | null };
+  panel_2: { sentence: string; sentence_a: string | null; sentence_b: string | null; context: string | null };
   panel_3: { accepted_replies: CrossingDetailReply[]; can_reply: boolean };
 }
 
@@ -736,6 +740,7 @@ export interface CrossingDraft {
   initiator_id: string;
   initiator_name: string | null;
   sentence: string | null;
+  sentence_b: string | null;
   context: string | null;
   status: "draft" | "awaiting_other" | "complete" | "abandoned" | "auto_posted";
   submitted_at: string | null;
@@ -748,6 +753,11 @@ export interface ConversationDetail {
   message_count: number;
   participant_a_id: string;
   participant_b_id: string;
+  other_participant?: {
+    id: string;
+    name: string | null;
+    photo_url: string | null;
+  } | null;
   thought: {
     id: string;
     sentence: string;

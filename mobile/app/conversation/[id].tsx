@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, memo } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -55,6 +56,76 @@ function formatShortDateTime(iso: string | null): string {
     minute: "2-digit",
   });
 }
+
+interface MessageBubbleProps {
+  item: ConversationMessage;
+  index: number;
+  sent: boolean;
+  outgoingPalette: { bubble: string; text: string; time: string };
+  failedMessageId: string | null;
+  retryFailedMessage: () => void;
+}
+
+const MessageBubble = memo(function MessageBubble({
+  item,
+  index,
+  sent,
+  outgoingPalette,
+  failedMessageId,
+  retryFailedMessage,
+}: MessageBubbleProps) {
+  return (
+    <View style={styles.messageWrap}>
+      {index === 0 ? (
+        <View style={styles.firstMessageLabel}>
+          <Text style={styles.firstMessageLabelText}>
+            This reply started the conversation
+          </Text>
+        </View>
+      ) : null}
+      <View
+        style={[
+          styles.bubbleWrap,
+          sent ? styles.bubbleWrapSent : styles.bubbleWrapReceived,
+        ]}
+      >
+        <View
+          style={[
+            styles.bubble,
+            sent ? styles.bubbleSent : styles.bubbleReceived,
+            sent && { backgroundColor: outgoingPalette.bubble },
+            item.id === failedMessageId && styles.bubbleFailed,
+          ]}
+        >
+          <Text
+            style={[
+              styles.bubbleText,
+              sent && styles.bubbleTextSent,
+              sent && { color: outgoingPalette.text },
+            ]}
+          >
+            {item.text}
+          </Text>
+          <Text
+            style={[
+              styles.bubbleTime,
+              sent && { color: outgoingPalette.time },
+            ]}
+          >
+            {formatMessageTime(item.created_at)}
+          </Text>
+        </View>
+        {item.id === failedMessageId && (
+          <Pressable onPress={retryFailedMessage}>
+            <Text style={styles.retryText}>
+              Failed to send. Tap to retry.
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+});
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -115,11 +186,14 @@ export default function ConversationThreadScreen() {
   const [convDetail, setConvDetail] = useState<ConversationDetail | null>(null);
   const [crossingOpen, setCrossingOpen] = useState(false);
   const [crossingSentence, setCrossingSentence] = useState("");
+  const [crossingSentenceB, setCrossingSentenceB] = useState("");
   const [crossingContext, setCrossingContext] = useState("");
   const [crossingSubmitting, setCrossingSubmitting] = useState(false);
   const crossingSubmittingRef = useRef(false);
   const [reportVisible, setReportVisible] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
+  const messageKeyExtractor = useCallback((item: ConversationMessage) => item.id, []);
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
@@ -233,15 +307,22 @@ export default function ConversationThreadScreen() {
         )
       );
       await loadDetail();
-      setTimeout(() => {
-        listRef.current?.scrollToEnd({ animated: true });
-      }, 120);
     } catch {
       setFailedMessageId(tempId);
     } finally {
       setSending(false);
     }
   }, [id, loadDetail, myUserId, sending, text]);
+
+  const retryFailedMessage = useCallback(() => {
+    if (!failedMessageId) return;
+    const failed = messages.find((m) => m.id === failedMessageId);
+    if (failed) {
+      setText(failed.text);
+      setMessages((prev) => prev.filter((m) => m.id !== failedMessageId));
+      setFailedMessageId(null);
+    }
+  }, [failedMessageId, messages]);
 
   const saveCrossingDraft = useCallback(async () => {
     if (!id || crossingSubmitting) return;
@@ -256,11 +337,6 @@ export default function ConversationThreadScreen() {
   const nextCrossingMessageCount =
     convDetail?.next_crossing_message_count ?? CROSSING_MESSAGE_STEP;
   const canCreateCrossing = Boolean(crossingDraft) || Boolean(convDetail?.crossing_available);
-  const otherParticipantName =
-    otherName ??
-    (crossingDraft?.initiator_id === myUserId
-      ? "the other person"
-      : crossingDraft?.initiator_name ?? "the other person");
   const isCrossingInitiator = crossingDraft?.initiator_id === myUserId;
   const isAwaitingOther = crossingDraft?.status === "awaiting_other";
   const canApproveCrossing = Boolean(crossingDraft && isAwaitingOther && !isCrossingInitiator);
@@ -269,9 +345,38 @@ export default function ConversationThreadScreen() {
   const conversationThoughtSentence = convDetail?.thought?.sentence ?? thoughtSentence ?? "";
   const outgoingPalette = useMemo(() => getOutgoingPalette(messageCount), [messageCount]);
 
+  // Resolve other participant info — route params take priority, fall back to API detail
+  const resolvedOtherId = otherId || convDetail?.other_participant?.id || "";
+  const resolvedOtherName = otherName || convDetail?.other_participant?.name || "";
+  const resolvedOtherPhoto = otherPhoto || convDetail?.other_participant?.photo_url || "";
+  const otherParticipantName =
+    resolvedOtherName ||
+    (crossingDraft?.initiator_id === myUserId
+      ? "the other person"
+      : crossingDraft?.initiator_name ?? "the other person");
+
+  // Stable renderItem for FlatList — uses memoized MessageBubble
+  const renderMessage = useCallback(
+    ({ item, index }: { item: ConversationMessage; index: number }) => (
+      <MessageBubble
+        item={item}
+        index={index}
+        sent={item.sender_id === myUserId}
+        outgoingPalette={outgoingPalette}
+        failedMessageId={failedMessageId}
+        retryFailedMessage={retryFailedMessage}
+      />
+    ),
+    [myUserId, outgoingPalette, failedMessageId, retryFailedMessage]
+  );
+
+  // Stable paddingBottom to avoid layout recalc on every render
+  const listPaddingBottom = crossingOpen ? 440 : canCreateCrossing ? 180 : 92;
+
   useEffect(() => {
     if (crossingOpen && crossingDraft) {
       setCrossingSentence(crossingDraft.sentence ?? "");
+      setCrossingSentenceB(crossingDraft.sentence_b ?? "");
       setCrossingContext(crossingDraft.context ?? "");
     }
   }, [crossingDraft, crossingOpen]);
@@ -334,7 +439,7 @@ export default function ConversationThreadScreen() {
         await saveCrossingDraft();
       }
       const result = await completeCrossing(id, {
-        sentence: canApproveCrossing ? undefined : crossingSentence.trim(),
+        sentence: canApproveCrossing ? crossingSentenceB.trim() || undefined : crossingSentence.trim(),
         context: canApproveCrossing ? undefined : crossingContext.trim() || undefined,
       });
       setCrossingOpen(false);
@@ -377,7 +482,7 @@ export default function ConversationThreadScreen() {
   }, [crossingSubmitting, loadDetail, saveCrossingDraft]);
 
   const handleMoreMenu = useCallback(() => {
-    if (!otherId) return;
+    if (!resolvedOtherId) return;
     Alert.alert("Conversation options", undefined, [
       {
         text: "Report",
@@ -397,7 +502,7 @@ export default function ConversationThreadScreen() {
                 style: "destructive",
                 onPress: async () => {
                   try {
-                    await blockUser(otherId);
+                    await blockUser(resolvedOtherId);
                     router.back();
                   } catch {}
                 },
@@ -408,7 +513,7 @@ export default function ConversationThreadScreen() {
       },
       { text: "Cancel", style: "cancel" },
     ]);
-  }, [otherId, router]);
+  }, [resolvedOtherId, router]);
 
   if (!id) {
     return (
@@ -495,24 +600,24 @@ export default function ConversationThreadScreen() {
         <TouchableOpacity
           style={styles.headerIdentity}
           activeOpacity={0.7}
-          disabled={!otherId}
+          disabled={!resolvedOtherId}
           onPress={() => {
-            if (!otherId) return;
-            router.push({ pathname: "/user/[id]", params: { id: otherId } });
+            if (!resolvedOtherId) return;
+            router.push({ pathname: "/user/[id]", params: { id: resolvedOtherId } });
           }}
         >
           <View style={styles.headerAvatarWrap}>
-            {otherPhoto ? (
-              <Image source={{ uri: otherPhoto }} style={styles.headerAvatar} />
+            {resolvedOtherPhoto ? (
+              <Image source={{ uri: resolvedOtherPhoto }} style={styles.headerAvatar} />
             ) : (
               <View style={[styles.headerAvatar, styles.headerAvatarPlc]} />
             )}
           </View>
           <Text style={styles.headerName} numberOfLines={1}>
-            {otherName ? otherName.toUpperCase() : "Conversation"}
+            {resolvedOtherName ? resolvedOtherName.toUpperCase() : "Conversation"}
           </Text>
         </TouchableOpacity>
-        {otherId ? (
+        {resolvedOtherId ? (
           <TouchableOpacity
             style={styles.moreBtn}
             onPress={handleMoreMenu}
@@ -523,12 +628,12 @@ export default function ConversationThreadScreen() {
         ) : null}
       </View>
 
-      {otherId ? (
+      {resolvedOtherId ? (
         <ReportModal
           visible={reportVisible}
           onClose={() => setReportVisible(false)}
           targetType="user"
-          targetId={otherId}
+          targetId={resolvedOtherId}
         />
       ) : null}
 
@@ -541,9 +646,17 @@ export default function ConversationThreadScreen() {
           <FlatList
             ref={listRef}
             data={messages}
-            keyExtractor={(item) => item.id}
+            keyExtractor={messageKeyExtractor}
             onScroll={onScroll}
-            scrollEventThrottle={200}
+            scrollEventThrottle={60}
+            removeClippedSubviews
+            maxToRenderPerBatch={15}
+            windowSize={10}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            onContentSizeChange={() => {
+              listRef.current?.scrollToEnd({ animated: false });
+            }}
             ListHeaderComponent={
               <View>
                 {conversationThoughtSentence ? (
@@ -559,62 +672,16 @@ export default function ConversationThreadScreen() {
                 ) : null}
               </View>
             }
-            renderItem={({ item, index }) => {
-              const sent = item.sender_id === myUserId;
-              return (
-                <View style={styles.messageWrap}>
-                  {index === 0 ? (
-                    <View style={styles.firstMessageLabel}>
-                      <Text style={styles.firstMessageLabelText}>
-                        This reply started the conversation
-                      </Text>
-                    </View>
-                  ) : null}
-                  <View
-                    style={[
-                      styles.bubbleWrap,
-                      sent ? styles.bubbleWrapSent : styles.bubbleWrapReceived,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.bubble,
-                        sent ? styles.bubbleSent : styles.bubbleReceived,
-                        sent && { backgroundColor: outgoingPalette.bubble },
-                        item.id === failedMessageId && styles.bubbleFailed,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.bubbleText,
-                          sent && styles.bubbleTextSent,
-                          sent && { color: outgoingPalette.text },
-                        ]}
-                      >
-                        {item.text}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.bubbleTime,
-                          sent && { color: outgoingPalette.time },
-                        ]}
-                      >
-                        {formatMessageTime(item.created_at)}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            }}
+            renderItem={renderMessage}
             contentContainerStyle={[
               styles.listContent,
-              { paddingBottom: crossingOpen ? 440 : canCreateCrossing ? 180 : 92 },
+              { paddingBottom: listPaddingBottom },
             ]}
           />
 
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
-            keyboardVerticalOffset={0}
+            keyboardVerticalOffset={insets.top + 60}
             style={styles.inputArea}
           >
             {renderCrossingBanner()}
@@ -626,38 +693,67 @@ export default function ConversationThreadScreen() {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.fieldLabel}>One crossing</Text>
-                  <Text style={styles.fieldHint}>
-                    what changed between you because of this conversation
-                  </Text>
-                  <TextInput
-                    style={[styles.textArea, styles.crossingSentenceInput]}
-                    placeholder="the thing that hit different the second time"
-                    placeholderTextColor={colors.TYPE_MUTED}
-                    value={crossingSentence}
-                    onChangeText={(t) => setCrossingSentence(t.slice(0, 500))}
-                    maxLength={500}
-                    multiline
-                    numberOfLines={5}
-                    editable={!crossingSubmitting && !canApproveCrossing}
-                  />
-                </View>
-
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.fieldLabel}>Context</Text>
-                  <TextInput
-                    style={[styles.textArea, styles.crossingContextInput]}
-                    placeholder="Where it came from, what triggered it, what is underneath it."
-                    placeholderTextColor={colors.TYPE_MUTED}
-                    value={crossingContext}
-                    onChangeText={(t) => setCrossingContext(t.slice(0, 600))}
-                    maxLength={600}
-                    multiline
-                    numberOfLines={3}
-                    editable={!crossingSubmitting && !canApproveCrossing}
-                  />
-                </View>
+                {canApproveCrossing ? (
+                  <>
+                    <View style={styles.fieldBlock}>
+                      <Text style={styles.fieldLabel}>Their thought</Text>
+                      <Text style={[styles.crossingReadOnly]}>
+                        {crossingSentence || "No sentence yet."}
+                      </Text>
+                    </View>
+                    <View style={styles.fieldBlock}>
+                      <Text style={styles.fieldLabel}>Your thought</Text>
+                      <Text style={styles.fieldHint}>
+                        what changed for you because of this conversation
+                      </Text>
+                      <TextInput
+                        style={[styles.textArea, styles.crossingSentenceInput]}
+                        placeholder="the thing that hit different the second time"
+                        placeholderTextColor={colors.TYPE_MUTED}
+                        value={crossingSentenceB}
+                        onChangeText={(t) => setCrossingSentenceB(t.slice(0, 500))}
+                        maxLength={500}
+                        multiline
+                        numberOfLines={5}
+                        editable={!crossingSubmitting}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.fieldBlock}>
+                      <Text style={styles.fieldLabel}>Your thought</Text>
+                      <Text style={styles.fieldHint}>
+                        what changed between you because of this conversation
+                      </Text>
+                      <TextInput
+                        style={[styles.textArea, styles.crossingSentenceInput]}
+                        placeholder="the thing that hit different the second time"
+                        placeholderTextColor={colors.TYPE_MUTED}
+                        value={crossingSentence}
+                        onChangeText={(t) => setCrossingSentence(t.slice(0, 500))}
+                        maxLength={500}
+                        multiline
+                        numberOfLines={5}
+                        editable={!crossingSubmitting}
+                      />
+                    </View>
+                    <View style={styles.fieldBlock}>
+                      <Text style={styles.fieldLabel}>Context</Text>
+                      <TextInput
+                        style={[styles.textArea, styles.crossingContextInput]}
+                        placeholder="Where it came from, what triggered it, what is underneath it."
+                        placeholderTextColor={colors.TYPE_MUTED}
+                        value={crossingContext}
+                        onChangeText={(t) => setCrossingContext(t.slice(0, 600))}
+                        maxLength={600}
+                        multiline
+                        numberOfLines={3}
+                        editable={!crossingSubmitting}
+                      />
+                    </View>
+                  </>
+                )}
 
                 {waitingForOtherParticipant ? (
                   <Text style={styles.crossingStatus}>
@@ -668,14 +764,14 @@ export default function ConversationThreadScreen() {
                 ) : null}
                 {canApproveCrossing ? (
                   <Text style={styles.crossingStatus}>
-                    If you agree, this becomes a shared crossing. If you do nothing, it posts as their thought after 3 days.
+                    Add your thought to make it a shared crossing.
                   </Text>
                 ) : null}
 
                 <TouchableOpacity
-                  style={[styles.crossingPostBtn, (!crossingSentence.trim() && !canApproveCrossing || crossingSubmitting) && styles.crossingPostBtnDisabled]}
+                  style={[styles.crossingPostBtn, ((!crossingSentence.trim() && !canApproveCrossing) || (!crossingSentenceB.trim() && canApproveCrossing) || crossingSubmitting) && styles.crossingPostBtnDisabled]}
                   onPress={handleCreateCrossing}
-                  disabled={crossingSubmitting || (!canApproveCrossing && !crossingSentence.trim())}
+                  disabled={crossingSubmitting || (!canApproveCrossing && !crossingSentence.trim()) || (canApproveCrossing && !crossingSentenceB.trim())}
                 >
                   {crossingSubmitting ? (
                     <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
@@ -889,6 +985,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.OLIVE,
   },
+  retryText: {
+    fontSize: 12,
+    color: colors.OLIVE,
+    marginTop: 4,
+    textAlign: "right",
+  },
   bubbleText: {
     ...typography.replyInput,
     fontSize: 16,
@@ -999,6 +1101,13 @@ const styles = StyleSheet.create({
     color: colors.TYPE_DARK,
     minHeight: 80,
     textAlignVertical: "top",
+  },
+  crossingReadOnly: {
+    ...typography.thoughtDisplay,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.TYPE_MUTED,
+    paddingVertical: 8,
   },
   crossingStatus: {
     ...typography.bodySmall,

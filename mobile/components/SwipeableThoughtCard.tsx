@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
 import {
   View,
   Text,
@@ -44,7 +44,7 @@ import { getSavedCardPanel, setSavedCardPanel } from "../lib/card-panel-memory";
 import { formatRelativeTime } from "../lib/format";
 
 const REPLY_MIN_LENGTH = 30;
-const REPLY_MAX_LENGTH = 300;
+const REPLY_MAX_LENGTH = 500;
 const IMAGE_HEIGHT = 150;
 const CARD_HEIGHT = spacing.compactCardHeight;
 const FOOTER_HEIGHT = spacing.compactFooterHeight;
@@ -56,9 +56,10 @@ interface SwipeableThoughtCardProps {
   isOwn?: boolean;
   onDelete?: (thoughtId: string) => void;
   onEdit?: (thoughtId: string) => void;
+  onReplySent?: (thoughtId: string) => void;
 }
 
-export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit }: SwipeableThoughtCardProps) {
+export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit, onReplySent }: SwipeableThoughtCardProps) {
   const router = useRouter();
   const { contentWidth } = useResponsiveLayout();
   const cardWidth = contentWidth - spacing.screenPadding * 2;
@@ -422,8 +423,9 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       );
       setReplyText("");
       setIsTyping(false);
-      // Snap back to panel 0
       snapTo(0, 2);
+      // Hide card from feed after reply
+      if (onReplySent) onReplySent(thought.id);
       await refreshDetail();
     } catch {
       sendTriggered.value = 0;
@@ -687,7 +689,8 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
                 onFocus={onReplyFocus}
                 onBlur={onReplyBlur}
                 editable={!sending}
-                multiline={false}
+                multiline
+                numberOfLines={3}
                 maxLength={REPLY_MAX_LENGTH}
               />
               <View style={styles.replyActionRow}>
@@ -739,7 +742,7 @@ export function SwipeableThoughtCard({ item, visible = false, isOwn = false, onD
       </Animated.View>
     </GestureDetector>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
@@ -980,7 +983,7 @@ const styles = StyleSheet.create({
     color: colors.TYPE_WHITE,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.2)",
-    minHeight: 34,
+    minHeight: 60,
     paddingHorizontal: 0,
     paddingTop: Platform.OS === "ios" ? 8 : 6,
     paddingBottom: Platform.OS === "ios" ? 10 : 6,
