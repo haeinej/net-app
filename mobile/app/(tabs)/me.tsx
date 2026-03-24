@@ -544,6 +544,8 @@ export default function MeScreen() {
                   crossing: {
                     id: c.id,
                     sentence: c.sentence,
+                    sentence_a: c.sentence_a ?? c.sentence,
+                    sentence_b: c.sentence_b ?? null,
                     context: c.context,
                     created_at: c.created_at ?? new Date().toISOString(),
                   },

@@ -319,6 +319,8 @@ export default function UserProfileScreen() {
               crossing: {
                 id: crossing.id,
                 sentence: crossing.sentence,
+                sentence_a: crossing.sentence_a ?? crossing.sentence,
+                sentence_b: crossing.sentence_b ?? null,
                 context: crossing.context,
                 created_at: crossing.created_at ?? new Date().toISOString(),
               },

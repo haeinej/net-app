@@ -347,6 +347,8 @@ function normalizeFeedItem(value: unknown): FeedItem | null {
       crossing: {
         id,
         sentence,
+        sentence_a: asNullableString(crossing?.sentence_a) ?? sentence,
+        sentence_b: asNullableString(crossing?.sentence_b),
         context: asNullableString(crossing?.context),
         created_at: createdAt,
       },
