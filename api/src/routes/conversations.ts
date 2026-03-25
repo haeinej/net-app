@@ -198,60 +198,45 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(403).send();
     await markConversationRead(conv, userId);
     const messageCount = conv.messageCount ?? 0;
-    const [crossDraft] = await db
-      .select()
-      .from(crossingDrafts)
-      .where(
+    const otherId = conv.participantA === userId ? conv.participantB : conv.participantA;
+
+    // Batch all independent queries in parallel
+    const [
+      crossDraftRows,
+      completedCrossingCountRows,
+      autoPostedCrossingCountRows,
+      thoughtRows,
+      otherUserRows,
+    ] = await Promise.all([
+      db.select().from(crossingDrafts).where(
         and(
           eq(crossingDrafts.conversationId, convId),
           or(eq(crossingDrafts.status, "draft"), eq(crossingDrafts.status, "awaiting_other"))
         )
-      )
-      .orderBy(desc(crossingDrafts.updatedAt), desc(crossingDrafts.createdAt))
-      .limit(1);
-    const [completedCrossingCountRow] = await db
-      .select({
-        count: sql<number>`cast(count(*) as int)`,
-      })
-      .from(crossings)
-      .where(eq(crossings.conversationId, convId));
-    const [autoPostedCrossingCountRow] = await db
-      .select({
-        count: sql<number>`cast(count(*) as int)`,
-      })
-      .from(crossingDrafts)
-      .where(
-        and(
-          eq(crossingDrafts.conversationId, convId),
-          inArray(crossingDrafts.status, AUTO_POSTED_CROSSING_DRAFT_STATUSES)
-        )
-      );
+      ).orderBy(desc(crossingDrafts.updatedAt), desc(crossingDrafts.createdAt)).limit(1),
+      db.select({ count: sql<number>`cast(count(*) as int)` }).from(crossings).where(eq(crossings.conversationId, convId)),
+      db.select({ count: sql<number>`cast(count(*) as int)` }).from(crossingDrafts).where(
+        and(eq(crossingDrafts.conversationId, convId), inArray(crossingDrafts.status, AUTO_POSTED_CROSSING_DRAFT_STATUSES))
+      ),
+      db.select({ id: thoughts.id, sentence: thoughts.sentence, photoUrl: thoughts.photoUrl, imageUrl: thoughts.imageUrl })
+        .from(thoughts).where(eq(thoughts.id, conv.thoughtId)).limit(1),
+      db.select({ name: users.name, photoUrl: users.photoUrl }).from(users).where(eq(users.id, otherId)).limit(1),
+    ]);
+
+    const crossDraft = crossDraftRows[0] ?? null;
     const resolvedCrossingCount =
-      Number(completedCrossingCountRow?.count ?? 0) +
-      Number(autoPostedCrossingCountRow?.count ?? 0);
+      Number(completedCrossingCountRows[0]?.count ?? 0) +
+      Number(autoPostedCrossingCountRows[0]?.count ?? 0);
     const nextCrossingMessageCount = getNextCrossingMessageCount(resolvedCrossingCount);
-    const [thought] = await db
-      .select({
-        id: thoughts.id,
-        sentence: thoughts.sentence,
-        photoUrl: thoughts.photoUrl,
-        imageUrl: thoughts.imageUrl,
-      })
-      .from(thoughts)
-      .where(eq(thoughts.id, conv.thoughtId))
-      .limit(1);
+    const thought = thoughtRows[0] ?? null;
+    const otherUser = otherUserRows[0] ?? null;
+
+    // Initiator name only needed if crossing draft exists
     let initiatorName: string | null = null;
     if (crossDraft) {
       const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, crossDraft.initiatorId)).limit(1);
       initiatorName = u?.name ?? null;
     }
-    // Fetch other participant's name and photo for header display
-    const otherId = conv.participantA === userId ? conv.participantB : conv.participantA;
-    const [otherUser] = await db
-      .select({ name: users.name, photoUrl: users.photoUrl })
-      .from(users)
-      .where(eq(users.id, otherId))
-      .limit(1);
     return reply.send({
       id: conv.id,
       message_count: messageCount,

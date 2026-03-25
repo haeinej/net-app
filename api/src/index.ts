@@ -3,6 +3,7 @@ loadEnv();
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import compress from "@fastify/compress";
 import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 
@@ -70,6 +71,8 @@ async function main() {
   });
 
 
+  console.log("[boot] registering compress...");
+  await app.register(compress, { threshold: 1024 });
   console.log("[boot] registering cors...");
   await app.register(cors, {
     origin(origin, callback) {
