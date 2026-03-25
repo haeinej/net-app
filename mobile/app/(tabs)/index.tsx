@@ -13,6 +13,8 @@ import { colors, spacing, typography } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { pickPrompt, EMPTY_STATE_PROMPTS } from "../../constants/prompts";
 import { Header } from "../../components/Header";
+import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
+import { getWalkthroughComplete, setWalkthroughComplete } from "../../lib/auth-store";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
@@ -52,12 +54,32 @@ export default function WorldsScreen() {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [acceptingReplyId, setAcceptingReplyId] = useState<string | null>(null);
 
+  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
+
   const inFlightFeed = useRef<Promise<void> | null>(null);
   const lastFocusRefreshAt = useRef(0);
   const postButtonRef = useRef<View>(null);
+  const feedCardRef = useRef<View>(null);
+
+  const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
+    "walkthrough-post-button": postButtonRef,
+    "walkthrough-feed-card": feedCardRef,
+  }).current;
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
+  }, []);
+
+  // Show walkthrough on first visit after onboarding
+  useEffect(() => {
+    getWalkthroughComplete().then((done) => {
+      if (!done) setWalkthroughVisible(true);
+    });
+  }, []);
+
+  const handleWalkthroughComplete = useCallback(() => {
+    setWalkthroughVisible(false);
+    setWalkthroughComplete();
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -368,8 +390,12 @@ export default function WorldsScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: FeedItem }) => (
-      <View collapsable={false} style={[styles.cardWrap, containerStyle]}>
+    ({ item, index }: { item: FeedItem; index: number }) => (
+      <View
+        ref={index === 0 ? feedCardRef : undefined}
+        collapsable={false}
+        style={[styles.cardWrap, containerStyle]}
+      >
         <CardDeck>
           {item.type === "thought" ? (
             <SwipeableThoughtCard
@@ -473,6 +499,11 @@ export default function WorldsScreen() {
         />
       )}
 
+      <OnboardingWalkthrough
+        visible={walkthroughVisible}
+        onComplete={handleWalkthroughComplete}
+        targetRefs={walkthroughRefs}
+      />
     </View>
   );
 }
