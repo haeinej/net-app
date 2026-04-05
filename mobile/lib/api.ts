@@ -246,40 +246,16 @@ export interface FeedItemThought {
     image_url: string | null;
     created_at: string;
     has_context: boolean;
+    in_response_to?: {
+      id: string;
+      sentence: string;
+      user: { id: string; name: string | null; photo_url: string | null };
+    } | null;
   };
   user: FeedItemUser;
 }
 
-export interface FeedItemCrossing {
-  type: "crossing";
-  crossing: {
-    id: string;
-    sentence: string;
-    sentence_a: string | null;
-    sentence_b: string | null;
-    context: string | null;
-    created_at: string;
-  };
-  participant_a: FeedItemUser;
-  participant_b: FeedItemUser;
-}
-
-export interface CollaborativeParticipant extends FeedItemUser {
-  before: string;
-  after: string;
-}
-
-export interface FeedItemCollaborative {
-  type: "collaborative";
-  collaborative: {
-    id: string;
-    created_at: string;
-  };
-  participant_a: CollaborativeParticipant;
-  participant_b: CollaborativeParticipant;
-}
-
-export type FeedItem = FeedItemThought | FeedItemCrossing | FeedItemCollaborative;
+export type FeedItem = FeedItemThought;
 export interface FeedPageResponse {
   items: FeedItem[];
   next_cursor: string | null;
@@ -320,6 +296,15 @@ function normalizeFeedItem(value: unknown): FeedItem | null {
 
     if (!id || !sentence || !createdAt) return null;
 
+    const rawResponseTo = asRecord(thought?.in_response_to);
+    const inResponseTo = rawResponseTo
+      ? {
+          id: asString(rawResponseTo.id) ?? "",
+          sentence: asString(rawResponseTo.sentence) ?? "",
+          user: normalizeFeedUser(rawResponseTo.user),
+        }
+      : null;
+
     return {
       type: "thought",
       thought: {
@@ -329,31 +314,9 @@ function normalizeFeedItem(value: unknown): FeedItem | null {
         image_url: asNullableString(thought?.image_url),
         created_at: createdAt,
         has_context: asBoolean(thought?.has_context),
+        in_response_to: inResponseTo,
       },
       user: normalizeFeedUser(record?.user),
-    };
-  }
-
-  if (type === "crossing") {
-    const crossing = asRecord(record?.crossing);
-    const id = asString(crossing?.id);
-    const sentence = asString(crossing?.sentence);
-    const createdAt = asString(crossing?.created_at);
-
-    if (!id || !sentence || !createdAt) return null;
-
-    return {
-      type: "crossing",
-      crossing: {
-        id,
-        sentence,
-        sentence_a: asNullableString(crossing?.sentence_a) ?? sentence,
-        sentence_b: asNullableString(crossing?.sentence_b),
-        context: asNullableString(crossing?.context),
-        created_at: createdAt,
-      },
-      participant_a: normalizeFeedUser(record?.participant_a),
-      participant_b: normalizeFeedUser(record?.participant_b),
     };
   }
 
@@ -446,11 +409,15 @@ async function getAuthToken(): Promise<string | null> {
 
 export async function fetchFeed(
   limit: number,
-  cursor?: string | null
+  cursor?: string | null,
+  anchor?: string | null
 ): Promise<FeedPageResponse> {
-  const query = cursor
+  let query = cursor
     ? `/api/feed?limit=${limit}&cursor=${encodeURIComponent(cursor)}`
     : `/api/feed?limit=${limit}`;
+  if (anchor) {
+    query += `&anchor=${encodeURIComponent(anchor)}`;
+  }
   const data = await requestJson<unknown>(query, "Feed failed", { auth: true });
   return normalizeFeedPageResponse(data);
 }
@@ -461,23 +428,6 @@ export async function fetchNotifications(): Promise<NotificationItem[]> {
   });
   return normalizeNotificationItems(data);
 }
-
-export async function acceptReply(replyId: string): Promise<{ conversation_id: string }> {
-  return requestJson<{ conversation_id: string }>(
-    `/api/replies/${replyId}/accept`,
-    "Accept failed",
-    { method: "POST", auth: true, headers: JSON_HEADERS, body: JSON.stringify({}) }
-  );
-}
-
-export async function deleteReply(replyId: string): Promise<void> {
-  await requestVoid(`/api/replies/${replyId}/ignore`, "Ignore failed", {
-    method: "POST",
-    auth: true,
-  });
-}
-
-export const ignoreReply = deleteReply;
 
 // Thought detail (three panels)
 export interface ThoughtPanel1 {
@@ -565,290 +515,7 @@ export async function fetchThought(id: string): Promise<ThoughtDetailResponse> {
   return normalizeThoughtDetailResponse(data);
 }
 
-export async function postReply(thoughtId: string, text: string): Promise<{ id: string; status: string; created_at: string }> {
-  return requestJson<{ id: string; status: string; created_at: string }>(
-    `/api/thoughts/${thoughtId}/reply`,
-    "Reply failed",
-    {
-      method: "POST",
-      auth: true,
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ text }),
-    }
-  );
-}
-
-// Crossing Detail
-export interface CrossingDetailReply {
-  id: string;
-  user: { id: string; name: string | null; photo_url: string | null };
-  text: string;
-  target_participant_id: string;
-  created_at: string;
-}
-
-export interface CrossingDetailResponse {
-  panel_1: {
-    id: string;
-    sentence: string;
-    sentence_a: string | null;
-    sentence_b: string | null;
-    participant_a: FeedItemUser;
-    participant_b: FeedItemUser;
-    created_at: string;
-  };
-  panel_2: { sentence: string; sentence_a: string | null; sentence_b: string | null; context: string | null };
-  panel_3: { accepted_replies: CrossingDetailReply[]; can_reply: boolean };
-}
-
-export async function fetchCrossingDetail(id: string): Promise<CrossingDetailResponse> {
-  return requestJson<CrossingDetailResponse>(`/api/crossings/${id}`, "Crossing not found", {
-    auth: true,
-  });
-}
-
-export async function postCrossingReply(
-  crossingId: string,
-  text: string,
-  targetParticipantId: string
-): Promise<{ id: string; status: string; created_at: string }> {
-  return requestJson<{ id: string; status: string; created_at: string }>(
-    `/api/crossings/${crossingId}/reply`,
-    "Reply failed",
-    {
-      method: "POST",
-      auth: true,
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ text, target_participant_id: targetParticipantId }),
-    }
-  );
-}
-
-export interface EditCrossingResponse {
-  id: string;
-  sentence: string;
-  context: string | null;
-  image_url: string | null;
-  created_at: string | null;
-}
-
-export async function editCrossing(
-  crossingId: string,
-  updates: { sentence?: string; context?: string }
-): Promise<EditCrossingResponse> {
-  return requestJson<EditCrossingResponse>(
-    `/api/crossings/${crossingId}`,
-    "Edit failed",
-    {
-      method: "PUT",
-      auth: true,
-      headers: JSON_HEADERS,
-      body: JSON.stringify(updates),
-    }
-  );
-}
-
-export async function deleteCrossing(crossingId: string): Promise<void> {
-  await requestVoid(`/api/crossings/${crossingId}`, "Delete failed", {
-    method: "DELETE",
-    auth: true,
-  });
-}
-
-// Conversations
-export interface ConversationListItem {
-  id: string;
-  other_user: { id: string; name: string | null; photo_url: string | null } | null;
-  last_message_preview: string;
-  last_message_at: string | null;
-  is_dormant: boolean;
-  unread: boolean;
-}
-
-function normalizeConversationListItem(value: unknown): ConversationListItem | null {
-  const record = asRecord(value);
-  const id = asString(record?.id);
-  if (!id) return null;
-
-  const otherUser = asRecord(record?.other_user);
-
-  return {
-    id,
-    other_user: otherUser
-      ? {
-          id: asString(otherUser.id) ?? "",
-          name: asNullableString(otherUser.name),
-          photo_url: asNullableString(otherUser.photo_url),
-        }
-      : null,
-    last_message_preview: asString(record?.last_message_preview) ?? "",
-    last_message_at: asNullableString(record?.last_message_at),
-    is_dormant: asBoolean(record?.is_dormant),
-    unread: asBoolean(record?.unread),
-  };
-}
-
-export interface ConversationMessage {
-  id: string;
-  sender_id: string;
-  text: string;
-  metadata?: {
-    type: string;
-    thoughtId?: string;
-    thoughtSentence?: string;
-    replyId?: string;
-  } | null;
-  created_at: string | null;
-}
-
-export async function fetchConversations(): Promise<ConversationListItem[]> {
-  const data = await requestJson<unknown>("/api/conversations", "Conversations failed", {
-    auth: true,
-  });
-  return Array.isArray(data)
-    ? data
-        .map((item) => normalizeConversationListItem(item))
-        .filter((item): item is ConversationListItem => item !== null)
-    : [];
-}
-
-export async function fetchConversationMessages(
-  conversationId: string,
-  limit = 50,
-  beforeId?: string
-): Promise<ConversationMessage[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (beforeId) params.set("before_id", beforeId);
-  return requestJson<ConversationMessage[]>(
-    `/api/conversations/${conversationId}/messages?${params}`,
-    "Messages failed",
-    { auth: true }
-  );
-}
-
-export async function postConversationMessage(
-  conversationId: string,
-  text: string
-): Promise<{ id: string; text: string; created_at: string | null }> {
-  return requestJson<{ id: string; text: string; created_at: string | null }>(
-    `/api/conversations/${conversationId}/messages`,
-    "Send failed",
-    {
-      method: "POST",
-      auth: true,
-      headers: JSON_HEADERS,
-      body: JSON.stringify({ text }),
-    }
-  );
-}
-
-// Conversation detail (message_count + crossing state)
-export interface CrossingDraft {
-  id: string;
-  initiator_id: string;
-  initiator_name: string | null;
-  sentence: string | null;
-  sentence_b: string | null;
-  context: string | null;
-  status: "draft" | "awaiting_other" | "complete" | "abandoned" | "auto_posted";
-  submitted_at: string | null;
-  auto_post_at: string | null;
-  auto_posted_thought_id: string | null;
-}
-
-export interface ConversationDetail {
-  id: string;
-  message_count: number;
-  participant_a_id: string;
-  participant_b_id: string;
-  other_participant?: {
-    id: string;
-    name: string | null;
-    photo_url: string | null;
-  } | null;
-  thought: {
-    id: string;
-    sentence: string;
-    photo_url: string | null;
-    image_url: string | null;
-  } | null;
-  crossing_draft: CrossingDraft | null;
-  crossing_complete: boolean;
-  crossing_available: boolean;
-  next_crossing_message_count: number;
-}
-
-export async function fetchConversationDetail(conversationId: string): Promise<ConversationDetail> {
-  return requestJson<ConversationDetail>(
-    `/api/conversations/${conversationId}`,
-    "Conversation failed",
-    { auth: true }
-  );
-}
-
-// Crossing
-export async function startCrossing(conversationId: string): Promise<CrossingDraft & { id: string }> {
-  return requestJson<CrossingDraft & { id: string }>(
-    `/api/conversations/${conversationId}/crossing/start`,
-    "Start crossing failed",
-    { method: "POST", auth: true }
-  );
-}
-
-export async function getCrossingDraft(conversationId: string): Promise<(CrossingDraft & { id: string }) | null> {
-  return requestJson<CrossingDraft & { id: string }>(
-    `/api/conversations/${conversationId}/crossing`,
-    "Get crossing failed",
-    { auth: true, allow404: true }
-  );
-}
-
-export async function updateCrossingDraft(
-  conversationId: string,
-  body: { sentence?: string; context?: string }
-): Promise<void> {
-  await requestVoid(
-    `/api/conversations/${conversationId}/crossing`,
-    "Update crossing failed",
-    {
-      method: "PUT",
-      auth: true,
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
-    }
-  );
-}
-
-export async function completeCrossing(
-  conversationId: string,
-  body: { sentence?: string; context?: string }
-): Promise<
-  | { status: "awaiting_other"; auto_post_at: string }
-  | { status: "complete"; id: string; sentence: string; context: string | null; image_url: string | null }
-> {
-  return requestJson<
-    | { status: "awaiting_other"; auto_post_at: string }
-    | { status: "complete"; id: string; sentence: string; context: string | null; image_url: string | null }
-  >(
-    `/api/conversations/${conversationId}/crossing/complete`,
-    "Complete crossing failed",
-    {
-      method: "POST",
-      auth: true,
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
-    }
-  );
-}
-
-export async function abandonCrossing(conversationId: string): Promise<void> {
-  await requestVoid(
-    `/api/conversations/${conversationId}/crossing/abandon`,
-    "Abandon failed",
-    { method: "POST", auth: true }
-  );
-}
-
+// Profile
 // Profile
 export interface ProfileThought {
   id: string;
@@ -858,33 +525,12 @@ export interface ProfileThought {
   created_at: string | null;
 }
 
-export interface ProfileCrossing {
-  id: string;
-  sentence: string;
-  sentence_a?: string | null;
-  sentence_b?: string | null;
-  context: string | null;
-  image_url: string | null;
-  created_at: string | null;
-  participant_a: FeedItemUser | null;
-  participant_b: FeedItemUser | null;
-}
-
-export interface ProfileCollaborativeCard {
-  id: string;
-  created_at: string | null;
-  participant_a: CollaborativeParticipant | null;
-  participant_b: CollaborativeParticipant | null;
-}
-
 export interface ProfileResponse {
   id: string;
   name: string | null;
   photo_url: string | null;
   interests?: string[];
   thoughts: ProfileThought[];
-  crossings?: ProfileCrossing[];
-  collaborative_cards?: ProfileCollaborativeCard[];
 }
 
 function normalizeProfileThought(value: unknown): ProfileThought | null {
@@ -902,23 +548,6 @@ function normalizeProfileThought(value: unknown): ProfileThought | null {
   };
 }
 
-function normalizeProfileCrossing(value: unknown): ProfileCrossing | null {
-  const record = asRecord(value);
-  const id = asString(record?.id);
-  const sentence = asString(record?.sentence);
-  if (!id || !sentence) return null;
-
-  return {
-    id,
-    sentence,
-    context: asNullableString(record?.context),
-    image_url: asNullableString(record?.image_url),
-    created_at: asNullableString(record?.created_at),
-    participant_a: record?.participant_a ? normalizeFeedUser(record.participant_a) : null,
-    participant_b: record?.participant_b ? normalizeFeedUser(record.participant_b) : null,
-  };
-}
-
 function normalizeProfileResponse(value: unknown): ProfileResponse {
   const record = asRecord(value);
 
@@ -933,11 +562,6 @@ function normalizeProfileResponse(value: unknown): ProfileResponse {
       ? record.thoughts
           .map((item) => normalizeProfileThought(item))
           .filter((item): item is ProfileThought => item !== null)
-      : [],
-    crossings: Array.isArray(record?.crossings)
-      ? record.crossings
-          .map((item) => normalizeProfileCrossing(item))
-          .filter((item): item is ProfileCrossing => item !== null)
       : [],
   };
 }
@@ -1006,7 +630,8 @@ export interface CreateThoughtResponse {
 export async function createThought(
   sentence: string,
   context?: string,
-  photoUrl?: string
+  photoUrl?: string,
+  inResponseToId?: string
 ): Promise<CreateThoughtResponse> {
   return requestJson<CreateThoughtResponse>("/api/thoughts", "Post failed", {
     method: "POST",
@@ -1016,6 +641,7 @@ export async function createThought(
       sentence: sentence.trim(),
       context: (context ?? "").trim() || undefined,
       photo_url: photoUrl?.trim() || undefined,
+      in_response_to_id: inResponseToId || undefined,
     }),
   });
 }
@@ -1218,9 +844,6 @@ export type ReportReason =
 export type ReportTargetType =
   | "thought"
   | "reply"
-  | "crossing"
-  | "crossing_reply"
-  | "message"
   | "user";
 
 export async function reportContent(
@@ -1329,4 +952,19 @@ export async function generateInvite(): Promise<{ code: string; remaining: numbe
     "Could not generate invite",
     { method: "POST", auth: true }
   );
+}
+
+// Thought replies
+
+export async function fetchThoughtReplies(
+  thoughtId: string
+): Promise<FeedItem[]> {
+  const data = await requestJson<{ items: unknown[] }>(
+    `/api/thoughts/${encodeURIComponent(thoughtId)}/replies`,
+    "Could not fetch replies",
+    { auth: true }
+  );
+  return (data?.items ?? [])
+    .map((item) => normalizeFeedItem(item))
+    .filter((item): item is FeedItem => item !== null);
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, memo } from "react";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import {
   View,
   Text,
@@ -16,43 +16,31 @@ import { Header } from "../../components/Header";
 import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
 import { getWalkthroughComplete, setWalkthroughComplete } from "../../lib/auth-store";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
-import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
-import { NotificationPanel } from "../../components/NotificationPanel";
 import {
   fetchFeed,
-  fetchNotifications,
-  acceptReply,
-  ignoreReply,
   ApiError,
   getMyUserId,
   deleteThought,
   editThought,
   fetchThought,
-  deleteCrossing,
-  editCrossing,
   type FeedItem,
-  type NotificationItem,
 } from "../../lib/api";
 
-const PAGE_SIZE = 20;
-const FOCUS_REFRESH_INTERVAL_MS = 60_000;
+const PAGE_SIZE = 3;
+/** Refresh feed once per day (24 h). The API snapshot also uses a 24-hour TTL,
+ *  so pulling fresh data more often wouldn't change the result. */
+const FOCUS_REFRESH_INTERVAL_MS = 24 * 60 * 60_000;
 
 export default function WorldsScreen() {
   const router = useRouter();
   const { containerStyle } = useResponsiveLayout();
+  const params = useLocalSearchParams<{ anchor?: string }>();
   const [feed, setFeed] = useState<FeedItem[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
-  const [acceptingReplyId, setAcceptingReplyId] = useState<string | null>(null);
 
   const [walkthroughVisible, setWalkthroughVisible] = useState(false);
 
@@ -164,102 +152,37 @@ export default function WorldsScreen() {
     [feed]
   );
 
-  const handleCrossingDelete = useCallback(async (crossingId: string) => {
-    try {
-      await deleteCrossing(crossingId);
-      setFeed((prev) => prev.filter((f) => !(f.type === "crossing" && f.crossing.id === crossingId)));
-    } catch {
-      // silent
+  const anchorRef = useRef<string | null>(null);
+
+  // Pick up anchor from post screen navigation
+  useEffect(() => {
+    if (params.anchor) {
+      anchorRef.current = params.anchor;
     }
-  }, []);
-
-  const handleCrossingEdit = useCallback(
-    (crossingId: string) => {
-      const item = feed.find((f) => f.type === "crossing" && f.crossing.id === crossingId);
-      if (!item || item.type !== "crossing") return;
-
-      Alert.prompt(
-        "Edit crossing",
-        "Update the sentence:",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Next",
-            onPress: async (newSentence?: string) => {
-              const nextSentence = newSentence?.trim();
-              if (!nextSentence) return;
-
-              Alert.prompt(
-                "Edit context",
-                "Update the context:",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Save",
-                    onPress: async (newContext?: string) => {
-                      const nextContext = newContext?.trim() ?? "";
-                      try {
-                        await editCrossing(crossingId, {
-                          sentence: nextSentence,
-                          context: nextContext || undefined,
-                        });
-                        setFeed((prev) =>
-                          prev.map((f) =>
-                            f.type === "crossing" && f.crossing.id === crossingId
-                              ? {
-                                  ...f,
-                                  crossing: {
-                                    ...f.crossing,
-                                    sentence: nextSentence,
-                                    context: nextContext || null,
-                                  },
-                                }
-                              : f
-                          )
-                        );
-                      } catch {
-                        // keep existing on failure
-                      }
-                    },
-                  },
-                ],
-                "plain-text",
-                item.crossing.context ?? ""
-              );
-            },
-          },
-        ],
-        "plain-text",
-        item.crossing.sentence
-      );
-    },
-    [feed]
-  );
+  }, [params.anchor]);
 
   const loadFeed = useCallback(
-    async (cursor: string | null, append: boolean, opts: { isRefresh?: boolean } = {}) => {
+    async (opts: { isRefresh?: boolean } = {}) => {
       if (inFlightFeed.current) {
         return inFlightFeed.current;
       }
       const { isRefresh } = opts;
-      if (append) setLoadingMore(true);
-      else if (isRefresh) setRefreshing(true);
-      else if (!cursor) setLoading(true);
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
 
       setError(null);
+      const anchor = anchorRef.current;
+      anchorRef.current = null;
 
       const p = (async () => {
         try {
-          const page = await fetchFeed(PAGE_SIZE, cursor);
-          setFeed((prev) => (append ? prev.concat(page.items) : page.items));
-          setNextCursor(page.next_cursor);
-          setHasMore(Boolean(page.next_cursor));
+          const page = await fetchFeed(PAGE_SIZE, null, anchor);
+          setFeed(page.items.slice(0, PAGE_SIZE));
         } catch (e) {
           setError(e instanceof Error ? e.message : "Something went wrong");
         } finally {
           setLoading(false);
           setRefreshing(false);
-          setLoadingMore(false);
           inFlightFeed.current = null;
         }
       })();
@@ -270,122 +193,15 @@ export default function WorldsScreen() {
     []
   );
 
-  const loadNotifications = useCallback(async () => {
-    setNotificationsLoading(true);
-    try {
-      const items = await fetchNotifications();
-      setNotifications(items);
-    } catch {
-      setNotifications([]);
-    } finally {
-      setNotificationsLoading(false);
-    }
-  }, []);
-
   const onRefresh = useCallback(() => {
-    setNextCursor(null);
-    loadNotifications();
-    loadFeed(null, false, { isRefresh: true });
-  }, [loadFeed, loadNotifications]);
-
-  const onEndReached = useCallback(() => {
-    if (!hasMore || loadingMore || feed.length === 0 || !nextCursor) return;
-    loadFeed(nextCursor, true);
-  }, [hasMore, loadingMore, feed.length, nextCursor, loadFeed]);
-
-  const openNotifications = useCallback(() => {
-    setNotificationPanelOpen((prev) => {
-      if (!prev) loadNotifications();
-      return !prev;
-    });
-  }, [loadNotifications]);
-
-  const handleAccept = useCallback(async (item: NotificationItem) => {
-    if (acceptingReplyId) return;
-    setAcceptingReplyId(item.reply_id);
-
-    try {
-      const result = await acceptReply(item.reply_id);
-      setNotificationPanelOpen(false);
-      setNotifications((prev) => prev.filter((n) => n.reply_id !== item.reply_id));
-
-      // Store the navigation for after the moment
-      const navParams = {
-        pathname: "/conversation/[id]" as const,
-        params: {
-          id: result.conversation_id,
-          otherName: item.replier?.name ?? "",
-          otherPhoto: item.replier?.photo_url ?? "",
-          otherId: item.replier?.id ?? "",
-          thoughtSentence: item.thought?.sentence ?? "",
-        },
-      };
-      router.push(navParams);
-    } catch (err) {
-      console.error("[handleAccept] failed:", err);
-      if (err instanceof ApiError) {
-        if (err.status === 401) {
-          Alert.alert("Session expired", "Please log in again.");
-          router.replace("/login");
-          return;
-        }
-
-        const message =
-          err.code === "REPLY_FORBIDDEN" || err.status === 403
-            ? "You can only accept replies to your own thoughts."
-            : err.code === "REPLY_NOT_FOUND" || err.status === 404
-              ? "This reply is no longer available."
-              : err.code === "REPLY_ALREADY_HANDLED" || err.status === 409
-                ? "This reply was already handled."
-                : err.code === "ACCEPT_REPLY_FAILED" || err.status >= 500
-                  ? "Couldn't open chat right now. Please try again."
-                  : err.message || "Couldn't open chat right now. Please try again.";
-        Alert.alert("Couldn't open chat", message);
-        return;
-      }
-
-      const message =
-        err instanceof Error && err.message.includes("timeout")
-          ? "Network timeout — check your connection and try again."
-          : err instanceof Error && err.message.includes("reachable")
-            ? "Can't reach the server — check your connection."
-            : "Couldn't open chat right now. Please try again.";
-      Alert.alert("Couldn't connect", message);
-    } finally {
-      setAcceptingReplyId(null);
-    }
-  }, [router, acceptingReplyId]);
-
-  const handleIgnore = useCallback(async (replyId: string) => {
-    try {
-      await ignoreReply(replyId);
-      setNotifications((prev) => {
-        const next = prev.filter((n) => n.reply_id !== replyId);
-        if (next.length === 0) setNotificationPanelOpen(false);
-        return next;
-      });
-    } catch {
-      // keep in list
-    }
-  }, []);
-
-  const handleThoughtReplySent = useCallback((thoughtId: string) => {
-    setFeed((prev) => prev.filter((f) => !(f.type === "thought" && f.thought.id === thoughtId)));
-  }, []);
-
-  const handleCrossingReplySent = useCallback((crossingId: string) => {
-    setFeed((prev) => prev.filter((f) => !(f.type === "crossing" && f.crossing.id === crossingId)));
-  }, []);
-
-  const hasNotifications = notifications.length > 0;
+    loadFeed({ isRefresh: true });
+  }, [loadFeed]);
 
   const keyExtractor = useCallback(
     (item: FeedItem) =>
       item.type === "thought"
         ? item.thought.id
-        : item.type === "crossing"
-          ? `crossing-${item.crossing.id}`
-          : "hidden-crossing",
+        : "unknown",
     []
   );
 
@@ -404,26 +220,12 @@ export default function WorldsScreen() {
               isOwn={Boolean(myUserId && item.user?.id && myUserId === item.user.id)}
               onDelete={handleFeedDelete}
               onEdit={handleFeedEdit}
-              onReplySent={handleThoughtReplySent}
-            />
-          ) : item.type === "crossing" ? (
-            <CrossingCard
-              item={item}
-              visible
-              myUserId={myUserId}
-              isOwn={Boolean(
-                myUserId &&
-                  (myUserId === item.participant_a.id || myUserId === item.participant_b.id)
-              )}
-              onDelete={handleCrossingDelete}
-              onEdit={handleCrossingEdit}
-              onReplySent={handleCrossingReplySent}
             />
           ) : null}
         </CardDeck>
       </View>
     ),
-    [containerStyle, myUserId, handleFeedDelete, handleFeedEdit, handleCrossingDelete, handleCrossingEdit, handleThoughtReplySent, handleCrossingReplySent]
+    [containerStyle, myUserId, handleFeedDelete, handleFeedEdit]
   );
 
   useFocusEffect(
@@ -434,28 +236,16 @@ export default function WorldsScreen() {
 
       if (shouldRefresh) {
         lastFocusRefreshAt.current = now;
-        loadFeed(null, false);
-        loadNotifications();
+        loadFeed();
       }
-    }, [feed.length, loadFeed, loadNotifications])
+    }, [feed.length, loadFeed])
   );
 
   return (
     <View style={styles.container}>
       <Header
-        hasNotifications={hasNotifications}
-        onNotificationPress={openNotifications}
         postButtonRef={postButtonRef}
       />
-      {notificationPanelOpen && (
-        <NotificationPanel
-          items={notifications}
-          loading={notificationsLoading}
-          acceptingReplyId={acceptingReplyId}
-          onAccept={handleAccept}
-          onIgnore={handleIgnore}
-        />
-      )}
       {loading && feed.length === 0 ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.TYPE_MUTED} />
@@ -476,25 +266,13 @@ export default function WorldsScreen() {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           style={styles.list}
-          removeClippedSubviews
-          initialNumToRender={4}
-          maxToRenderPerBatch={4}
-          windowSize={5}
+          scrollEnabled
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={colors.TYPE_MUTED}
             />
-          }
-          onEndReached={onEndReached}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.footer}>
-                <ActivityIndicator size="small" color={colors.TYPE_MUTED} />
-              </View>
-            ) : null
           }
         />
       )}
@@ -547,9 +325,5 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     marginTop: 8,
     color: colors.TYPE_MUTED,
-  },
-  footer: {
-    paddingVertical: 16,
-    alignItems: "center",
   },
 });

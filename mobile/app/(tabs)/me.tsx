@@ -23,7 +23,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, fontFamily, shadows, typography, primitives, radii, opacity } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
-import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import {
   getMyUserId,
@@ -34,13 +33,10 @@ import {
   updateProfile,
   deleteThought,
   editThought,
-  deleteCrossing,
-  editCrossing,
   fetchMyInvites,
   generateInvite,
   type ProfileResponse,
   type FeedItemThought,
-  type FeedItemCrossing,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
 
@@ -274,86 +270,6 @@ export default function MeScreen() {
     [profile]
   );
 
-  const handleDeleteCrossing = useCallback(async (crossingId: string) => {
-    try {
-      await deleteCrossing(crossingId);
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              crossings: (prev.crossings ?? []).filter((crossing) => crossing.id !== crossingId),
-            }
-          : null
-      );
-    } catch {
-      Alert.alert("Error", "Could not delete crossing");
-    }
-  }, []);
-
-  const handleEditCrossing = useCallback(
-    (crossingId: string) => {
-      const crossing = profile?.crossings?.find((item) => item.id === crossingId);
-      if (!crossing) return;
-
-      const openContextPrompt = (nextSentence: string, existingContext: string) => {
-        Alert.prompt(
-          "Edit context",
-          "Update the context:",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Save",
-              onPress: async (newContext?: string) => {
-                const nextContext = newContext?.trim() ?? "";
-                try {
-                  await editCrossing(crossingId, {
-                    sentence: nextSentence,
-                    context: nextContext,
-                  });
-                  setProfile((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          crossings: (prev.crossings ?? []).map((item) =>
-                            item.id === crossingId
-                              ? { ...item, sentence: nextSentence, context: nextContext || null }
-                              : item
-                          ),
-                        }
-                      : null
-                  );
-                } catch {
-                  Alert.alert("Error", "Could not edit crossing");
-                }
-              },
-            },
-          ],
-          "plain-text",
-          existingContext
-        );
-      };
-
-      Alert.prompt(
-        "Edit crossing",
-        "Update the sentence:",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Next",
-            onPress: (newSentence?: string) => {
-              const nextSentence = newSentence?.trim();
-              if (!nextSentence) return;
-              openContextPrompt(nextSentence, crossing.context ?? "");
-            },
-          },
-        ],
-        "plain-text",
-        crossing.sentence
-      );
-    },
-    [profile]
-  );
-
   if (!myUserId) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
@@ -395,20 +311,9 @@ export default function MeScreen() {
     );
   }
 
-  // Merge thoughts + crossings into a single deck sorted by most recent
-  const deckItems: Array<
-    | { kind: "thought"; date: string; data: (typeof profile.thoughts)[number] }
-    | { kind: "crossing"; date: string; data: NonNullable<typeof profile.crossings>[number] }
-  > = [];
-
-  for (const t of profile.thoughts) {
-    deckItems.push({ kind: "thought", date: t.created_at ?? new Date(0).toISOString(), data: t });
-  }
-  for (const c of profile.crossings ?? []) {
-    deckItems.push({ kind: "crossing", date: c.created_at ?? new Date(0).toISOString(), data: c });
-  }
-
-  deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const deckItems = [...profile.thoughts].sort(
+    (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
 
   const sheetTranslateY = menuSlide.interpolate({
     inputRange: [0, 1],
@@ -504,70 +409,36 @@ export default function MeScreen() {
           {deckItems.length === 0 ? (
             <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
           ) : (
-            deckItems.map((item) => {
-              if (item.kind === "thought") {
-                const t = item.data;
-                const feedItem: FeedItemThought = {
-                  type: "thought",
-                  thought: {
-                    id: t.id,
-                    sentence: t.sentence,
-                    photo_url: t.photo_url,
-                    image_url: t.image_url,
-                    created_at: t.created_at ?? new Date().toISOString(),
-                    has_context: false,
-                  },
-                  user: {
-                    id: myUserId ?? "",
-                    name: profile.name,
-                    photo_url: profile.photo_url,
-                  },
-                };
-                return (
-                  <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                    <CardDeck layers={0}>
-                      <SwipeableThoughtCard
-                        item={feedItem}
-                        visible
-                        isOwn
-                        onDelete={handleDeleteThought}
-                        onEdit={handleEditThought}
-                      />
-                    </CardDeck>
-                  </View>
-                );
-              }
-              if (item.kind === "crossing") {
-                const c = item.data;
-                const crossingItem: FeedItemCrossing = {
-                  type: "crossing",
-                  crossing: {
-                    id: c.id,
-                    sentence: c.sentence,
-                    sentence_a: c.sentence_a ?? c.sentence,
-                    sentence_b: c.sentence_b ?? null,
-                    context: c.context,
-                    created_at: c.created_at ?? new Date().toISOString(),
-                  },
-                  participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
-                  participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
-                };
-                return (
-                  <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                    <CardDeck layers={0}>
-                      <CrossingCard
-                        item={crossingItem}
-                        visible
-                        myUserId={myUserId}
-                        isOwn
-                        onDelete={handleDeleteCrossing}
-                        onEdit={handleEditCrossing}
-                      />
-                    </CardDeck>
-                  </View>
-                );
-              }
-              return null;
+            deckItems.map((t) => {
+              const feedItem: FeedItemThought = {
+                type: "thought",
+                thought: {
+                  id: t.id,
+                  sentence: t.sentence,
+                  photo_url: t.photo_url,
+                  image_url: t.image_url,
+                  created_at: t.created_at ?? new Date().toISOString(),
+                  has_context: false,
+                },
+                user: {
+                  id: myUserId ?? "",
+                  name: profile.name,
+                  photo_url: profile.photo_url,
+                },
+              };
+              return (
+                <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
+                  <CardDeck layers={0}>
+                    <SwipeableThoughtCard
+                      item={feedItem}
+                      visible
+                      isOwn
+                      onDelete={handleDeleteThought}
+                      onEdit={handleEditThought}
+                    />
+                  </CardDeck>
+                </View>
+              );
             })
           )}
         </View>

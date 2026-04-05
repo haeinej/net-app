@@ -1,0 +1,699 @@
+"use strict";
+/**
+ * FeedService — Phase 5. getFeed orchestrates retrieve → score → rank → diversity → FeedItem[].
+ * Three-bucket system with wild card interspersion.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.invalidateFeedCache = invalidateFeedCache;
+exports.getFeed = getFeed;
+exports.getFeedWithDebug = getFeedWithDebug;
+const drizzle_orm_1 = require("drizzle-orm");
+const db_1 = require("../db");
+const retrieve_1 = require("./retrieve");
+const score_1 = require("./score");
+const rank_1 = require("./rank");
+const score_2 = require("./score");
+const config_1 = require("./config");
+const analytics_1 = require("./analytics");
+const runtime_config_1 = require("./runtime-config");
+const blocked_users_1 = require("../lib/blocked-users");
+const viewer_profile_1 = require("./viewer-profile");
+const FEED_SNAPSHOT_PREFETCH_PAGES = 3;
+const FEED_SNAPSHOT_MIN_ITEMS = 60;
+const FEED_SNAPSHOT_MAX_ITEMS = 300;
+function asStoredRecord(value) {
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? value
+        : null;
+}
+function asStoredString(value) {
+    return typeof value === "string" ? value : null;
+}
+function asStoredNullableString(value) {
+    return typeof value === "string" ? value : null;
+}
+function asStoredBoolean(value, fallback = false) {
+    return typeof value === "boolean" ? value : fallback;
+}
+function sanitizeFeedUser(value, fallbackId = "") {
+    const record = asStoredRecord(value);
+    return {
+        id: asStoredString(record?.id) ?? fallbackId,
+        name: asStoredNullableString(record?.name),
+        photo_url: asStoredNullableString(record?.photo_url),
+    };
+}
+function sanitizeFeedItem(value) {
+    const record = asStoredRecord(value);
+    const type = asStoredString(record?.type);
+    if (type === "thought") {
+        const thought = asStoredRecord(record?.thought);
+        const id = asStoredString(thought?.id);
+        const sentence = asStoredString(thought?.sentence);
+        const createdAt = asStoredString(thought?.created_at);
+        if (!id || !sentence || !createdAt)
+            return null;
+        const item = {
+            type: "thought",
+            thought: {
+                id,
+                sentence,
+                photo_url: asStoredNullableString(thought?.photo_url),
+                image_url: asStoredNullableString(thought?.image_url),
+                created_at: createdAt,
+                has_context: asStoredBoolean(thought?.has_context),
+            },
+            user: sanitizeFeedUser(record?.user),
+        };
+        return item;
+    }
+    if (type === "crossing") {
+        const crossing = asStoredRecord(record?.crossing);
+        const id = asStoredString(crossing?.id);
+        const sentence = asStoredString(crossing?.sentence);
+        const createdAt = asStoredString(crossing?.created_at);
+        if (!id || !sentence || !createdAt)
+            return null;
+        const item = {
+            type: "crossing",
+            crossing: {
+                id,
+                sentence,
+                context: asStoredNullableString(crossing?.context),
+                created_at: createdAt,
+            },
+            participant_a: sanitizeFeedUser(record?.participant_a),
+            participant_b: sanitizeFeedUser(record?.participant_b),
+        };
+        return item;
+    }
+    return null;
+}
+function sanitizeFeedItems(value) {
+    if (!Array.isArray(value))
+        return [];
+    return value
+        .map((item) => sanitizeFeedItem(item))
+        .filter((item) => item !== null);
+}
+async function logFeedSlice(userId, traces, offset, limit, configVersion) {
+    const slice = traces.slice(offset, offset + limit);
+    if (slice.length === 0)
+        return;
+    try {
+        void (0, analytics_1.recordFeedServe)(userId, slice, configVersion);
+    }
+    catch (error) {
+        console.error("recordFeedServe failed", {
+            userId,
+            configVersion,
+            message: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+async function invalidateFeedCache(userId) {
+    if (!userId) {
+        await db_1.db.delete(db_1.feedSnapshots);
+        return;
+    }
+    await db_1.db.delete(db_1.feedSnapshots).where((0, drizzle_orm_1.eq)(db_1.feedSnapshots.viewerId, userId));
+}
+let totalEngagementEventsCache = null;
+async function getTotalEngagementEvents(config = config_1.feedConfig) {
+    const now = Date.now();
+    if (totalEngagementEventsCache && totalEngagementEventsCache.expiresAt > now) {
+        return totalEngagementEventsCache.value;
+    }
+    const [engRow] = await db_1.db
+        .select({ value: db_1.systemConfig.value })
+        .from(db_1.systemConfig)
+        .where((0, drizzle_orm_1.eq)(db_1.systemConfig.key, "total_engagement_events"));
+    const value = typeof engRow?.value === "number" ? engRow.value : 0;
+    totalEngagementEventsCache = {
+        value,
+        expiresAt: now + config.cacheTtlSeconds * 1000,
+    };
+    return value;
+}
+async function loadViewerEmbeddingsAndProfile(viewerId, config = config_1.feedConfig) {
+    const [viewer, weightsRow, viewerFeedProfile] = await Promise.all([
+        db_1.db.select().from(db_1.users).where((0, drizzle_orm_1.eq)(db_1.users.id, viewerId)).limit(1),
+        db_1.db
+            .select()
+            .from(db_1.userRecommendationWeights)
+            .where((0, drizzle_orm_1.eq)(db_1.userRecommendationWeights.userId, viewerId))
+            .limit(1),
+        (0, viewer_profile_1.loadViewerFeedProfile)(viewerId),
+    ]);
+    const profile = {
+        id: viewerId,
+        cohortYear: viewer[0]?.cohortYear ?? null,
+        concentration: viewer[0]?.concentration ?? null,
+    };
+    const defaultWeights = {
+        qWeight: config.defaultWeights.qWeight,
+        dWeight: config.defaultWeights.dWeight,
+        fWeight: config.defaultWeights.fWeight,
+        rWeight: config.defaultWeights.rWeight,
+        alpha: config.defaultWeights.alpha,
+    };
+    const weights = weightsRow[0]
+        ? {
+            qWeight: weightsRow[0].qWeight ?? config.defaultWeights.qWeight,
+            dWeight: weightsRow[0].dWeight ?? config.defaultWeights.dWeight,
+            fWeight: weightsRow[0].fWeight ?? config.defaultWeights.fWeight,
+            rWeight: weightsRow[0].rWeight ?? config.defaultWeights.rWeight,
+            alpha: weightsRow[0].alpha ?? config.defaultWeights.alpha,
+        }
+        : config.defaultWeights;
+    return {
+        embeddings: viewerFeedProfile.embeddings,
+        profile,
+        weights,
+        viewerClusterIds: viewerFeedProfile.viewerClusterIds,
+    };
+}
+function encodeFeedCursor(snapshotId, offset) {
+    return Buffer.from(JSON.stringify({
+        snapshot_id: snapshotId,
+        offset,
+    })).toString("base64url");
+}
+function decodeFeedCursor(cursor) {
+    if (!cursor)
+        return null;
+    try {
+        const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+        if (typeof parsed.snapshot_id !== "string" ||
+            typeof parsed.offset !== "number" ||
+            !Number.isFinite(parsed.offset) ||
+            parsed.offset < 0) {
+            return null;
+        }
+        return {
+            snapshot_id: parsed.snapshot_id,
+            offset: Math.floor(parsed.offset),
+        };
+    }
+    catch {
+        return null;
+    }
+}
+function getSnapshotTargetCount(limit, offset) {
+    const requested = offset + limit * FEED_SNAPSHOT_PREFETCH_PAGES;
+    return Math.max(FEED_SNAPSHOT_MIN_ITEMS, Math.min(FEED_SNAPSHOT_MAX_ITEMS, requested));
+}
+function toFeedSnapshotRecord(row) {
+    if (!row)
+        return null;
+    return {
+        id: row.id,
+        items: sanitizeFeedItems(row.items),
+        traces: Array.isArray(row.traces) ? row.traces : [],
+        hasMore: row.hasMore,
+    };
+}
+async function getFeedSnapshot(viewerId, snapshotId, configVersion) {
+    const [row] = await db_1.db
+        .select()
+        .from(db_1.feedSnapshots)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(db_1.feedSnapshots.id, snapshotId), (0, drizzle_orm_1.eq)(db_1.feedSnapshots.viewerId, viewerId), (0, drizzle_orm_1.eq)(db_1.feedSnapshots.configVersion, configVersion), (0, drizzle_orm_1.sql) `${db_1.feedSnapshots.expiresAt} > now()`))
+        .limit(1);
+    return toFeedSnapshotRecord(row);
+}
+async function getLatestFeedSnapshot(viewerId, configVersion) {
+    const [row] = await db_1.db
+        .select()
+        .from(db_1.feedSnapshots)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(db_1.feedSnapshots.viewerId, viewerId), (0, drizzle_orm_1.eq)(db_1.feedSnapshots.configVersion, configVersion), (0, drizzle_orm_1.sql) `${db_1.feedSnapshots.expiresAt} > now()`))
+        .orderBy((0, drizzle_orm_1.desc)(db_1.feedSnapshots.createdAt))
+        .limit(1);
+    return toFeedSnapshotRecord(row);
+}
+async function createFeedSnapshot(viewerId, configVersion, items, traces, hasMore, ttlSeconds) {
+    await db_1.db.delete(db_1.feedSnapshots).where((0, drizzle_orm_1.sql) `${db_1.feedSnapshots.expiresAt} <= now()`);
+    const [row] = await db_1.db
+        .insert(db_1.feedSnapshots)
+        .values({
+        viewerId,
+        configVersion,
+        items,
+        traces,
+        hasMore,
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000),
+    })
+        .returning();
+    const snapshot = toFeedSnapshotRecord(row);
+    if (!snapshot) {
+        throw new Error("Failed to persist feed snapshot");
+    }
+    return snapshot;
+}
+/**
+ * Intersperse wild cards evenly among main items.
+ * Wild cards placed at positions floor(T/(W+1)) * i for i=1..W.
+ */
+function intersperseWildcards(mainItems, wildcardItems) {
+    if (wildcardItems.length === 0)
+        return mainItems;
+    const result = [...mainItems];
+    const interval = Math.max(1, Math.floor(mainItems.length / (wildcardItems.length + 1)));
+    for (let i = 0; i < wildcardItems.length; i++) {
+        const pos = Math.min(interval * (i + 1) + i, result.length);
+        result.splice(pos, 0, wildcardItems[i]);
+    }
+    return result;
+}
+async function buildFeedSnapshot(userId, targetTotal, runtimeConfig) {
+    const [viewerData, affinityMap, resonanceMap, clusterAffinityMap] = await Promise.all([
+        loadViewerEmbeddingsAndProfile(userId, runtimeConfig),
+        (0, rank_1.loadCrossDomainAffinityMap)(),
+        (0, rank_1.loadTemporalResonanceMap)(),
+        (0, rank_1.loadClusterAffinityMap)(),
+    ]);
+    const { embeddings, profile, weights, viewerClusterIds } = viewerData;
+    const maps = { affinityMap, resonanceMap, clusterAffinityMap };
+    const candidateLimit = Math.max(runtimeConfig.candidateLimit, Math.min(targetTotal * 2, 400));
+    const { candidates: rawCandidates, stage } = await (0, retrieve_1.getBucketedCandidates)(userId, embeddings, candidateLimit, runtimeConfig);
+    const blockedUserIds = await (0, blocked_users_1.getBlockedUserIds)(userId);
+    const candidates = blockedUserIds.size > 0
+        ? rawCandidates.filter((candidate) => !blockedUserIds.has(candidate.thought.userId))
+        : rawCandidates;
+    const layer2Scores = new Map();
+    let layer2Max = 0;
+    for (const { thought } of candidates) {
+        const score = (0, score_1.scoreThought)(thought, embeddings, profile, weights.alpha);
+        layer2Scores.set(thought.id, score);
+        if (score > layer2Max)
+            layer2Max = score;
+    }
+    const totalEngagements = await getTotalEngagementEvents(runtimeConfig);
+    const isPhase1 = embeddings.resonanceEmbeddings.length < runtimeConfig.phase1ViewerThoughtThreshold ||
+        totalEngagements < runtimeConfig.phase1SystemEngagementThreshold;
+    const phaseUsed = isPhase1 ? "pre-data" : "learning";
+    const thoughtAuthorConcMap = new Map();
+    const candidateThoughtIds = [];
+    for (const { thought } of candidates) {
+        candidateThoughtIds.push(thought.id);
+        thoughtAuthorConcMap.set(thought.id, thought.authorConcentration ?? null);
+    }
+    const replyQualityMap = await (0, rank_1.buildReplyQualityMap)(candidateThoughtIds, thoughtAuthorConcMap);
+    const withRank = [];
+    for (const { thought, bucket } of candidates) {
+        const layer2 = layer2Scores.get(thought.id) ?? 0;
+        if (isPhase1) {
+            const rankScore = (0, rank_1.rankScorePhase1)(thought, profile, layer2, runtimeConfig);
+            withRank.push({
+                thought,
+                rankScore,
+                bucket,
+                Q: layer2Max > 0 ? layer2 / layer2Max : 0.5,
+                D: 0,
+                F: 0,
+                R: 0,
+            });
+            continue;
+        }
+        const debugRank = (0, rank_1.rankScorePhase2WithDebug)(thought, profile, layer2, weights, layer2Max, maps, viewerClusterIds, replyQualityMap.get(thought.id), runtimeConfig);
+        withRank.push({
+            thought,
+            rankScore: debugRank.score,
+            bucket,
+            Q: debugRank.Q,
+            D: debugRank.D,
+            F: debugRank.F,
+            R: debugRank.R,
+        });
+    }
+    const b1Items = withRank.filter((item) => item.bucket === "resonance");
+    const b2Items = withRank.filter((item) => item.bucket === "adjacent");
+    const b3Items = withRank.filter((item) => item.bucket === "wildcard");
+    const ratios = runtimeConfig.bucketRatios[stage];
+    const b1Count = Math.ceil(targetTotal * ratios.resonance);
+    const b2Count = Math.ceil(targetTotal * ratios.adjacent);
+    const b3Count = Math.max(1, Math.ceil(targetTotal * ratios.wildcard));
+    const b1Diverse = (0, rank_1.applyDiversityEnforcement)(b1Items, runtimeConfig).slice(0, b1Count);
+    const b2Diverse = (0, rank_1.applyDiversityEnforcement)(b2Items, runtimeConfig).slice(0, b2Count);
+    const b3Sorted = [...b3Items]
+        .sort((a, b) => b.rankScore - a.rankScore)
+        .slice(0, b3Count);
+    const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
+    const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
+    if (selectedThoughts.length < targetTotal) {
+        const additionalThoughts = await (0, retrieve_1.getVisibleRecentCandidates)(userId, new Set(selectedThoughts.map((item) => item.thought.id)), targetTotal - selectedThoughts.length, blockedUserIds);
+        for (const thought of additionalThoughts) {
+            selectedThoughts.push({
+                thought,
+                rankScore: Number.NEGATIVE_INFINITY,
+            });
+        }
+    }
+    const candidateMap = new Map(withRank.map((item) => [item.thought.id, item.thought]));
+    const rankDebugMap = new Map(withRank.map((item) => [
+        item.thought.id,
+        {
+            bucket: item.bucket,
+            Q: item.Q,
+            D: item.D,
+            F: item.F,
+            R: item.R,
+            final_rank: item.rankScore,
+        },
+    ]));
+    const authorIds = [...new Set(selectedThoughts.map((item) => item.thought.userId))];
+    const authorRows = authorIds.length > 0
+        ? await db_1.db
+            .select({ id: db_1.users.id, name: db_1.users.name, photoUrl: db_1.users.photoUrl })
+            .from(db_1.users)
+            .where((0, drizzle_orm_1.inArray)(db_1.users.id, authorIds))
+        : [];
+    const authorMap = new Map(authorRows.map((user) => [user.id, user]));
+    const thoughtItems = selectedThoughts.map(({ thought }) => {
+        const author = authorMap.get(thought.userId);
+        return {
+            type: "thought",
+            thought: {
+                id: thought.id,
+                sentence: thought.sentence,
+                photo_url: thought.photoUrl,
+                image_url: thought.imageUrl,
+                created_at: thought.createdAt.toISOString(),
+                has_context: (thought.context ?? "").trim().length > 0,
+            },
+            user: {
+                id: thought.userId,
+                name: author?.name ?? null,
+                photo_url: author?.photoUrl ?? null,
+            },
+        };
+    });
+    const allUserCrossings = await db_1.db
+        .select()
+        .from(db_1.crossings)
+        .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(db_1.crossings.participantA, userId), (0, drizzle_orm_1.eq)(db_1.crossings.participantB, userId)))
+        .orderBy((0, drizzle_orm_1.desc)(db_1.crossings.createdAt))
+        .limit(targetTotal);
+    const userCrossings = blockedUserIds.size > 0
+        ? allUserCrossings.filter((crossing) => !blockedUserIds.has(crossing.participantA) &&
+            !blockedUserIds.has(crossing.participantB))
+        : allUserCrossings;
+    const crossingUserIds = [
+        ...new Set(userCrossings.flatMap((crossing) => [crossing.participantA, crossing.participantB])),
+    ];
+    const crossingUsers = crossingUserIds.length > 0
+        ? await db_1.db
+            .select({ id: db_1.users.id, name: db_1.users.name, photoUrl: db_1.users.photoUrl })
+            .from(db_1.users)
+            .where((0, drizzle_orm_1.inArray)(db_1.users.id, crossingUserIds))
+        : [];
+    const crossingUserMap = new Map(crossingUsers.map((user) => [
+        user.id,
+        { id: user.id, name: user.name, photo_url: user.photoUrl },
+    ]));
+    const crossingItems = userCrossings.map((crossing) => ({
+        type: "crossing",
+        crossing: {
+            id: crossing.id,
+            sentence: crossing.sentence,
+            sentence_a: crossing.sentenceA ?? crossing.sentence,
+            sentence_b: crossing.sentenceB ?? null,
+            context: crossing.context,
+            created_at: crossing.createdAt?.toISOString() ?? new Date().toISOString(),
+        },
+        participant_a: crossingUserMap.get(crossing.participantA) ?? {
+            id: crossing.participantA,
+            name: null,
+            photo_url: null,
+        },
+        participant_b: crossingUserMap.get(crossing.participantB) ?? {
+            id: crossing.participantB,
+            name: null,
+            photo_url: null,
+        },
+    }));
+    const combinedItems = [...thoughtItems, ...crossingItems].sort((a, b) => {
+        const dateA = a.type === "thought" ? a.thought.created_at : a.crossing.created_at;
+        const dateB = b.type === "thought" ? b.thought.created_at : b.crossing.created_at;
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
+    const hasMore = combinedItems.length > targetTotal || allUserCrossings.length === targetTotal;
+    const items = combinedItems.slice(0, targetTotal);
+    // ── Manual boost injection (Wizard of Oz) ──
+    const pendingBoosts = await db_1.db
+        .select({ boostId: db_1.manualBoosts.id, thoughtId: db_1.manualBoosts.thoughtId })
+        .from(db_1.manualBoosts)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(db_1.manualBoosts.targetUserId, userId), (0, drizzle_orm_1.isNull)(db_1.manualBoosts.consumedAt)));
+    if (pendingBoosts.length > 0) {
+        const existingIds = new Set(items.filter((i) => i.type === "thought").map((i) => i.thought.id));
+        const boostIds = pendingBoosts.map((b) => b.thoughtId).filter((id) => !existingIds.has(id));
+        if (boostIds.length > 0) {
+            const boostedRows = await db_1.db
+                .select({ id: db_1.thoughts.id, sentence: db_1.thoughts.sentence, photoUrl: db_1.thoughts.photoUrl, imageUrl: db_1.thoughts.imageUrl, context: db_1.thoughts.context, createdAt: db_1.thoughts.createdAt, userId: db_1.thoughts.userId })
+                .from(db_1.thoughts)
+                .where((0, drizzle_orm_1.inArray)(db_1.thoughts.id, boostIds));
+            const authorIds = [...new Set(boostedRows.map((t) => t.userId))];
+            const authors = authorIds.length > 0
+                ? await db_1.db.select({ id: db_1.users.id, name: db_1.users.name, photoUrl: db_1.users.photoUrl }).from(db_1.users).where((0, drizzle_orm_1.inArray)(db_1.users.id, authorIds))
+                : [];
+            const authorMap = new Map(authors.map((u) => [u.id, u]));
+            const boostItems = boostedRows.map((t) => {
+                const author = authorMap.get(t.userId);
+                return {
+                    type: "thought",
+                    thought: {
+                        id: t.id,
+                        sentence: t.sentence,
+                        photo_url: t.photoUrl,
+                        image_url: t.imageUrl,
+                        created_at: t.createdAt?.toISOString() ?? new Date().toISOString(),
+                        has_context: (t.context ?? "").trim().length > 0,
+                    },
+                    user: { id: t.userId, name: author?.name ?? null, photo_url: author?.photoUrl ?? null },
+                };
+            });
+            items.unshift(...boostItems);
+        }
+        await db_1.db.update(db_1.manualBoosts).set({ consumedAt: new Date() }).where((0, drizzle_orm_1.inArray)(db_1.manualBoosts.id, pendingBoosts.map((b) => b.boostId)));
+    }
+    const traces = items.map((item, index) => {
+        if (item.type === "crossing") {
+            return {
+                item_type: "crossing",
+                thought_id: null,
+                crossing_id: item.crossing.id,
+                author_id: null,
+                position: index + 1,
+                bucket: null,
+                stage: null,
+                phase_used: null,
+                scores: { Q: null, D: null, F: null, R: null, final_rank: null },
+                resonance_similarity: null,
+                surface_similarity: null,
+            };
+        }
+        const candidate = candidateMap.get(item.thought.id);
+        const rankDebug = rankDebugMap.get(item.thought.id);
+        const similarities = candidate
+            ? (0, score_2.getSimilarities)(candidate, embeddings)
+            : { resonance_similarity: 0, surface_similarity: 0 };
+        return {
+            item_type: "thought",
+            thought_id: item.thought.id,
+            crossing_id: null,
+            author_id: item.user.id,
+            position: index + 1,
+            bucket: rankDebug?.bucket ?? null,
+            stage,
+            phase_used: phaseUsed,
+            scores: {
+                Q: rankDebug?.Q ?? null,
+                D: rankDebug?.D ?? null,
+                F: rankDebug?.F ?? null,
+                R: rankDebug?.R ?? null,
+                final_rank: rankDebug?.final_rank ?? null,
+            },
+            resonance_similarity: candidate ? similarities.resonance_similarity : null,
+            surface_similarity: candidate ? similarities.surface_similarity : null,
+        };
+    });
+    return { items, traces, hasMore };
+}
+/**
+ * getFeed(userId, limit, cursor): cursor + snapshot pagination.
+ */
+async function getFeed(userId, limit = config_1.feedConfig.feedLimit, cursor, options = {}) {
+    const activeSnapshot = options.config && options.configVersion
+        ? {
+            id: null,
+            version: options.configVersion,
+            name: options.configVersion,
+            notes: null,
+            is_active: false,
+            source: "database",
+            config: options.config,
+            created_at: null,
+            updated_at: null,
+            activated_at: null,
+        }
+        : await (0, runtime_config_1.getActiveRankingConfig)();
+    const runtimeConfig = options.config ?? activeSnapshot.config;
+    const configVersion = options.configVersion ?? activeSnapshot.version;
+    const decodedCursor = decodeFeedCursor(cursor);
+    const offset = decodedCursor?.offset ?? 0;
+    let snapshot = !options.skipCache && decodedCursor?.snapshot_id
+        ? await getFeedSnapshot(userId, decodedCursor.snapshot_id, configVersion)
+        : null;
+    if (!snapshot && !options.skipCache) {
+        snapshot = await getLatestFeedSnapshot(userId, configVersion);
+    }
+    if (!snapshot || snapshot.items.length < offset + limit) {
+        const targetTotal = getSnapshotTargetCount(limit, offset);
+        const built = await buildFeedSnapshot(userId, targetTotal, runtimeConfig);
+        snapshot = await createFeedSnapshot(userId, configVersion, built.items, built.traces, built.hasMore, runtimeConfig.cacheTtlSeconds);
+    }
+    const items = snapshot.items.slice(offset, offset + limit);
+    if (items.length === 0) {
+        return {
+            items: [],
+            nextCursor: null,
+        };
+    }
+    const nextOffset = offset + items.length;
+    const hasMore = nextOffset < snapshot.items.length ||
+        (nextOffset === snapshot.items.length && snapshot.hasMore);
+    const nextCursor = hasMore ? encodeFeedCursor(snapshot.id, nextOffset) : null;
+    if (!options.disableServeLogging) {
+        void logFeedSlice(userId, snapshot.traces, offset, limit, configVersion);
+    }
+    return {
+        items,
+        nextCursor,
+    };
+}
+/** Same as getFeed but skips cache and returns debug for each item. For ENABLE_DEBUG_ENDPOINTS only. */
+async function getFeedWithDebug(userId, limit = config_1.feedConfig.feedLimit, offset = 0, options = {}) {
+    const activeSnapshot = options.config && options.configVersion
+        ? {
+            id: null,
+            version: options.configVersion,
+            name: options.configVersion,
+            notes: null,
+            is_active: false,
+            source: "database",
+            config: options.config,
+            created_at: null,
+            updated_at: null,
+            activated_at: null,
+        }
+        : await (0, runtime_config_1.getActiveRankingConfig)();
+    const runtimeConfig = options.config ?? activeSnapshot.config;
+    const [viewerData, affinityMap, resonanceMap, clusterAffinityMap] = await Promise.all([
+        loadViewerEmbeddingsAndProfile(userId, runtimeConfig),
+        (0, rank_1.loadCrossDomainAffinityMap)(),
+        (0, rank_1.loadTemporalResonanceMap)(),
+        (0, rank_1.loadClusterAffinityMap)(),
+    ]);
+    const { embeddings, profile, weights, viewerClusterIds } = viewerData;
+    const maps = { affinityMap, resonanceMap, clusterAffinityMap };
+    const { candidates, stage } = await (0, retrieve_1.getBucketedCandidates)(userId, embeddings, runtimeConfig.candidateLimit, runtimeConfig);
+    if (candidates.length === 0)
+        return [];
+    const layer2Scores = new Map();
+    let layer2Max = 0;
+    for (const { thought } of candidates) {
+        const s = (0, score_1.scoreThought)(thought, embeddings, profile, weights.alpha);
+        layer2Scores.set(thought.id, s);
+        if (s > layer2Max)
+            layer2Max = s;
+    }
+    const totalEngagements = await getTotalEngagementEvents(runtimeConfig);
+    const isPhase1 = embeddings.resonanceEmbeddings.length < runtimeConfig.phase1ViewerThoughtThreshold ||
+        totalEngagements < runtimeConfig.phase1SystemEngagementThreshold;
+    const phase_used = isPhase1 ? "pre-data" : "learning";
+    // Precompute reply quality for debug as well
+    const thoughtAuthorConcMap = new Map();
+    const candidateThoughtIds = [];
+    for (const { thought } of candidates) {
+        candidateThoughtIds.push(thought.id);
+        thoughtAuthorConcMap.set(thought.id, thought.authorConcentration ?? null);
+    }
+    const replyQualityMap = await (0, rank_1.buildReplyQualityMap)(candidateThoughtIds, thoughtAuthorConcMap);
+    const withRank = [];
+    for (const { thought, bucket } of candidates) {
+        const layer2 = layer2Scores.get(thought.id) ?? 0;
+        if (isPhase1) {
+            const rankScore = (0, rank_1.rankScorePhase1)(thought, profile, layer2, runtimeConfig);
+            withRank.push({ thought, bucket, rankScore, Q: layer2Max > 0 ? layer2 / layer2Max : 0.5, D: 0, F: 0, R: 0 });
+        }
+        else {
+            const debugRank = (0, rank_1.rankScorePhase2WithDebug)(thought, profile, layer2, weights, layer2Max, maps, viewerClusterIds, replyQualityMap.get(thought.id), runtimeConfig);
+            withRank.push({
+                thought,
+                bucket,
+                rankScore: debugRank.score,
+                Q: debugRank.Q,
+                D: debugRank.D,
+                F: debugRank.F,
+                R: debugRank.R,
+            });
+        }
+    }
+    // Apply bucket-based assembly with interspersion
+    const b1Items = withRank.filter((x) => x.bucket === "resonance");
+    const b2Items = withRank.filter((x) => x.bucket === "adjacent");
+    const b3Items = withRank.filter((x) => x.bucket === "wildcard");
+    const ratios = runtimeConfig.bucketRatios[stage];
+    const targetTotal = FEED_SNAPSHOT_MAX_ITEMS;
+    const b1Count = Math.ceil(targetTotal * ratios.resonance);
+    const b2Count = Math.ceil(targetTotal * ratios.adjacent);
+    const b3Count = Math.max(1, Math.ceil(targetTotal * ratios.wildcard));
+    // Build lookup map for extra debug fields before diversity enforcement strips them
+    const debugLookup = new Map(withRank.map((x) => [x.thought.id, { bucket: x.bucket, Q: x.Q, D: x.D, F: x.F, R: x.R }]));
+    const b1Diverse = (0, rank_1.applyDiversityEnforcement)(b1Items, runtimeConfig).slice(0, b1Count);
+    const b2Diverse = (0, rank_1.applyDiversityEnforcement)(b2Items, runtimeConfig).slice(0, b2Count);
+    const b3Sorted = [...b3Items].sort((a, b) => b.rankScore - a.rankScore).slice(0, b3Count);
+    const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
+    const allItems = intersperseWildcards(mainMerged, b3Sorted);
+    const slice = allItems.slice(0, targetTotal);
+    const authorIds = [...new Set(slice.map((x) => x.thought.userId))];
+    const authorRows = authorIds.length
+        ? await db_1.db
+            .select({ id: db_1.users.id, name: db_1.users.name, photoUrl: db_1.users.photoUrl })
+            .from(db_1.users)
+            .where((0, drizzle_orm_1.inArray)(db_1.users.id, authorIds))
+        : [];
+    const authorMap = new Map(authorRows.map((u) => [u.id, u]));
+    const itemsWithDebug = slice.map((item) => {
+        const { thought, rankScore } = item;
+        const debug = debugLookup.get(thought.id) ?? { bucket: "wildcard", Q: 0, D: 0, F: 0, R: 0 };
+        const { bucket, Q, D, F, R } = debug;
+        const author = authorMap.get(thought.userId);
+        const sims = (0, score_2.getSimilarities)(thought, embeddings);
+        return {
+            type: "thought",
+            thought: {
+                id: thought.id,
+                sentence: thought.sentence,
+                photo_url: thought.photoUrl,
+                image_url: thought.imageUrl,
+                created_at: thought.createdAt.toISOString(),
+                has_context: (thought.context ?? "").trim().length > 0,
+            },
+            user: {
+                id: thought.userId,
+                name: author?.name ?? null,
+                photo_url: author?.photoUrl ?? null,
+            },
+            _debug: {
+                phase_used,
+                bucket,
+                stage,
+                scores: { Q, D, F, R, final_rank: rankScore },
+                resonance_summary: "",
+                surface_similarity: sims.surface_similarity,
+                resonance_similarity: sims.resonance_similarity,
+            },
+        };
+    });
+    return itemsWithDebug.slice(offset, offset + limit);
+}

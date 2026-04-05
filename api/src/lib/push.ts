@@ -137,36 +137,6 @@ export async function notifyNewReply(
 }
 
 /**
- * Notify conversation participant of a new message.
- */
-export async function notifyNewMessage(
-  recipientId: string,
-  senderId: string,
-  messagePreview: string,
-  conversationId: string
-): Promise<void> {
-  const tokens = await getTokensForUser(recipientId);
-  if (tokens.length === 0) return;
-
-  const senderName = await getUserName(senderId);
-  const shortMsg =
-    messagePreview.length > 80
-      ? messagePreview.slice(0, 77) + "..."
-      : messagePreview;
-
-  await sendExpoPush(
-    tokens.map((token) => ({
-      to: token,
-      title: senderName,
-      body: shortMsg,
-      data: { type: "message", conversation_id: conversationId, sender_id: senderId, sender_name: senderName },
-      sound: "default",
-      priority: "high",
-    }))
-  );
-}
-
-/**
  * Notify thought author that their thought reached 10+ accepted replies
  * and could become a collaborative crossing.
  */

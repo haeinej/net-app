@@ -21,7 +21,6 @@ import {
 } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
-import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import {
   fetchProfile,
@@ -34,7 +33,6 @@ import {
   getMyUserId,
   type ProfileResponse,
   type FeedItemThought,
-  type FeedItemCrossing,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
 import { ReportModal } from "../../components/ReportModal";
@@ -182,28 +180,9 @@ export default function UserProfileScreen() {
     );
   }
 
-  const deckItems: Array<
-    | { kind: "thought"; date: string; data: (typeof profile.thoughts)[number] }
-    | { kind: "crossing"; date: string; data: NonNullable<typeof profile.crossings>[number] }
-  > = [];
-
-  for (const thought of profile.thoughts) {
-    deckItems.push({
-      kind: "thought",
-      date: thought.created_at ?? new Date(0).toISOString(),
-      data: thought,
-    });
-  }
-
-  for (const crossing of profile.crossings ?? []) {
-    deckItems.push({
-      kind: "crossing",
-      date: crossing.created_at ?? new Date(0).toISOString(),
-      data: crossing,
-    });
-  }
-
-  deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const deckItems = [...profile.thoughts].sort(
+    (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
 
   return (
     <View style={styles.screen}>
@@ -285,53 +264,27 @@ export default function UserProfileScreen() {
         {deckItems.length === 0 ? (
           <Text style={styles.emptyDeck}>No deck yet.</Text>
         ) : (
-          deckItems.map((item) => {
-            if (item.kind === "thought") {
-              const thought = item.data;
-              const feedItem: FeedItemThought = {
-                type: "thought",
-                thought: {
-                  id: thought.id,
-                  sentence: thought.sentence,
-                  photo_url: thought.photo_url,
-                  image_url: thought.image_url,
-                  created_at: thought.created_at ?? new Date().toISOString(),
-                  has_context: false,
-                },
-                user: {
-                  id: profile.id,
-                  name: profile.name,
-                  photo_url: profile.photo_url,
-                },
-              };
-              return (
-                <View key={`t-${thought.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                  <CardDeck>
-                    <SwipeableThoughtCard item={feedItem} visible isOwn={isOwnProfile} />
-                  </CardDeck>
-                </View>
-              );
-            }
-
-            const crossing = item.data;
-            const crossingItem: FeedItemCrossing = {
-              type: "crossing",
-              crossing: {
-                id: crossing.id,
-                sentence: crossing.sentence,
-                sentence_a: crossing.sentence_a ?? crossing.sentence,
-                sentence_b: crossing.sentence_b ?? null,
-                context: crossing.context,
-                created_at: crossing.created_at ?? new Date().toISOString(),
+          deckItems.map((thought) => {
+            const feedItem: FeedItemThought = {
+              type: "thought",
+              thought: {
+                id: thought.id,
+                sentence: thought.sentence,
+                photo_url: thought.photo_url,
+                image_url: thought.image_url,
+                created_at: thought.created_at ?? new Date().toISOString(),
+                has_context: false,
               },
-              participant_a: crossing.participant_a ?? { id: "", name: null, photo_url: null },
-              participant_b: crossing.participant_b ?? { id: "", name: null, photo_url: null },
+              user: {
+                id: profile.id,
+                name: profile.name,
+                photo_url: profile.photo_url,
+              },
             };
-
             return (
-              <View key={`c-${crossing.id}`} style={[styles.thoughtWrap, containerStyle]}>
+              <View key={`t-${thought.id}`} style={[styles.thoughtWrap, containerStyle]}>
                 <CardDeck>
-                  <CrossingCard item={crossingItem} visible ignoreUserId={profile.id} />
+                  <SwipeableThoughtCard item={feedItem} visible isOwn={isOwnProfile} />
                 </CardDeck>
               </View>
             );

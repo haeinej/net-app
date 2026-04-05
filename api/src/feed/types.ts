@@ -19,6 +19,11 @@ export interface FeedItemThought {
     has_context: boolean;
   };
   user: FeedItemUser;
+  in_response_to?: {
+    id: string;
+    sentence: string;
+    user: FeedItemUser;
+  } | null;
 }
 
 export interface FeedItemCrossing {

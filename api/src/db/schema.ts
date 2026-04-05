@@ -12,6 +12,7 @@ import {
   jsonb,
   vector,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -156,6 +157,7 @@ export const thoughts = pgTable(
     questionEmbedding: vector("question_embedding", { dimensions: VECTOR_DIMS }), // primary resonance embedding stored in legacy column
     qualityScore: real("quality_score"), // openness-weighted signal
     clusterId: uuid("cluster_id"), // FK to resonance clusters, set by weekly learning
+    inResponseToId: uuid("in_response_to_id").references((): AnyPgColumn => thoughts.id, { onDelete: "set null" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
@@ -172,6 +174,7 @@ export const thoughts = pgTable(
       "hnsw",
       table.questionEmbedding.op("vector_cosine_ops")
     ),
+    index("thoughts_in_response_to_idx").on(table.inResponseToId),
   ]
 );
 
@@ -259,6 +262,7 @@ export const messages = pgTable(
       .notNull()
       .references(() => users.id),
     text: text("text").notNull(),
+    metadata: jsonb("metadata"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => [

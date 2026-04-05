@@ -9,6 +9,7 @@
     "android": "npm --prefix mobile run android --",
     "web": "npm --prefix mobile exec expo start --web",
     "lint": "npm --prefix mobile run lint",
+    "check:secrets": "bash scripts/check-tracked-secrets.sh",
     "typecheck": "npm --prefix api run typecheck && npm --prefix mobile run typecheck",
     "verify": "npm --prefix api run typecheck && npm --prefix api run build && npm --prefix mobile run typecheck",
     "build:ios:testflight": "npm --prefix mobile run build:ios:testflight",

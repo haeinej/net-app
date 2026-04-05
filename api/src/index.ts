@@ -31,7 +31,11 @@ function parseCorsOrigins(raw: string | undefined): string[] {
 
 async function main() {
   console.log("[boot] main() entered");
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      level: process.env.NODE_ENV === "production" ? "warn" : "info",
+    },
+  });
   console.log("[boot] fastify created");
 
   const corsOrigin = process.env.CORS_ORIGIN;
@@ -117,10 +121,7 @@ async function main() {
   console.log("[boot] routes imported");
   const { thoughtRoutes } = await import("./routes/thoughts");
   const { feedRoutes } = await import("./routes/feed");
-  const { replyRoutes } = await import("./routes/replies");
   const { notificationRoutes } = await import("./routes/notifications");
-  const { conversationRoutes } = await import("./routes/conversations");
-  const { crossingRoutes } = await import("./routes/crossings");
   const { profileRoutes } = await import("./routes/profile");
   const { engagementRoutes } = await import("./engagement");
   const { internalFeedMetricsRoutes } = await import("./routes/internal-feed-metrics");
@@ -133,10 +134,7 @@ async function main() {
   await app.register(authRoutes);
   await app.register(thoughtRoutes);
   await app.register(feedRoutes);
-  await app.register(replyRoutes);
   await app.register(notificationRoutes);
-  await app.register(conversationRoutes);
-  await app.register(crossingRoutes);
   await app.register(profileRoutes);
   await app.register(engagementRoutes);
   await app.register(internalFeedMetricsRoutes);

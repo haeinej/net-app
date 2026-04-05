@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as ts from "typescript";
@@ -88,29 +88,19 @@ if (!existsSync(tempDistDir)) {
   process.exit(1);
 }
 
-let movedPrevious = false;
-
-try {
-  if (existsSync(distDir)) {
-    renameSync(distDir, previousDistDir);
-    movedPrevious = true;
+function moveDir(src, dest) {
+  try {
+    renameSync(src, dest);
+  } catch (err) {
+    if (err.code === "EXDEV") {
+      cpSync(src, dest, { recursive: true });
+      rmSync(src, { recursive: true, force: true });
+    } else {
+      throw err;
+    }
   }
-
-  renameSync(tempDistDir, distDir);
-
-  if (movedPrevious) {
-    rmSync(previousDistDir, { recursive: true, force: true });
-  }
-
-  console.log("Built API to dist/");
-} catch (error) {
-  if (existsSync(tempDistDir)) {
-    rmSync(tempDistDir, { recursive: true, force: true });
-  }
-
-  if (!existsSync(distDir) && movedPrevious && existsSync(previousDistDir)) {
-    renameSync(previousDistDir, distDir);
-  }
-
-  throw error;
 }
+
+rmSync(distDir, { recursive: true, force: true });
+moveDir(tempDistDir, distDir);
+console.log("Built API to dist/");

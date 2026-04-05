@@ -18,9 +18,10 @@ if (!connectionString) {
 }
 
 const sql = postgres(connectionString, {
-  max: 25,
-  idle_timeout: 30,
+  max: 40,
+  idle_timeout: 20,
   connect_timeout: 10,
+  keep_alive: 60,
   ssl: connectionString.includes("supabase") ? "require" : undefined,
 });
 

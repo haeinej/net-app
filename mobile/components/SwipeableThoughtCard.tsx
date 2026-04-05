@@ -1,17 +1,12 @@
-import { useState, useCallback, useEffect, useRef, memo } from "react";
+import { useState, useCallback, useRef, memo } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  useWindowDimensions,
   ActivityIndicator,
-  TextInput,
   TouchableOpacity,
   ScrollView,
-  Platform,
-  KeyboardAvoidingView,
   Alert,
-  type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -19,23 +14,19 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withTiming,
   withSpring,
-  withSequence,
   interpolate,
   Extrapolation,
   runOnJS,
-  Easing,
 } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, typography, fontFamily, shadows, glass } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import { ThoughtImageFrame } from "./ThoughtImageFrame";
 
 import {
-  deleteReply,
   fetchThought,
-  postReply,
+  fetchThoughtReplies,
+  type FeedItem,
   type FeedItemThought,
   type ThoughtDetailResponse,
 } from "../lib/api";
@@ -43,12 +34,9 @@ import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getSavedCardPanel, setSavedCardPanel } from "../lib/card-panel-memory";
 import { formatRelativeTime } from "../lib/format";
 
-const REPLY_MIN_LENGTH = 30;
-const REPLY_MAX_LENGTH = 500;
 const IMAGE_HEIGHT = 150;
 const CARD_HEIGHT = spacing.compactCardHeight;
 const FOOTER_HEIGHT = spacing.compactFooterHeight;
-const EXPANDED_HEIGHT = 340;
 
 interface SwipeableThoughtCardProps {
   item: FeedItemThought;
@@ -59,7 +47,7 @@ interface SwipeableThoughtCardProps {
   onReplySent?: (thoughtId: string) => void;
 }
 
-export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit, onReplySent }: SwipeableThoughtCardProps) {
+export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit }: SwipeableThoughtCardProps) {
   const router = useRouter();
   const { contentWidth } = useResponsiveLayout();
   const cardWidth = contentWidth - spacing.screenPadding * 2;
@@ -85,27 +73,15 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
   const [detailLoading, setDetailLoading] = useState(false);
   const fetchedRef = useRef(false);
 
-  // Reply state
-  const [replyText, setReplyText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const pulseOpacity = useSharedValue(0);
-  const sendSwipeProgress = useSharedValue(0);
-  const sendHapticArmed = useSharedValue(0);
-  const sendTriggered = useSharedValue(0);
-  const replyLengthValue = useSharedValue(0);
-  const canReplyValue = useSharedValue(0);
-  const sendingValue = useSharedValue(0);
-
-  // Card height animation for reply expansion
-  const cardHeightAnim = useSharedValue<number>(CARD_HEIGHT);
+  // Reply-cards state (fetched when panel 3 becomes visible)
+  const [replyCards, setReplyCards] = useState<FeedItem[]>([]);
+  const [replyCardsLoading, setReplyCardsLoading] = useState(false);
+  const replyCardsFetchedRef = useRef(false);
 
   // Engagement tracking
   const {
     recordSwipeP2,
     recordSwipeP3,
-    recordTypeStart,
-    recordReplySent,
   } = useEngagementTracking({
     thoughtId: thought.id,
     visible,
@@ -126,10 +102,20 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
     }
   }, [thought.id]);
 
-  const refreshDetail = useCallback(async () => {
-    fetchedRef.current = false;
-    await loadDetail();
-  }, [loadDetail]);
+  // Fetch reply-cards for panel 3
+  const loadReplyCards = useCallback(async () => {
+    if (replyCardsFetchedRef.current) return;
+    replyCardsFetchedRef.current = true;
+    setReplyCardsLoading(true);
+    try {
+      const items = await fetchThoughtReplies(thought.id);
+      setReplyCards(items);
+    } catch {
+      replyCardsFetchedRef.current = false; // allow retry
+    } finally {
+      setReplyCardsLoading(false);
+    }
+  }, [thought.id]);
 
   // Apple-style spring config: responsive with slight bounce
   const SNAP_SPRING = { damping: 28, stiffness: 320, mass: 0.8 };
@@ -149,6 +135,8 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
   // Hermes crashes with throwPendingError. Refs ensure the worklet always calls a live function.
   const loadDetailRef = useRef(loadDetail);
   loadDetailRef.current = loadDetail;
+  const loadReplyCardsRef = useRef(loadReplyCards);
+  loadReplyCardsRef.current = loadReplyCards;
   const rememberPanelRef = useRef(rememberPanel);
   rememberPanelRef.current = rememberPanel;
   const recordSwipeP2Ref = useRef(recordSwipeP2);
@@ -156,6 +144,7 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
   const recordSwipeP3Ref = useRef(recordSwipeP3);
   recordSwipeP3Ref.current = recordSwipeP3;
   const jsLoadDetail = useCallback(() => { loadDetailRef.current(); }, []);
+  const jsLoadReplyCards = useCallback(() => { loadReplyCardsRef.current(); }, []);
   const jsRememberPanel = useCallback((p: number) => { rememberPanelRef.current(p); }, []);
   const jsRecordSwipeP2 = useCallback(() => { recordSwipeP2Ref.current(); }, []);
   const jsRecordSwipeP3 = useCallback(() => { recordSwipeP3Ref.current(); }, []);
@@ -179,9 +168,6 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
       indicatorProgress.value = withSpring(target, { damping: 20, stiffness: 200 });
       // Reset drag progress
       dragProgress.value = withSpring(0, RUBBER_SPRING);
-      sendSwipeProgress.value = withTiming(0, { duration: 140 });
-      sendHapticArmed.value = 0;
-      sendTriggered.value = 0;
 
       currentPanel.value = target;
       runOnJS(setDisplayPanel)(target);
@@ -192,6 +178,7 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
         runOnJS(jsLoadDetail)();
       } else if (from === 1 && target === 2) {
         runOnJS(jsRecordSwipeP3)();
+        runOnJS(jsLoadReplyCards)();
       }
     },
     [
@@ -199,12 +186,10 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
       currentPanel,
       indicatorProgress,
       jsLoadDetail,
+      jsLoadReplyCards,
       panel2X,
       panel3X,
       jsRememberPanel,
-      sendHapticArmed,
-      sendTriggered,
-      sendSwipeProgress,
     ]
   );
 
@@ -222,20 +207,15 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
       "worklet";
       const ci = currentPanel.value;
       const tx = e.translationX;
-      const sendDistance = cardWidth * 0.28;
 
       // Track drag progress for parallax
       dragProgress.value = Math.max(-1, Math.min(1, tx / cardWidth));
 
       // Update indicator progress during drag
       if (ci === 0) {
-        sendSwipeProgress.value = 0;
-        sendHapticArmed.value = 0;
         const progress = Math.max(0, Math.min(1, -tx / cardWidth));
         indicatorProgress.value = progress;
       } else if (ci === 1) {
-        sendSwipeProgress.value = 0;
-        sendHapticArmed.value = 0;
         if (tx < 0) {
           indicatorProgress.value = 1 + Math.max(0, Math.min(1, -tx / cardWidth));
         } else {
@@ -269,11 +249,7 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
           // Swiping right → push panel 3 out
           const next = Math.max(0, Math.min(cardWidth, tx));
           panel3X.value = next;
-          sendSwipeProgress.value = 0;
-          sendHapticArmed.value = 0;
         } else {
-          sendSwipeProgress.value = 0;
-          sendHapticArmed.value = 0;
           // Swiping left on the reply panel only rubber-bands.
           panel3X.value = -rubberBand(-tx, cardWidth * 0.15);
         }
@@ -312,8 +288,6 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
         }
       } else if (ci === 2) {
         if (e.translationX < 0) {
-          sendSwipeProgress.value = withTiming(0, { duration: 120 });
-          sendHapticArmed.value = 0;
           // Rubber-band release — snap back
           snapTo(2, 2);
         } else if (panel3X.value > threshold || vx > flickVelocity) {
@@ -365,100 +339,8 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
     };
   });
 
-  const cardHeightStyle = useAnimatedStyle(() => ({
-    height: cardHeightAnim.value,
-  }));
-
-  const warmthBarHeightStyle = useAnimatedStyle(() => ({
-    height: cardHeightAnim.value,
-  }));
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    opacity: pulseOpacity.value,
-  }));
-
   const p2 = detailData?.panel_2;
   const p3 = detailData?.panel_3;
-  const canInlineReply = !isOwn && (p3 ? p3.can_reply : true);
-  const trimmedReplyLength = replyText.trim().length;
-
-  useEffect(() => {
-    replyLengthValue.value = trimmedReplyLength;
-  }, [replyLengthValue, trimmedReplyLength]);
-
-  useEffect(() => {
-    canReplyValue.value = p3?.can_reply ? 1 : 0;
-  }, [canReplyValue, p3?.can_reply]);
-
-  useEffect(() => {
-    sendingValue.value = sending ? 1 : 0;
-  }, [sending, sendingValue]);
-
-  useEffect(() => {
-    const shouldExpand = displayPanel === 2 && canInlineReply;
-    cardHeightAnim.value = withSpring(shouldExpand ? EXPANDED_HEIGHT : CARD_HEIGHT, {
-      damping: 24,
-      stiffness: 220,
-      mass: 0.8,
-    });
-  }, [canInlineReply, cardHeightAnim, displayPanel]);
-
-  const submitReply = useCallback(async () => {
-    const text = replyText.trim();
-    if (!text || text.length < REPLY_MIN_LENGTH || sending || !detailData?.panel_3.can_reply) {
-      sendTriggered.value = 0;
-      sendSwipeProgress.value = withTiming(0, { duration: 100 });
-      sendHapticArmed.value = 0;
-      snapTo(2, 2);
-      return;
-    }
-    sendingValue.value = 1;
-    setSending(true);
-    try {
-      await postReply(thought.id, text);
-      recordReplySent({ reply_length_chars: text.length });
-      pulseOpacity.value = withSequence(
-        withTiming(0.2, { duration: 80, easing: Easing.out(Easing.ease) }),
-        withTiming(0, { duration: 400, easing: Easing.inOut(Easing.ease) })
-      );
-      setReplyText("");
-      setIsTyping(false);
-      snapTo(0, 2);
-      // Hide card from feed after reply
-      if (onReplySent) onReplySent(thought.id);
-      await refreshDetail();
-    } catch {
-      sendTriggered.value = 0;
-      sendSwipeProgress.value = withTiming(0, { duration: 100 });
-      sendHapticArmed.value = 0;
-      snapTo(2, 2);
-    } finally {
-      sendingValue.value = 0;
-      setSending(false);
-    }
-  }, [
-    sendingValue,
-    thought.id,
-    replyText,
-    sending,
-    detailData,
-    recordReplySent,
-    pulseOpacity,
-    sendHapticArmed,
-    sendSwipeProgress,
-    sendTriggered,
-    snapTo,
-    refreshDetail,
-  ]);
-
-  const onReplyFocus = useCallback(() => {
-    setIsTyping(true);
-    recordTypeStart();
-  }, [recordTypeStart]);
-
-  const onReplyBlur = useCallback(() => {
-    setIsTyping(false);
-  }, []);
 
   const showOwnerActions = useCallback(() => {
     if (!isOwn) return;
@@ -483,29 +365,6 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
     Alert.alert("Thought", undefined, options);
   }, [isOwn, onEdit, onDelete, thought.id]);
 
-  const handleLongPress = useCallback(() => {
-    showOwnerActions();
-  }, [showOwnerActions]);
-
-  const handleDeleteReply = useCallback(
-    (replyId: string) => {
-      Alert.alert("Delete reply", "Remove this reply from your thought?", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteReply(replyId);
-              await refreshDetail();
-            } catch {}
-          },
-        },
-      ]);
-    },
-    [refreshDetail]
-  );
-
   const hasPhoto = Boolean(thought.photo_url ?? thought.image_url);
 
   const openUserProfile = useCallback(
@@ -523,9 +382,11 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
     [openUserProfile, user.id]
   );
 
+  const inResponseTo = thought.in_response_to;
+
   return (
     <GestureDetector gesture={panGesture}>
-      <Animated.View style={[styles.card, { width: cardWidth }, cardHeightStyle]}>
+      <Animated.View style={[styles.card, { width: cardWidth }]}>
         {/* Panel 1 — Thought image + footer */}
         <View style={StyleSheet.absoluteFill}>
           <View style={styles.panel1Inner}>
@@ -539,6 +400,17 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
                   style={StyleSheet.absoluteFillObject}
                 />
                 <View style={styles.imageOverlay} pointerEvents="none">
+                  {inResponseTo ? (
+                    <TouchableOpacity
+                      style={styles.inResponseToLink}
+                      onPress={() => router.push({ pathname: "/thought/[id]", params: { id: inResponseTo.id } })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.inResponseToText, !hasPhoto && styles.inResponseToTextNoPhoto]} numberOfLines={1}>
+                        in response to "{inResponseTo.sentence.length > 40 ? inResponseTo.sentence.slice(0, 40) + "..." : inResponseTo.sentence}"
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                   <Text
                     style={[styles.sentence, !hasPhoto && styles.sentenceNoPhoto]}
                     numberOfLines={4}
@@ -614,124 +486,67 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
           )}
         </Animated.View>
 
-        {/* Panel 3 — Replies (slides from right, glass-rimmed) */}
+        {/* Panel 3 — Reply-cards (slides from right, glass-rimmed) */}
         <Animated.View style={[StyleSheet.absoluteFill, styles.panel3, panel3AnimStyle]}>
           <Text style={styles.panelLabel}>Replies</Text>
-          {/* Existing replies */}
-          <ScrollView
-            style={styles.repliesScroll}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.repliesContentContainer}
-          >
-            {detailLoading ? (
-              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" style={{ marginTop: 16 }} />
-            ) : p3 && p3.replies.length > 0 ? (
-              p3.replies.map((r) => (
-                <TouchableOpacity
-                  key={r.id}
-                  style={styles.replyRow}
-                  onPress={() => openUserProfile(r.user?.id)}
-                  disabled={!r.user?.id}
-                  activeOpacity={0.7}
-                >
-                  {r.user?.photo_url ? (
-                    <Image source={{ uri: r.user.photo_url }} style={styles.replyAvatar} />
-                  ) : (
-                    <View style={[styles.replyAvatar, styles.avatarPlaceholder]} />
-                  )}
-                  <View style={styles.replyBody}>
-                    <View style={styles.replyTopRow}>
-                      <Text style={styles.replyName}>
-                        {r.user?.name ? r.user.name.toUpperCase() : "—"}
-                      </Text>
-                      {p3.viewer_is_author ? (
-                        <Text style={styles.replyStatus}>
-                          {r.status === "accepted" ? "IN CHAT" : "PENDING"}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Text style={styles.replyText} numberOfLines={2}>
-                      {r.text}
-                    </Text>
-                  </View>
-                  {r.can_delete ? (
-                    <TouchableOpacity
-                      style={styles.replyDeleteBtn}
-                      onPress={(event: GestureResponderEvent) => {
-                        event.stopPropagation();
-                        handleDeleteReply(r.id);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.replyDeleteText}>Delete</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </TouchableOpacity>
-              ))
-            ) : !detailLoading ? (
-              <Text style={styles.panelEmpty}>No replies yet.</Text>
-            ) : null}
-          </ScrollView>
-          {/* Reply input — only for other people's cards */}
-          {canInlineReply && (
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
-              style={styles.inputWrap}
+          {replyCardsLoading ? (
+            <View style={styles.panelCentered}>
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
+            </View>
+          ) : replyCards.length > 0 ? (
+            <ScrollView
+              style={styles.repliesScroll}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.repliesContentContainer}
             >
-              <Text style={styles.replyInputLabel}>reply.</Text>
-              <TextInput
-                style={styles.replyInput}
-                placeholder="what this surfaces in you..."
-                placeholderTextColor={colors.TYPE_MUTED}
-                value={replyText}
-                onChangeText={(t) => setReplyText(t.slice(0, REPLY_MAX_LENGTH))}
-                onFocus={onReplyFocus}
-                onBlur={onReplyBlur}
-                editable={!sending}
-                multiline
-                numberOfLines={3}
-                maxLength={REPLY_MAX_LENGTH}
-              />
-              <View style={styles.replyActionRow}>
-                <Text style={styles.replyHintText}>
-                  {sending
-                    ? "sending..."
-                    : trimmedReplyLength < REPLY_MIN_LENGTH
-                      ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
-                      : "ready to send"}
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.replySendButton,
-                    (sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3?.can_reply) &&
-                      styles.replySendButtonDisabled,
-                  ]}
-                  onPress={() => {
-                    void submitReply();
-                  }}
-                  disabled={sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3?.can_reply}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.replySendButtonText}>
-                    {sending ? "POSTING" : "POST"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </KeyboardAvoidingView>
+              {replyCards.map((rc) => {
+                if (rc.type !== "thought") return null;
+                return (
+                  <TouchableOpacity
+                    key={rc.thought.id}
+                    style={styles.replyCardRow}
+                    onPress={() => router.push({ pathname: "/thought/[id]", params: { id: rc.thought.id } })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.replyCardAuthor} numberOfLines={1}>
+                      {rc.user.name ? rc.user.name.toUpperCase() : "—"}
+                    </Text>
+                    <Text style={styles.replyCardSentence} numberOfLines={2}>
+                      {rc.thought.sentence}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <View style={styles.panelCentered}>
+              <Text style={styles.panelEmpty}>No replies yet.</Text>
+            </View>
+          )}
+          {/* Reply button */}
+          {!isOwn && (
+            <TouchableOpacity
+              style={styles.replyPillButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/post",
+                  params: {
+                    in_response_to_id: thought.id,
+                    in_response_to_sentence: thought.sentence,
+                  },
+                })
+              }
+              activeOpacity={0.8}
+            >
+              <Text style={styles.replyPillButtonText}>Reply with your own thought</Text>
+            </TouchableOpacity>
           )}
         </Animated.View>
 
-        {/* Pulse overlay on reply sent */}
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.pulseOverlay, pulseStyle]}
-        />
-
-        {/* Warmth bar — always visible across all panels, follows card height */}
-        <Animated.View style={[styles.warmthBarOverlay, warmthBarHeightStyle]} pointerEvents="none">
+        {/* Warmth bar — always visible across all panels */}
+        <View style={styles.warmthBarOverlay} pointerEvents="none">
           <View style={[styles.warmthBarFill, { backgroundColor: colors.VERMILLION }]} />
-        </Animated.View>
+        </View>
 
         {/* Panel indicator dots — animated Apple-style */}
         <View style={styles.indicator} pointerEvents="none">
@@ -756,6 +571,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     top: 0,
+    bottom: 0,
     zIndex: 10,
     overflow: "hidden",
     borderTopLeftRadius: spacing.cardRadius,
@@ -905,7 +721,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Panel 3 — Replies (glass-rimmed deep surface)
+  // Panel 3 — Reply-cards (glass-rimmed deep surface)
   panel3: {
     backgroundColor: colors.PANEL_DEEP,
     padding: 16,
@@ -918,112 +734,58 @@ const styles = StyleSheet.create({
   repliesContentContainer: {
     paddingBottom: 8,
   },
-  replyRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+  replyCardRow: {
     marginBottom: 10,
-  },
-  replyAvatar: {
-    width: 16,
-    height: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     borderRadius: 8,
-    marginRight: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
-  replyBody: { flex: 1 },
-  replyTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  replyName: {
+  replyCardAuthor: {
     ...typography.metadata,
     fontSize: 7.5,
     color: colors.TYPE_MUTED,
-    marginBottom: 2,
+    marginBottom: 3,
   },
-  replyStatus: {
-    ...typography.metadata,
-    fontSize: 6.5,
-    color: colors.OLIVE,
-    letterSpacing: 0.6,
-  },
-  replyText: {
-    ...typography.context,
-    fontSize: 13.5,
-    lineHeight: 19,
-    color: colors.TYPE_WHITE,
-  },
-  replyDeleteBtn: {
-    marginLeft: 8,
-    paddingVertical: 1,
-  },
-  replyDeleteText: {
-    ...typography.metadata,
-    fontSize: 7.5,
-    color: colors.VERMILLION,
-  },
-  inputWrap: {
-    paddingTop: 8,
-    paddingBottom: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.1)",
-  },
-  replyInputLabel: {
-    ...typography.replyInput,
-    fontSize: 9.5,
-    lineHeight: 14,
-    color: colors.VERMILLION,
-    marginBottom: 4,
-  },
-  replyInput: {
-    ...typography.replyInput,
+  replyCardSentence: {
+    ...typography.bodySmall,
     fontSize: 12.5,
-    lineHeight: 18,
+    lineHeight: 17,
     color: colors.TYPE_WHITE,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.2)",
-    minHeight: 60,
-    paddingHorizontal: 0,
-    paddingTop: Platform.OS === "ios" ? 8 : 6,
-    paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
-  replyActionRow: {
+  replyPillButton: {
     marginTop: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  replyHintText: {
-    ...typography.metadata,
-    fontSize: 11,
-    color: "rgba(245,240,234,0.45)",
-    textAlign: "left",
-    flex: 1,
-  },
-  replySendButton: {
-    minWidth: 84,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
     backgroundColor: colors.VERMILLION,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "center",
   },
-  replySendButtonDisabled: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  replySendButtonText: {
+  replyPillButtonText: {
     ...typography.label,
-    fontSize: 8.5,
+    fontSize: 9,
     color: colors.TYPE_WHITE,
   },
 
-  // Pulse overlay
-  pulseOverlay: {
-    backgroundColor: colors.TYPE_WHITE,
-    borderRadius: spacing.cardRadius,
+  // "In response to" link on Panel 1
+  inResponseToLink: {
+    position: "absolute",
+    top: 8,
+    left: 16,
+    right: 16,
+    zIndex: 3,
+  },
+  inResponseToText: {
+    ...typography.metadata,
+    fontSize: 8.5,
+    lineHeight: 12,
+    color: "rgba(255,255,255,0.6)",
+    fontStyle: "italic",
+  },
+  inResponseToTextNoPhoto: {
+    color: colors.TYPE_MUTED,
   },
 
   // Indicator dots

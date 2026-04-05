@@ -3,13 +3,12 @@
  * Three-bucket system with wild card interspersion.
  */
 
-import { eq, inArray, sql, or, desc, and, isNull } from "drizzle-orm";
+import { eq, inArray, sql, desc, and, isNull } from "drizzle-orm";
 import {
   db,
   users,
   userRecommendationWeights,
   systemConfig,
-  crossings,
   feedSnapshots,
   manualBoosts,
   thoughts,
@@ -40,7 +39,6 @@ import type {
   RecommendationWeights,
   FeedItem,
   FeedItemThought,
-  FeedItemCrossing,
   FeedItemUser,
   BucketLabel,
   FeedPhaseUsed,
@@ -49,15 +47,16 @@ import type {
 import { getBlockedUserIds } from "../lib/blocked-users";
 import { loadViewerFeedProfile } from "./viewer-profile";
 
-const FEED_SNAPSHOT_PREFETCH_PAGES = 3;
-const FEED_SNAPSHOT_MIN_ITEMS = 60;
-const FEED_SNAPSHOT_MAX_ITEMS = 300;
+const FEED_SNAPSHOT_PREFETCH_PAGES = 1;
+const FEED_SNAPSHOT_MIN_ITEMS = 3;
+const FEED_SNAPSHOT_MAX_ITEMS = 10;
 
 type FeedRequestOptions = {
   config?: FeedRuntimeConfig;
   configVersion?: string;
   disableServeLogging?: boolean;
   skipCache?: boolean;
+  anchorThoughtId?: string;
 };
 
 type FeedPageResult = {
@@ -127,29 +126,6 @@ function sanitizeFeedItem(value: unknown): FeedItem | null {
         has_context: asStoredBoolean(thought?.has_context),
       },
       user: sanitizeFeedUser(record?.user),
-    };
-
-    return item;
-  }
-
-  if (type === "crossing") {
-    const crossing = asStoredRecord(record?.crossing);
-    const id = asStoredString(crossing?.id);
-    const sentence = asStoredString(crossing?.sentence);
-    const createdAt = asStoredString(crossing?.created_at);
-
-    if (!id || !sentence || !createdAt) return null;
-
-    const item: FeedItemCrossing = {
-      type: "crossing",
-      crossing: {
-        id,
-        sentence,
-        context: asStoredNullableString(crossing?.context),
-        created_at: createdAt,
-      },
-      participant_a: sanitizeFeedUser(record?.participant_a),
-      participant_b: sanitizeFeedUser(record?.participant_b),
     };
 
     return item;
@@ -406,7 +382,8 @@ function intersperseWildcards<T>(
 async function buildFeedSnapshot(
   userId: string,
   targetTotal: number,
-  runtimeConfig: FeedRuntimeConfig
+  runtimeConfig: FeedRuntimeConfig,
+  anchorThoughtId?: string
 ): Promise<{ items: FeedItem[]; traces: FeedServeTrace[]; hasMore: boolean }> {
   const [viewerData, affinityMap, resonanceMap, clusterAffinityMap] = await Promise.all([
     loadViewerEmbeddingsAndProfile(userId, runtimeConfig),
@@ -414,7 +391,31 @@ async function buildFeedSnapshot(
     loadTemporalResonanceMap(),
     loadClusterAffinityMap(),
   ]);
-  const { embeddings, profile, weights, viewerClusterIds } = viewerData;
+  let { embeddings } = viewerData;
+  const { profile, weights, viewerClusterIds } = viewerData;
+
+  // Anchor-biased retrieval: when a user just posted, use the new thought's
+  // embeddings as the primary retrieval vectors so the feed refreshes with
+  // cards resonant to what they just created.
+  if (anchorThoughtId) {
+    const [anchor] = await db
+      .select({
+        surfaceEmbedding: thoughts.surfaceEmbedding,
+        questionEmbedding: thoughts.questionEmbedding,
+      })
+      .from(thoughts)
+      .where(eq(thoughts.id, anchorThoughtId))
+      .limit(1);
+    if (anchor?.questionEmbedding) {
+      embeddings = {
+        ...embeddings,
+        resonanceEmbeddings: [anchor.questionEmbedding as number[]],
+        surfaceEmbeddings: anchor.surfaceEmbedding
+          ? [anchor.surfaceEmbedding as number[]]
+          : embeddings.surfaceEmbeddings,
+      };
+    }
+  }
   const maps: LearningMaps = { affinityMap, resonanceMap, clusterAffinityMap };
   const candidateLimit = Math.max(
     runtimeConfig.candidateLimit,
@@ -583,67 +584,8 @@ async function buildFeedSnapshot(
     };
   });
 
-  const allUserCrossings = await db
-    .select()
-    .from(crossings)
-    .where(or(eq(crossings.participantA, userId), eq(crossings.participantB, userId)))
-    .orderBy(desc(crossings.createdAt))
-    .limit(targetTotal);
-  const userCrossings = blockedUserIds.size > 0
-    ? allUserCrossings.filter(
-        (crossing) =>
-          !blockedUserIds.has(crossing.participantA) &&
-          !blockedUserIds.has(crossing.participantB)
-      )
-    : allUserCrossings;
-  const crossingUserIds = [
-    ...new Set(userCrossings.flatMap((crossing) => [crossing.participantA, crossing.participantB])),
-  ];
-  const crossingUsers =
-    crossingUserIds.length > 0
-      ? await db
-          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
-          .from(users)
-          .where(inArray(users.id, crossingUserIds))
-      : [];
-  const crossingUserMap = new Map(
-    crossingUsers.map((user) => [
-      user.id,
-      { id: user.id, name: user.name, photo_url: user.photoUrl },
-    ])
-  );
-
-  const crossingItems: FeedItem[] = userCrossings.map((crossing) => ({
-    type: "crossing",
-    crossing: {
-      id: crossing.id,
-      sentence: crossing.sentence,
-      sentence_a: crossing.sentenceA ?? crossing.sentence,
-      sentence_b: crossing.sentenceB ?? null,
-      context: crossing.context,
-      created_at: crossing.createdAt?.toISOString() ?? new Date().toISOString(),
-    },
-    participant_a:
-      crossingUserMap.get(crossing.participantA) ?? {
-        id: crossing.participantA,
-        name: null,
-        photo_url: null,
-      },
-    participant_b:
-      crossingUserMap.get(crossing.participantB) ?? {
-        id: crossing.participantB,
-        name: null,
-        photo_url: null,
-      },
-  }));
-
-  const combinedItems = [...thoughtItems, ...crossingItems].sort((a, b) => {
-    const dateA = a.type === "thought" ? a.thought.created_at : a.crossing.created_at;
-    const dateB = b.type === "thought" ? b.thought.created_at : b.crossing.created_at;
-    return new Date(dateB).getTime() - new Date(dateA).getTime();
-  });
-  const hasMore = combinedItems.length > targetTotal || allUserCrossings.length === targetTotal;
-  const items = combinedItems.slice(0, targetTotal);
+  const hasMore = thoughtItems.length > targetTotal;
+  const items = thoughtItems.slice(0, targetTotal);
 
   // ── Manual boost injection (Wizard of Oz) ──
   const pendingBoosts = await db
@@ -690,33 +632,18 @@ async function buildFeedSnapshot(
   }
 
   const traces: FeedServeTrace[] = items.map((item, index) => {
-    if (item.type === "crossing") {
-      return {
-        item_type: "crossing",
-        thought_id: null,
-        crossing_id: item.crossing.id,
-        author_id: null,
-        position: index + 1,
-        bucket: null,
-        stage: null,
-        phase_used: null,
-        scores: { Q: null, D: null, F: null, R: null, final_rank: null },
-        resonance_similarity: null,
-        surface_similarity: null,
-      };
-    }
-
-    const candidate = candidateMap.get(item.thought.id);
-    const rankDebug = rankDebugMap.get(item.thought.id);
+    const thoughtItem = item as FeedItemThought;
+    const candidate = candidateMap.get(thoughtItem.thought.id);
+    const rankDebug = rankDebugMap.get(thoughtItem.thought.id);
     const similarities = candidate
       ? getSimilarities(candidate, embeddings)
       : { resonance_similarity: 0, surface_similarity: 0 };
 
     return {
       item_type: "thought",
-      thought_id: item.thought.id,
+      thought_id: thoughtItem.thought.id,
       crossing_id: null,
-      author_id: item.user.id,
+      author_id: thoughtItem.user.id,
       position: index + 1,
       bucket: rankDebug?.bucket ?? null,
       stage,
@@ -775,7 +702,7 @@ export async function getFeed(
 
   if (!snapshot || snapshot.items.length < offset + limit) {
     const targetTotal = getSnapshotTargetCount(limit, offset);
-    const built = await buildFeedSnapshot(userId, targetTotal, runtimeConfig);
+    const built = await buildFeedSnapshot(userId, targetTotal, runtimeConfig, options.anchorThoughtId);
     snapshot = await createFeedSnapshot(
       userId,
       configVersion,

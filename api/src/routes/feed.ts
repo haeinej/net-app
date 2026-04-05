@@ -61,17 +61,18 @@ export async function feedRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onRequest", authenticate);
 
   app.get<{
-    Querystring: { limit?: string; offset?: string; cursor?: string };
+    Querystring: { limit?: string; offset?: string; cursor?: string; anchor?: string };
   }>("/api/feed", async (request, reply) => {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
     const limit = Math.min(100, Math.max(1, parseInt(request.query.limit ?? "20", 10) || 20));
     const cursor = typeof request.query.cursor === "string" ? request.query.cursor.trim() : "";
+    const anchor = typeof request.query.anchor === "string" ? request.query.anchor.trim() || undefined : undefined;
     const offset = cursor
       ? getOffsetFromCursor(cursor)
       : Math.max(0, parseInt(request.query.offset ?? "0", 10) || 0);
     try {
-      const page = await getFeed(userId, limit, cursor || null);
+      const page = await getFeed(userId, limit, cursor || null, { skipCache: Boolean(anchor), anchorThoughtId: anchor });
       return reply.send({
         items: page.items,
         next_cursor: page.nextCursor,

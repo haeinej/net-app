@@ -1,0 +1,256 @@
+"use strict";
+/**
+ * Weekly learning job (Phase 7): resonance cluster discovery + cross-cluster affinity.
+ * Table names still use the legacy "question" wording for compatibility.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.runQuestionClusterDiscovery = runQuestionClusterDiscovery;
+exports.runCrossClusterAffinity = runCrossClusterAffinity;
+const drizzle_orm_1 = require("drizzle-orm");
+const db_1 = require("../db");
+const feed_1 = require("../feed");
+const viewer_profile_1 = require("../feed/viewer-profile");
+const llm_1 = require("../llm");
+const config_1 = require("./config");
+const kmeans_1 = require("./kmeans");
+const { weeklyMinThoughtsWithEmbedding, clusterKMin, clusterKMax, samplesPerCluster, kmeansMaxIter, } = config_1.learningConfig;
+// Guardrail: don't load an unbounded number of embeddings into memory.
+// We bias toward recency to keep clusters representative of the current surface.
+const MAX_WEEKLY_THOUGHTS = 5_000;
+// Guardrail: avoid serial LLM labeling over many clusters.
+const MAX_LLM_LABEL_CONCURRENCY = 3;
+async function runWithConcurrency(items, limit, worker) {
+    if (items.length === 0)
+        return;
+    const maxWorkers = Math.min(limit, items.length);
+    let index = 0;
+    const workers = Array.from({ length: maxWorkers }, async () => {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            const current = index++;
+            if (current >= items.length)
+                break;
+            // eslint-disable-next-line no-await-in-loop
+            await worker(items[current]);
+        }
+    });
+    await Promise.all(workers);
+}
+/**
+ * Discover resonance clusters via k-means++ on question_embedding vectors.
+ * Labels each cluster using LLM on sample thought sentences.
+ */
+async function runQuestionClusterDiscovery() {
+    // Fetch a bounded window of thoughts with resonance embeddings (most recent first)
+    const rows = await db_1.db
+        .select({
+        id: db_1.thoughts.id,
+        sentence: db_1.thoughts.sentence,
+        questionEmbedding: db_1.thoughts.questionEmbedding,
+    })
+        .from(db_1.thoughts)
+        .where((0, drizzle_orm_1.sql) `${db_1.thoughts.questionEmbedding} IS NOT NULL`)
+        .orderBy((0, drizzle_orm_1.desc)(db_1.thoughts.createdAt))
+        .limit(MAX_WEEKLY_THOUGHTS);
+    const total = rows.length;
+    if (total < weeklyMinThoughtsWithEmbedding) {
+        return { skipped: true, reason: "insufficient_thoughts", total };
+    }
+    // Extract vectors
+    const vectors = [];
+    const thoughtIds = [];
+    const sentences = [];
+    for (const row of rows) {
+        if (!Array.isArray(row.questionEmbedding))
+            continue;
+        vectors.push(row.questionEmbedding);
+        thoughtIds.push(row.id);
+        sentences.push(row.sentence);
+    }
+    if (vectors.length < weeklyMinThoughtsWithEmbedding) {
+        return { skipped: true, reason: "insufficient_valid_embeddings", count: vectors.length };
+    }
+    // Determine k
+    const k = Math.max(clusterKMin, Math.min(clusterKMax, Math.round(Math.sqrt(vectors.length / 2))));
+    // Run k-means++
+    const { centroids, assignments } = (0, kmeans_1.kmeanspp)(vectors, k, kmeansMaxIter);
+    // Group thoughts by cluster
+    const clusterThoughts = new Map();
+    for (let i = 0; i < assignments.length; i++) {
+        const c = assignments[i];
+        if (!clusterThoughts.has(c))
+            clusterThoughts.set(c, { ids: [], sentences: [] });
+        clusterThoughts.get(c).ids.push(thoughtIds[i]);
+        clusterThoughts.get(c).sentences.push(sentences[i]);
+    }
+    // Delete old clusters (cascade will not affect FK-less thoughts.cluster_id)
+    await db_1.db.delete(db_1.crossClusterAffinity);
+    await db_1.db.delete(db_1.questionClusters);
+    // Insert new clusters + label via LLM (with bounded parallelism)
+    const clusterIdMap = new Map(); // k-means index → DB uuid
+    const clusterIndices = Array.from({ length: centroids.length }, (_, i) => i);
+    await runWithConcurrency(clusterIndices, MAX_LLM_LABEL_CONCURRENCY, async (c) => {
+        const centroid = centroids[c];
+        const group = clusterThoughts.get(c);
+        if (!group || group.ids.length === 0)
+            return;
+        // Pick sample thoughts nearest to centroid
+        const nearestIdx = (0, kmeans_1.nearestToCenter)(vectors, centroid, samplesPerCluster);
+        const sampleSentences = nearestIdx
+            .filter((i) => assignments[i] === c)
+            .map((i) => sentences[i])
+            .slice(0, samplesPerCluster);
+        // Label cluster via LLM
+        let label = `Cluster ${c + 1}`;
+        try {
+            const system = "You are labeling a group of related thoughts. Return ONLY a short 3-6 word descriptive label, nothing else.";
+            const user = `These thoughts share a common theme:\n${sampleSentences
+                .map((s, i) => `${i + 1}. ${s}`)
+                .join("\n")}\n\nWhat is the theme?`;
+            // Serial within each worker, but workers run in parallel.
+            // eslint-disable-next-line no-await-in-loop
+            label = await (0, llm_1.complete)(llm_1.llmConfig.provider, system, user);
+            // Clean up: take first line, strip quotes
+            label = label.split("\n")[0].replace(/^["']|["']$/g, "").trim() || label;
+        }
+        catch {
+            // Fallback to generic label
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const [inserted] = await db_1.db
+            .insert(db_1.questionClusters)
+            .values({
+            centroidEmbedding: centroid,
+            label,
+            sampleQuestions: sampleSentences,
+            thoughtCount: group.ids.length,
+        })
+            .returning({ id: db_1.questionClusters.id });
+        if (inserted) {
+            clusterIdMap.set(c, inserted.id);
+        }
+    });
+    // Update thoughts.cluster_id
+    for (const [c, dbId] of clusterIdMap) {
+        const group = clusterThoughts.get(c);
+        if (!group)
+            continue;
+        // Batch update in chunks of 500
+        for (let i = 0; i < group.ids.length; i += 500) {
+            const chunk = group.ids.slice(i, i + 500);
+            await db_1.db
+                .update(db_1.thoughts)
+                .set({ clusterId: dbId })
+                .where((0, drizzle_orm_1.inArray)(db_1.thoughts.id, chunk));
+        }
+    }
+    await Promise.all([
+        (0, viewer_profile_1.invalidateViewerFeedProfile)(),
+        (0, feed_1.invalidateFeedCache)(),
+    ]);
+    return {
+        skipped: false,
+        total_thoughts: vectors.length,
+        k,
+        clusters: Array.from(clusterIdMap.entries()).map(([c, id]) => ({
+            id,
+            label: clusterThoughts.get(c)?.sentences.slice(0, 2).join("; ") ?? "",
+            count: clusterThoughts.get(c)?.ids.length ?? 0,
+        })),
+    };
+}
+/**
+ * Compute cross-cluster affinity from conversations.
+ * For each (cluster_a, cluster_b) pair: sustain_rate, reply_rate, avg_depth.
+ */
+async function runCrossClusterAffinity() {
+    const clusterCount = await db_1.db.select().from(db_1.questionClusters).limit(1);
+    if (clusterCount.length === 0) {
+        return { skipped: true, reason: "no_clusters" };
+    }
+    // Get all thoughts with cluster assignments
+    const thoughtRows = await db_1.db
+        .select({ id: db_1.thoughts.id, userId: db_1.thoughts.userId, clusterId: db_1.thoughts.clusterId })
+        .from(db_1.thoughts)
+        .where((0, drizzle_orm_1.sql) `${db_1.thoughts.clusterId} IS NOT NULL`);
+    const thoughtCluster = new Map(thoughtRows.map((t) => [t.id, t.clusterId]));
+    const userThoughts = new Map();
+    for (const t of thoughtRows) {
+        if (!userThoughts.has(t.userId))
+            userThoughts.set(t.userId, []);
+        userThoughts.get(t.userId).push(t.id);
+    }
+    // Determine each user's "primary cluster" = cluster of their most recent thought
+    const userCluster = new Map();
+    for (const [userId, ids] of userThoughts) {
+        // Last thought in the list (array maintains insertion order; use first cluster found)
+        for (const id of ids) {
+            const c = thoughtCluster.get(id);
+            if (c) {
+                userCluster.set(userId, c);
+                break;
+            }
+        }
+    }
+    // Get conversations + their thought and participants
+    const convRows = await db_1.db
+        .select({
+        thoughtId: db_1.conversations.thoughtId,
+        participantA: db_1.conversations.participantA,
+        participantB: db_1.conversations.participantB,
+        messageCount: db_1.conversations.messageCount,
+    })
+        .from(db_1.conversations);
+    // Count by cluster pair
+    const pairStats = new Map();
+    function pairKey(a, b) {
+        return [a, b].sort().join("\0");
+    }
+    for (const conv of convRows) {
+        // Get thought's cluster
+        const thoughtClusterId = thoughtCluster.get(conv.thoughtId);
+        if (!thoughtClusterId)
+            continue;
+        // Get replier: the participant who is NOT the thought author
+        // participantA is usually the thought author (from reply acceptance flow)
+        const replierCluster = userCluster.get(conv.participantB) ?? userCluster.get(conv.participantA);
+        if (!replierCluster)
+            continue;
+        const key = pairKey(thoughtClusterId, replierCluster);
+        const entry = pairStats.get(key) ?? { total: 0, sustained: 0, depthSum: 0, replies: 0 };
+        entry.total += 1;
+        entry.replies += 1;
+        if ((conv.messageCount ?? 0) >= 10)
+            entry.sustained += 1;
+        entry.depthSum += conv.messageCount ?? 0;
+        pairStats.set(key, entry);
+    }
+    // Upsert cross_cluster_affinity
+    let upserted = 0;
+    for (const [key, stats] of pairStats) {
+        const [clusterAId, clusterBId] = key.split("\0");
+        const sustainRate = stats.total > 0 ? stats.sustained / stats.total : 0;
+        const avgDepth = stats.total > 0 ? stats.depthSum / stats.total : 0;
+        await db_1.db
+            .insert(db_1.crossClusterAffinity)
+            .values({
+            clusterAId,
+            clusterBId,
+            replyRate: stats.replies / Math.max(stats.total, 1),
+            conversationRate: stats.total > 0 ? 1.0 : 0,
+            sustainRate,
+            avgConversationDepth: avgDepth,
+        })
+            .onConflictDoUpdate({
+            target: [db_1.crossClusterAffinity.clusterAId, db_1.crossClusterAffinity.clusterBId],
+            set: {
+                replyRate: stats.replies / Math.max(stats.total, 1),
+                conversationRate: stats.total > 0 ? 1.0 : 0,
+                sustainRate,
+                avgConversationDepth: avgDepth,
+            },
+        });
+        upserted++;
+    }
+    return { skipped: false, pairs_upserted: upserted };
+}

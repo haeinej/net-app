@@ -66,7 +66,7 @@ export const feedConfig: FeedRuntimeConfig = {
   candidateLimit: 100,
   recentLimit: 50,
   newUserSurfaceLimit: 80,
-  feedLimit: 20,
+  feedLimit: 3,
   phase1ViewerThoughtThreshold: 3,
   phase1SystemEngagementThreshold: 200,
   freshnessFullBoostHours: 6,
@@ -96,7 +96,7 @@ export const feedConfig: FeedRuntimeConfig = {
   windowSize: 10,
   cohortDemotePositions: 5,
   concentrationDemotePositions: 3,
-  cacheTtlSeconds: 300,
+  cacheTtlSeconds: 86400,
 };
 
 function mergeBucketRatios(
