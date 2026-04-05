@@ -692,6 +692,12 @@ export interface ConversationMessage {
   id: string;
   sender_id: string;
   text: string;
+  metadata?: {
+    type: string;
+    thoughtId?: string;
+    thoughtSentence?: string;
+    replyId?: string;
+  } | null;
   created_at: string | null;
 }
 
@@ -855,6 +861,8 @@ export interface ProfileThought {
 export interface ProfileCrossing {
   id: string;
   sentence: string;
+  sentence_a?: string | null;
+  sentence_b?: string | null;
   context: string | null;
   image_url: string | null;
   created_at: string | null;
@@ -945,6 +953,7 @@ export interface UpdateProfileBody {
   name?: string;
   photo_url?: string;
   interests?: string[];
+  terms_accepted?: boolean;
 }
 
 export async function updateProfile(
@@ -1012,6 +1021,8 @@ export async function createThought(
 }
 
 // Auth (onboarding + login)
+export type SocialProvider = "google" | "apple";
+
 export interface RegisterBody {
   name: string;
   photo_url: string;
@@ -1052,6 +1063,35 @@ export async function login(email: string, password: string): Promise<AuthRespon
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify({ email, password }),
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export async function getSocialAuthUrl(
+  provider: SocialProvider,
+  redirectTo: string
+): Promise<{ url: string }> {
+  const params = new URLSearchParams({
+    provider,
+    redirect_to: redirectTo,
+  });
+
+  return requestJson<{ url: string }>(
+    `/api/auth/social/url?${params.toString()}`,
+    "Could not start sign in",
+    {
+      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+    }
+  );
+}
+
+export async function loginWithSocialAccessToken(
+  accessToken: string
+): Promise<AuthResponse> {
+  return requestJson<AuthResponse>("/api/auth/social", "Could not finish sign in", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ access_token: accessToken }),
     timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
 }

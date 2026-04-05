@@ -10,12 +10,20 @@ import {
   ActivityIndicator,
   Animated,
 } from "react-native";
+import * as Linking from "expo-linking";
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, primitives, opacity } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
-import { ApiError, login, loginDemo, setCachedUserId } from "../lib/api";
+import {
+  ApiError,
+  getSocialAuthUrl,
+  login,
+  loginDemo,
+  setCachedUserId,
+  type SocialProvider,
+} from "../lib/api";
 import {
   dismissIntro,
   setAuth,
@@ -32,6 +40,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<SocialProvider | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
@@ -77,7 +86,7 @@ export default function LoginScreen() {
   };
 
   const handleDemoLogin = async () => {
-    if (loading) return;
+    if (loading || socialLoading) return;
     setError(null);
     setLoading(true);
     try {
@@ -96,6 +105,23 @@ export default function LoginScreen() {
     }
   };
 
+  const handleSocialAuth = async (provider: SocialProvider) => {
+    if (loading || socialLoading) return;
+
+    setError(null);
+    setSocialLoading(provider);
+
+    try {
+      const redirectTo = Linking.createURL("/oauth-callback");
+      const { url } = await getSocialAuthUrl(provider, redirectTo);
+      await Linking.openURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start sign in");
+    } finally {
+      setSocialLoading(null);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
@@ -108,6 +134,35 @@ export default function LoginScreen() {
         </Animated.View>
 
         <Animated.View style={[styles.form, { opacity: contentFade }]}>
+          <Text style={styles.socialTitle}>Create your account with Apple</Text>
+          <Text style={styles.socialSubtitle}>
+            New accounts start with Apple. Email is only for existing-account login.
+          </Text>
+
+          <TouchableOpacity
+            style={[
+              styles.socialButton,
+              styles.appleButton,
+              (loading || socialLoading) && styles.buttonDisabled,
+            ]}
+            onPress={() => handleSocialAuth("apple")}
+            disabled={Boolean(loading || socialLoading)}
+          >
+            {socialLoading === "apple" ? (
+              <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+            ) : (
+              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                Continue with Apple
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>existing account</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -120,7 +175,7 @@ export default function LoginScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="email-address"
-            editable={!loading}
+            editable={!loading && !socialLoading}
           />
           <TextInput
             style={styles.input}
@@ -132,30 +187,23 @@ export default function LoginScreen() {
               setError(null);
             }}
             secureTextEntry
-            editable={!loading}
+            editable={!loading && !socialLoading}
           />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
+            style={[styles.button, (loading || socialLoading) && styles.buttonDisabled]}
             onPress={handleLogin}
-            disabled={loading}
+            disabled={Boolean(loading || socialLoading)}
           >
             {loading ? (
               <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
             ) : (
-              <Text style={styles.buttonText}>LOG IN</Text>
+              <Text style={styles.buttonText}>LOG IN WITH EMAIL</Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.link}
-            onPress={() => router.replace("/enter-invite")}
-            disabled={loading}
-          >
-            <Text style={styles.linkText}>Create account</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.tertiaryLink}
             onPress={() =>
@@ -165,14 +213,14 @@ export default function LoginScreen() {
                   : "/reset-password"
               )
             }
-            disabled={loading}
+            disabled={Boolean(loading || socialLoading)}
           >
             <Text style={styles.secondaryLinkText}>Forgot password?</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.demoLink}
             onPress={handleDemoLogin}
-            disabled={loading}
+            disabled={Boolean(loading || socialLoading)}
           >
             <Text style={styles.demoLinkText}>Preview demo mode</Text>
             <Text style={styles.demoHelpText}>
@@ -182,14 +230,14 @@ export default function LoginScreen() {
           <TouchableOpacity
             style={styles.tertiaryLink}
             onPress={() => router.push("/terms" as Href)}
-            disabled={loading}
+            disabled={Boolean(loading || socialLoading)}
           >
             <Text style={styles.secondaryLinkText}>Terms of Use</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.tertiaryLink}
             onPress={() => router.push("/privacy" as Href)}
-            disabled={loading}
+            disabled={Boolean(loading || socialLoading)}
           >
             <Text style={styles.secondaryLinkText}>Privacy Policy</Text>
           </TouchableOpacity>
@@ -223,6 +271,57 @@ const styles = StyleSheet.create({
   form: {
     width: "100%",
   },
+  socialTitle: {
+    ...typography.heading,
+    color: colors.TYPE_DARK,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  socialSubtitle: {
+    ...typography.bodySmall,
+    color: colors.TYPE_MUTED,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  socialButton: {
+    ...primitives.buttonPrimary,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.CARD_BORDER,
+  },
+  socialButtonText: {
+    ...typography.buttonText,
+  },
+  appleButton: {
+    backgroundColor: colors.TYPE_DARK,
+  },
+  appleButtonText: {
+    color: colors.TYPE_WHITE,
+  },
+  googleButton: {
+    backgroundColor: colors.TYPE_WHITE,
+  },
+  googleButtonText: {
+    color: colors.TYPE_DARK,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginVertical: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.CARD_BORDER,
+  },
+  dividerText: {
+    ...typography.metadata,
+    color: colors.TYPE_MUTED,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
   input: {
     ...primitives.input,
     marginBottom: 12,
@@ -240,13 +339,6 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     ...primitives.buttonPrimaryText,
-  },
-  link: {
-    marginTop: 28,
-    alignItems: "center",
-  },
-  linkText: {
-    ...primitives.link,
   },
   tertiaryLink: {
     marginTop: 14,
