@@ -1,8 +1,7 @@
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, TouchableOpacity, StyleSheet } from "react-native";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fontFamily, spacing, shadows, typography, radii } from "../theme";
+import { colors, spacing, shadows } from "../theme";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../assets/images/ohm-logo.png");
@@ -11,12 +10,9 @@ interface HeaderProps {
   /** When true, show orange notification dot and allow opening notification panel */
   hasNotifications?: boolean;
   onNotificationPress?: () => void;
-  /** Ref for walkthrough spotlight on the Post button */
-  postButtonRef?: React.RefObject<View | null>;
 }
 
-export function Header({ hasNotifications = false, onNotificationPress, postButtonRef }: HeaderProps) {
-  const router = useRouter();
+export function Header({ hasNotifications = false, onNotificationPress }: HeaderProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -33,18 +29,7 @@ export function Header({ hasNotifications = false, onNotificationPress, postButt
       </View>
       {/* Center: logo */}
       <Image source={ohmLogo} style={styles.logo} contentFit="contain" />
-      {/* Right: post button */}
-      <View style={[styles.side, styles.sideRight]}>
-        <View ref={postButtonRef} collapsable={false}>
-          <TouchableOpacity
-            style={styles.compose}
-            onPress={() => router.push("/post")}
-            accessibilityLabel="Post a thought"
-          >
-            <Text style={styles.composeText}>Post</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <View style={styles.side} />
     </View>
   );
 }
@@ -60,9 +45,6 @@ const styles = StyleSheet.create({
   },
   side: {
     flex: 1,
-  },
-  sideRight: {
-    alignItems: "flex-end",
   },
   logo: {
     width: 28,
@@ -92,17 +74,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 2,
-  },
-  compose: {
-    backgroundColor: colors.VERMILLION,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: radii.pill,
-    ...shadows.raised,
-  },
-  composeText: {
-    ...typography.label,
-    textTransform: "uppercase",
-    color: colors.TYPE_WHITE,
   },
 });

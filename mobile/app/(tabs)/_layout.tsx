@@ -1,9 +1,13 @@
 import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { View, StyleSheet, useWindowDimensions } from "react-native";
-import Svg, { Path, Circle, Line } from "react-native-svg";
+import { Image } from "expo-image";
+import Svg, { Path } from "react-native-svg";
 import { colors } from "../../theme";
 import { requestPushPermissionIfNeeded } from "../../lib/notifications";
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const ohmLogo = require("../../assets/images/ohm-logo.png");
 
 function WorldsIcon({ focused }: { focused: boolean }) {
   return (
@@ -14,20 +18,14 @@ function WorldsIcon({ focused }: { focused: boolean }) {
 }
 
 function PostIcon({ focused }: { focused: boolean }) {
-  const stroke = focused ? colors.TYPE_DARK : colors.TYPE_MUTED;
   return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Circle
-        cx={12}
-        cy={12}
-        r={10.5}
-        stroke={stroke}
-        strokeWidth={1.6}
-        fill="none"
+    <View style={iconStyles.logoWrap}>
+      <Image
+        source={ohmLogo}
+        style={[iconStyles.logoIcon, !focused && iconStyles.logoIconInactive]}
+        contentFit="contain"
       />
-      <Line x1={12} y1={7.5} x2={12} y2={16.5} stroke={stroke} strokeWidth={1.6} strokeLinecap="round" />
-      <Line x1={7.5} y1={12} x2={16.5} y2={12} stroke={stroke} strokeWidth={1.6} strokeLinecap="round" />
-    </Svg>
+    </View>
   );
 }
 
@@ -154,6 +152,16 @@ const iconStyles = StyleSheet.create({
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 8,
     transform: [{ rotate: "3deg" }],
+  },
+  logoWrap: {
+    transform: [{ translateY: -1 }],
+  },
+  logoIcon: {
+    width: 22,
+    height: 22,
+  },
+  logoIconInactive: {
+    opacity: 0.58,
   },
 });
 

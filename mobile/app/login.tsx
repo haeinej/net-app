@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Animated,
 } from "react-native";
+import * as AppleAuthentication from "expo-apple-authentication";
+import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
@@ -21,7 +23,9 @@ import {
   getSocialAuthUrl,
   login,
   loginDemo,
+  loginWithSocialAccessToken,
   setCachedUserId,
+  type AuthResponse,
   type SocialProvider,
 } from "../lib/api";
 import {
@@ -30,7 +34,21 @@ import {
   setOnboardingComplete,
   setOnboardingStep,
 } from "../lib/auth-store";
+import { getSupabaseClient, hasSupabaseAuthConfig } from "../lib/supabase";
 const ohmLogo = require("../assets/images/ohm-logo.png");
+
+function isAppleAuthCancelError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "ERR_REQUEST_CANCELED"
+  );
+}
+
+async function sha256(value: string): Promise<string> {
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value);
+}
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -56,6 +74,20 @@ export default function LoginScreen() {
     ]).start();
   }, [fadeAnim, scaleAnim, contentFade]);
 
+  const completeAuth = async ({
+    token,
+    user_id,
+    onboarding_complete,
+    onboarding_step,
+  }: AuthResponse) => {
+    await setAuth(token, user_id);
+    await dismissIntro();
+    await setOnboardingComplete(onboarding_complete);
+    await setOnboardingStep(onboarding_step);
+    setCachedUserId(user_id);
+    router.replace(onboarding_complete ? "/(tabs)" : "/onboarding");
+  };
+
   const handleLogin = async () => {
     const e = email.trim();
     const p = password;
@@ -66,14 +98,8 @@ export default function LoginScreen() {
     setError(null);
     setLoading(true);
     try {
-      const { token, user_id, onboarding_complete, onboarding_step } =
-        await login(e, p);
-      await setAuth(token, user_id);
-      await dismissIntro();
-      await setOnboardingComplete(onboarding_complete);
-      await setOnboardingStep(onboarding_step);
-      setCachedUserId(user_id);
-      router.replace(onboarding_complete ? "/(tabs)" : "/onboarding");
+      const auth = await login(e, p);
+      await completeAuth(auth);
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         router.replace({ pathname: "/verify-email", params: { email: e } });
@@ -90,14 +116,8 @@ export default function LoginScreen() {
     setError(null);
     setLoading(true);
     try {
-      const { token, user_id, onboarding_complete, onboarding_step } =
-        await loginDemo();
-      await setAuth(token, user_id);
-      await dismissIntro();
-      await setOnboardingComplete(onboarding_complete);
-      await setOnboardingStep(onboarding_step);
-      setCachedUserId(user_id);
-      router.replace("/(tabs)");
+      const auth = await loginDemo();
+      await completeAuth(auth);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start demo mode");
     } finally {
@@ -105,22 +125,80 @@ export default function LoginScreen() {
     }
   };
 
-  const handleSocialAuth = async (provider: SocialProvider) => {
+  const startWebSocialAuth = async (provider: SocialProvider) => {
+    const redirectTo = Linking.createURL("/oauth-callback");
+    const { url } = await getSocialAuthUrl(provider, redirectTo);
+    await Linking.openURL(url);
+  };
+
+  const handleAppleAuth = async () => {
     if (loading || socialLoading) return;
 
     setError(null);
-    setSocialLoading(provider);
+    setSocialLoading("apple");
 
     try {
-      const redirectTo = Linking.createURL("/oauth-callback");
-      const { url } = await getSocialAuthUrl(provider, redirectTo);
-      await Linking.openURL(url);
+      if (Platform.OS !== "ios") {
+        await startWebSocialAuth("apple");
+        return;
+      }
+
+      if (!hasSupabaseAuthConfig()) {
+        throw new Error("Apple sign in is not configured for this build");
+      }
+
+      const appleAvailable = await AppleAuthentication.isAvailableAsync();
+      if (!appleAvailable) {
+        throw new Error("Apple sign in is unavailable on this device");
+      }
+
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await sha256(rawNonce);
+      const state = Crypto.randomUUID();
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+        state,
+      });
+
+      if (!credential.identityToken) {
+        throw new Error("Apple did not return an identity token");
+      }
+
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: "apple",
+        token: credential.identityToken,
+        nonce: rawNonce,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const accessToken = data.session?.access_token;
+      if (!accessToken) {
+        throw new Error("Could not finish Apple sign in");
+      }
+
+      const auth = await loginWithSocialAccessToken(accessToken);
+      await supabase.auth.signOut().catch(() => {});
+      await completeAuth(auth);
     } catch (err) {
+      if (isAppleAuthCancelError(err)) {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Could not start sign in");
     } finally {
       setSocialLoading(null);
     }
   };
+
+  const appleButtonDisabled = Boolean(loading || socialLoading);
+  const usesNativeAppleButton = Platform.OS === "ios";
 
   return (
     <KeyboardAvoidingView
@@ -139,23 +217,45 @@ export default function LoginScreen() {
             New accounts start with Apple. Email is only for existing-account login.
           </Text>
 
-          <TouchableOpacity
-            style={[
-              styles.socialButton,
-              styles.appleButton,
-              (loading || socialLoading) && styles.buttonDisabled,
-            ]}
-            onPress={() => handleSocialAuth("apple")}
-            disabled={Boolean(loading || socialLoading)}
-          >
-            {socialLoading === "apple" ? (
-              <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
-            ) : (
-              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
-                Continue with Apple
-              </Text>
-            )}
-          </TouchableOpacity>
+          {usesNativeAppleButton ? (
+            <View
+              style={[
+                styles.appleNativeButtonWrap,
+                appleButtonDisabled && styles.buttonDisabled,
+              ]}
+            >
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={999}
+                style={styles.appleNativeButton}
+                onPress={handleAppleAuth}
+              />
+              {socialLoading === "apple" ? (
+                <View style={styles.appleNativeButtonOverlay}>
+                  <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.socialButton,
+                styles.appleButton,
+                appleButtonDisabled && styles.buttonDisabled,
+              ]}
+              onPress={handleAppleAuth}
+              disabled={appleButtonDisabled}
+            >
+              {socialLoading === "apple" ? (
+                <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+              ) : (
+                <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                  Continue with Apple
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
 
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
@@ -289,6 +389,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.CARD_BORDER,
+  },
+  appleNativeButtonWrap: {
+    position: "relative",
+    marginBottom: 12,
+  },
+  appleNativeButton: {
+    width: "100%",
+    height: 52,
+  },
+  appleNativeButtonOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(18, 18, 18, 0.18)",
+    borderRadius: 999,
   },
   socialButtonText: {
     ...typography.buttonText,

@@ -70,8 +70,8 @@ const STEPS: WalkthroughStep[] = [
     title: "share a thought",
     body: "a question, an observation, something half-formed.\nit gets surfaced to people who resonate.",
     cta: "next",
-    targetTestID: "walkthrough-post-button",
-    tooltipPosition: "below",
+    targetTestID: null,
+    tooltipPosition: "center",
   },
   {
     id: "feed",
