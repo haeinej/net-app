@@ -262,10 +262,10 @@ export interface FeedPageResponse {
 }
 
 export interface NotificationItem {
-  reply_id: string;
-  replier: { id: string; name: string | null; photo_url: string | null } | null;
-  reply_preview: string;
-  thought: { id: string; sentence: string } | null;
+  id: string;
+  sentence: string;
+  author: { id: string; name: string | null; photo_url: string | null } | null;
+  original_thought: { id: string; sentence: string } | null;
   created_at: string;
 }
 
@@ -352,30 +352,30 @@ function normalizeNotificationItems(value: unknown): NotificationItem[] {
   return value
     .map((item) => {
       const record = asRecord(item);
-      const replyId = asString(record?.reply_id);
-      const replyPreview = asString(record?.reply_preview);
+      const id = asString(record?.id);
+      const sentence = asString(record?.sentence);
       const createdAt = asString(record?.created_at);
 
-      if (!replyId || !replyPreview || !createdAt) return null;
+      if (!id || !sentence || !createdAt) return null;
 
-      const replierRecord = asRecord(record?.replier);
-      const thoughtRecord = asRecord(record?.thought);
+      const authorRecord = asRecord(record?.author);
+      const originalRecord = asRecord(record?.original_thought);
 
       return {
-        reply_id: replyId,
-        replier: replierRecord
+        id,
+        sentence,
+        author: authorRecord
           ? {
-              id: asString(replierRecord.id) ?? "",
-              name: asNullableString(replierRecord.name),
-              photo_url: asNullableString(replierRecord.photo_url),
+              id: asString(authorRecord.id) ?? "",
+              name: asNullableString(authorRecord.name),
+              photo_url: asNullableString(authorRecord.photo_url),
             }
           : null,
-        reply_preview: replyPreview,
-        thought:
-          thoughtRecord && asString(thoughtRecord.id) && asString(thoughtRecord.sentence)
+        original_thought:
+          originalRecord && asString(originalRecord.id) && asString(originalRecord.sentence)
             ? {
-                id: asString(thoughtRecord.id) ?? "",
-                sentence: asString(thoughtRecord.sentence) ?? "",
+                id: asString(originalRecord.id) ?? "",
+                sentence: asString(originalRecord.sentence) ?? "",
               }
             : null,
         created_at: createdAt,

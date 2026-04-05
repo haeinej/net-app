@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef, memo } from "react";
-import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   View,
   Text,
@@ -17,14 +17,16 @@ import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
 import { getWalkthroughComplete, setWalkthroughComplete } from "../../lib/auth-store";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
 import { CardDeck } from "../../components/CardDeck";
+import { NotificationPanel } from "../../components/NotificationPanel";
 import {
   fetchFeed,
-  ApiError,
+  fetchNotifications,
   getMyUserId,
   deleteThought,
   editThought,
   fetchThought,
   type FeedItem,
+  type NotificationItem,
 } from "../../lib/api";
 
 const PAGE_SIZE = 3;
@@ -33,10 +35,11 @@ const PAGE_SIZE = 3;
 const FOCUS_REFRESH_INTERVAL_MS = 24 * 60 * 60_000;
 
 export default function WorldsScreen() {
-  const router = useRouter();
   const { containerStyle } = useResponsiveLayout();
   const params = useLocalSearchParams<{ anchor?: string }>();
   const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +49,9 @@ export default function WorldsScreen() {
 
   const inFlightFeed = useRef<Promise<void> | null>(null);
   const lastFocusRefreshAt = useRef(0);
-  const postButtonRef = useRef<View>(null);
   const feedCardRef = useRef<View>(null);
 
   const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
-    "walkthrough-post-button": postButtonRef,
     "walkthrough-feed-card": feedCardRef,
   }).current;
 
@@ -193,9 +194,26 @@ export default function WorldsScreen() {
     []
   );
 
+  const loadNotifications = useCallback(async () => {
+    try {
+      const items = await fetchNotifications();
+      setNotifications(items);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const toggleNotifications = useCallback(() => {
+    setNotificationPanelOpen((prev) => {
+      if (!prev) loadNotifications();
+      return !prev;
+    });
+  }, [loadNotifications]);
+
   const onRefresh = useCallback(() => {
+    loadNotifications();
     loadFeed({ isRefresh: true });
-  }, [loadFeed]);
+  }, [loadFeed, loadNotifications]);
 
   const keyExtractor = useCallback(
     (item: FeedItem) =>
@@ -230,6 +248,7 @@ export default function WorldsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      loadNotifications();
       const now = Date.now();
       const shouldRefresh =
         feed.length === 0 || now - lastFocusRefreshAt.current > FOCUS_REFRESH_INTERVAL_MS;
@@ -238,14 +257,22 @@ export default function WorldsScreen() {
         lastFocusRefreshAt.current = now;
         loadFeed();
       }
-    }, [feed.length, loadFeed])
+    }, [feed.length, loadFeed, loadNotifications])
   );
 
   return (
     <View style={styles.container}>
       <Header
-        postButtonRef={postButtonRef}
+        hasNotifications={notifications.length > 0}
+        onNotificationPress={toggleNotifications}
       />
+      {notificationPanelOpen && (
+        <NotificationPanel
+          items={notifications}
+          loading={false}
+          onDismiss={() => setNotificationPanelOpen(false)}
+        />
+      )}
       {loading && feed.length === 0 ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.TYPE_MUTED} />
