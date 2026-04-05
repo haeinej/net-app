@@ -520,7 +520,12 @@ async function buildFeedSnapshot(
     .sort((a, b) => b.rankScore - a.rankScore)
     .slice(0, b3Count);
 
-  const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
+  // Shuffle jitter: add randomness so similarly-scored items get reordered each refresh
+  const SHUFFLE_JITTER = 0.15;
+  const jitter = () => Math.random() * SHUFFLE_JITTER;
+  const mainMerged = [...b1Diverse, ...b2Diverse].sort(
+    (a, b) => (b.rankScore + jitter()) - (a.rankScore + jitter())
+  );
   const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
 
   if (selectedThoughts.length < targetTotal) {

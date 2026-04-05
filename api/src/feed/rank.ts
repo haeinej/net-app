@@ -229,7 +229,7 @@ export async function buildReplyQualityMap(
   return map;
 }
 
-/** Phase 1 rank: freshness × 0.5 + quality × 0.3 + cohort_diversity × 0.2 */
+/** Phase 1 rank: quality × 0.5 + cohort_diversity × 0.3 + freshness × 0.2 */
 export function rankScorePhase1(
   thought: ThoughtCandidate,
   viewer: ViewerProfile,
@@ -239,7 +239,7 @@ export function rankScorePhase1(
   const f = freshnessScore(thought.createdAt, config);
   const q = Math.min(1, thought.qualityScore ?? 0.5);
   const d = cohortDiversityBonus(thought, viewer);
-  return f * 0.5 + q * 0.3 + d * 0.2;
+  return q * 0.5 + d * 0.3 + f * 0.2;
 }
 
 /** Phase 2 rank: (Q×w1) + (D×w2) + (F×w3) + (R×w4). Now uses learning data for D. */
@@ -287,7 +287,7 @@ export function rankScorePhase2WithDebug(
   return { score, Q, D, F, R };
 }
 
-/** Sliding window: max 40% single cohort; demote 3rd consecutive same concentration. */
+/** Hard per-author dedup (max 1 per author), then cohort/concentration diversity. */
 export function applyDiversityEnforcement(
   items: Array<{ thought: ThoughtCandidate; rankScore: number }>,
   config: FeedRuntimeConfig = feedConfig
@@ -298,7 +298,17 @@ export function applyDiversityEnforcement(
     cohortDemotePositions,
     concentrationDemotePositions,
   } = config;
-  const result = [...items].sort((a, b) => b.rankScore - a.rankScore);
+
+  // Hard per-author dedup: keep only the highest-ranked thought per author
+  const sorted = [...items].sort((a, b) => b.rankScore - a.rankScore);
+  const seenAuthors = new Set<string>();
+  const deduped = sorted.filter(({ thought }) => {
+    if (seenAuthors.has(thought.userId)) return false;
+    seenAuthors.add(thought.userId);
+    return true;
+  });
+
+  const result = deduped;
   const n = result.length;
   for (let i = 0; i < n; i++) {
     const windowStart = Math.max(0, i - windowSize + 1);

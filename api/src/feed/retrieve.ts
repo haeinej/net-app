@@ -73,7 +73,7 @@ function stableShuffleScore(viewerId: string, thoughtId: string, dayKey: number)
   return hash >>> 0;
 }
 
-/** 50 most recent thoughts (excluding viewer). */
+/** Top candidates by quality (excluding viewer). */
 async function getRecentCandidates(
   viewerId: string,
   config: FeedRuntimeConfig = feedConfig
@@ -83,7 +83,7 @@ async function getRecentCandidates(
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(and(ne(thoughts.userId, viewerId), isNull(thoughts.deletedAt)))
-    .orderBy(desc(thoughts.createdAt))
+    .orderBy(desc(thoughts.qualityScore))
     .limit(config.recentLimit);
   return rows.map(toCandidate);
 }
@@ -143,7 +143,7 @@ async function getRandomCandidates(
   const maxAgeDays = thoughtActiveDays + thoughtSleepTransitionDays;
   const excludeArr = [...excludeIds];
   const poolLimit = Math.max(limit * 6, 120);
-  const dayKey = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+  const dayKey = Math.floor(Date.now() / (6 * 60 * 60 * 1000)); // 6-hour windows for variety
 
   const conditions = [
     ne(thoughts.userId, viewerId),
