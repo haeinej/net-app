@@ -3,7 +3,7 @@
  * Three-bucket system with wild card interspersion.
  */
 
-import { eq, inArray, sql, desc, and, isNull } from "drizzle-orm";
+import { eq, inArray, sql, desc, and, isNull, gte } from "drizzle-orm";
 import {
   db,
   users,
@@ -12,6 +12,7 @@ import {
   feedSnapshots,
   manualBoosts,
   thoughts,
+  feedServes,
 } from "../db";
 import {
   getBucketedCandidates,
@@ -430,9 +431,26 @@ async function buildFeedSnapshot(
   );
 
   const blockedUserIds = await getBlockedUserIds(userId);
-  const candidates = blockedUserIds.size > 0
+  const afterBlocked = blockedUserIds.size > 0
     ? rawCandidates.filter((candidate) => !blockedUserIds.has(candidate.thought.userId))
     : rawCandidates;
+
+  // Exclude thoughts already served to this user in the last 7 days
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentlyServed = await db
+    .select({ thoughtId: feedServes.thoughtId })
+    .from(feedServes)
+    .where(
+      and(
+        eq(feedServes.viewerId, userId),
+        gte(feedServes.servedAt, sevenDaysAgo),
+        sql`${feedServes.thoughtId} IS NOT NULL`
+      )
+    );
+  const servedThoughtIds = new Set(recentlyServed.map((r) => r.thoughtId).filter(Boolean));
+  const candidates = servedThoughtIds.size > 0
+    ? afterBlocked.filter((c) => !servedThoughtIds.has(c.thought.id))
+    : afterBlocked;
 
   const layer2Scores = new Map<string, number>();
   let layer2Max = 0;

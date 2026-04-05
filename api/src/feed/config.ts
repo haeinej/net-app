@@ -88,7 +88,7 @@ export const feedConfig: FeedRuntimeConfig = {
   defaultWeights: {
     qWeight: 0.50,
     dWeight: 0.30,
-    fWeight: 0.02,
+    fWeight: 0.0,
     rWeight: 0.18,
     alpha: 0.3,
   },
