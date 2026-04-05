@@ -448,15 +448,6 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
               <Text style={styles.timestamp}>
                 {formatRelativeTime(thought.created_at)}
               </Text>
-              {isOwn ? (
-                <TouchableOpacity
-                  style={styles.ownerActionBtn}
-                  onPress={showOwnerActions}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.ownerActionText}>•••</Text>
-                </TouchableOpacity>
-              ) : null}
             </View>
           </View>
         </View>
