@@ -73,6 +73,36 @@ function stableShuffleScore(viewerId: string, thoughtId: string, dayKey: number)
   return hash >>> 0;
 }
 
+function freshnessBlend(
+  createdAt: Date,
+  config: FeedRuntimeConfig = feedConfig
+): number {
+  const {
+    freshnessFullBoostHours,
+    freshnessDecayEndHours,
+    freshnessResidual,
+  } = config;
+  const hours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+  if (hours <= freshnessFullBoostHours) return 1;
+  if (hours <= freshnessDecayEndHours) {
+    const span = freshnessDecayEndHours - freshnessFullBoostHours;
+    return 1 - ((hours - freshnessFullBoostHours) / span) * (1 - freshnessResidual);
+  }
+  return freshnessResidual;
+}
+
+function resurfacingSortScore(
+  viewerId: string,
+  candidate: ThoughtCandidate,
+  dayKey: number,
+  config: FeedRuntimeConfig = feedConfig
+): number {
+  const quality = Math.min(1, Math.max(0, candidate.qualityScore ?? 0.5));
+  const freshness = freshnessBlend(candidate.createdAt, config);
+  const jitter = stableShuffleScore(viewerId, candidate.id, dayKey) / 0xffffffff;
+  return quality * 0.7 + freshness * 0.2 + jitter * 0.1;
+}
+
 /** Top candidates by quality (excluding viewer). */
 async function getRecentCandidates(
   viewerId: string,
@@ -142,7 +172,7 @@ async function getRandomCandidates(
   const { thoughtActiveDays, thoughtSleepTransitionDays, wildcardMinQuality } = config;
   const maxAgeDays = thoughtActiveDays + thoughtSleepTransitionDays;
   const excludeArr = [...excludeIds];
-  const poolLimit = Math.max(limit * 6, 120);
+  const poolLimit = Math.max(limit * 10, 180);
   const dayKey = Math.floor(Date.now() / (6 * 60 * 60 * 1000)); // 6-hour windows for variety
 
   const conditions = [
@@ -162,14 +192,15 @@ async function getRandomCandidates(
     .from(thoughts)
     .innerJoin(users, eq(thoughts.userId, users.id))
     .where(and(...conditions))
-    .orderBy(desc(thoughts.createdAt))
+    .orderBy(desc(thoughts.qualityScore), desc(thoughts.createdAt))
     .limit(poolLimit);
   return rows
-    .map((row) => ({
-      score: stableShuffleScore(viewerId, row.id, dayKey),
-      candidate: toCandidate(row),
+    .map(toCandidate)
+    .map((candidate) => ({
+      score: resurfacingSortScore(viewerId, candidate, dayKey, config),
+      candidate,
     }))
-    .sort((a, b) => a.score - b.score)
+    .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((row) => row.candidate);
 }
@@ -203,6 +234,54 @@ export async function getVisibleRecentCandidates(
     .limit(limit);
 
   return rows.map(toCandidate);
+}
+
+export async function getVisibleFallbackCandidates(
+  viewerId: string,
+  excludeIds: Set<string>,
+  limit: number,
+  blockedUserIds: Set<string> = new Set(),
+  config: FeedRuntimeConfig = feedConfig
+): Promise<ThoughtCandidate[]> {
+  if (limit <= 0) return [];
+
+  const { thoughtActiveDays, thoughtSleepTransitionDays } = config;
+  const maxAgeDays = thoughtActiveDays + thoughtSleepTransitionDays;
+  const conditions = [
+    ne(thoughts.userId, viewerId),
+    isNull(thoughts.deletedAt),
+    sql`${thoughts.createdAt} > now() - interval '${sql.raw(String(maxAgeDays))} days'`,
+  ];
+  const excludeArr = [...excludeIds];
+  const blockedArr = [...blockedUserIds];
+  const poolLimit = Math.max(limit * 12, 180);
+  const dayKey = Math.floor(Date.now() / (12 * 60 * 60 * 1000));
+
+  if (excludeArr.length > 0) {
+    conditions.push(notInArray(thoughts.id, excludeArr.slice(0, 200)));
+  }
+
+  if (blockedArr.length > 0) {
+    conditions.push(notInArray(thoughts.userId, blockedArr.slice(0, 200)));
+  }
+
+  const rows = await db
+    .select(candidateSelect)
+    .from(thoughts)
+    .innerJoin(users, eq(thoughts.userId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(thoughts.qualityScore), desc(thoughts.createdAt))
+    .limit(poolLimit);
+
+  return rows
+    .map(toCandidate)
+    .map((candidate) => ({
+      score: resurfacingSortScore(viewerId, candidate, dayKey, config),
+      candidate,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((entry) => entry.candidate);
 }
 
 export async function getOwnRecentCandidates(

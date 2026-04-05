@@ -229,17 +229,22 @@ export async function buildReplyQualityMap(
   return map;
 }
 
-/** Phase 1 rank: quality × 0.5 + cohort_diversity × 0.3 + freshness × 0.2 */
+/**
+ * Phase 1 rank for low-data users / low-system-signal periods.
+ * We still want semantic relevance to dominate, otherwise the feed collapses
+ * into a freshness-first list before the learning layer kicks in.
+ */
 export function rankScorePhase1(
   thought: ThoughtCandidate,
   viewer: ViewerProfile,
   layer2Score: number,
   config: FeedRuntimeConfig = feedConfig
 ): number {
+  const relevance = Math.min(1, Math.max(0, layer2Score));
   const f = freshnessScore(thought.createdAt, config);
   const q = Math.min(1, thought.qualityScore ?? 0.5);
   const d = cohortDiversityBonus(thought, viewer);
-  return q * 0.5 + d * 0.3 + f * 0.2;
+  return relevance * 0.45 + q * 0.25 + d * 0.2 + f * 0.1;
 }
 
 /** Phase 2 rank: (Q×w1) + (D×w2) + (F×w3) + (R×w4). Now uses learning data for D. */

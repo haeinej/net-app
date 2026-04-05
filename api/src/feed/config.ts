@@ -83,8 +83,8 @@ export const feedConfig: FeedRuntimeConfig = {
   adjacentMinResonance: 0.15,
   adjacentMinSurfaceDistance: 0.35,
   wildcardMinQuality: 0.3,
-  thoughtActiveDays: 90,
-  thoughtSleepTransitionDays: 14,
+  thoughtActiveDays: 180,
+  thoughtSleepTransitionDays: 30,
   defaultWeights: {
     qWeight: 0.50,
     dWeight: 0.30,

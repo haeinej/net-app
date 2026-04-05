@@ -16,7 +16,7 @@ import {
 } from "../db";
 import {
   getBucketedCandidates,
-  getVisibleRecentCandidates,
+  getVisibleFallbackCandidates,
 } from "./retrieve";
 import { scoreThought } from "./score";
 import {
@@ -493,9 +493,9 @@ async function buildFeedSnapshot(
         thought,
         rankScore,
         bucket,
-        Q: layer2Max > 0 ? layer2 / layer2Max : 0.5,
-        D: 0,
-        F: 0,
+        Q: Math.min(1, Math.max(0, layer2)),
+        D: 0.5,
+        F: 0.1,
         R: 0,
       });
       continue;
@@ -547,11 +547,12 @@ async function buildFeedSnapshot(
   const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
 
   if (selectedThoughts.length < targetTotal) {
-    const additionalThoughts = await getVisibleRecentCandidates(
+    const additionalThoughts = await getVisibleFallbackCandidates(
       userId,
       new Set(selectedThoughts.map((item) => item.thought.id)),
       targetTotal - selectedThoughts.length,
-      blockedUserIds
+      blockedUserIds,
+      runtimeConfig
     );
 
     for (const thought of additionalThoughts) {
@@ -836,7 +837,15 @@ export async function getFeedWithDebug(
     const layer2 = layer2Scores.get(thought.id) ?? 0;
     if (isPhase1) {
       const rankScore = rankScorePhase1(thought, profile, layer2, runtimeConfig);
-      withRank.push({ thought, bucket, rankScore, Q: layer2Max > 0 ? layer2 / layer2Max : 0.5, D: 0, F: 0, R: 0 });
+      withRank.push({
+        thought,
+        bucket,
+        rankScore,
+        Q: Math.min(1, Math.max(0, layer2)),
+        D: 0.5,
+        F: 0.1,
+        R: 0,
+      });
     } else {
       const debugRank = rankScorePhase2WithDebug(
         thought,
