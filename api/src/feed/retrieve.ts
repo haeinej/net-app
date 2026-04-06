@@ -443,16 +443,23 @@ export async function getBucketedCandidates(
     }
   }
 
-  // Pre-filter: remove thoughts from users with active conversations
+  // Pre-filter: remove thoughts from users with active conversations + sleeping thoughts
   const { thoughtActiveDays, thoughtSleepTransitionDays } = config;
   const maxAgeMs = (thoughtActiveDays + thoughtSleepTransitionDays) * 24 * 60 * 60 * 1000;
-  const pool = bySimilarity.filter((c) => {
+  const minPoolSize = Math.min(limit, 3);
+  const poolStrict = bySimilarity.filter((c) => {
     if (activeConvUserIds.has(c.userId)) return false;
-    // Filter sleeping thoughts (older than active + transition period)
     const ageMs = Date.now() - c.createdAt.getTime();
     if (ageMs > maxAgeMs) return false;
     return true;
   });
+  // Fall back to age-only filter if conversation filter is too aggressive
+  const pool = poolStrict.length >= minPoolSize
+    ? poolStrict
+    : bySimilarity.filter((c) => {
+        const ageMs = Date.now() - c.createdAt.getTime();
+        return ageMs <= maxAgeMs;
+      });
 
   // Compute similarities for bucket assignment
   const {

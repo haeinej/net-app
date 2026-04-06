@@ -17,6 +17,7 @@ import {
 import {
   getBucketedCandidates,
   getVisibleFallbackCandidates,
+  getVisibleRecentCandidates,
 } from "./retrieve";
 import { flushPendingFeedServes } from "./analytics";
 import { scoreThought } from "./score";
@@ -476,6 +477,10 @@ async function buildFeedSnapshot(
     runtimeConfig
   );
 
+  if (rawCandidates.length === 0) {
+    console.warn(`[feed] getBucketedCandidates returned 0 candidates for viewer ${userId} (stage=${stage})`);
+  }
+
   const blockedUserIds = await getBlockedUserIds(userId);
   const afterBlocked = blockedUserIds.size > 0
     ? rawCandidates.filter((candidate) => !blockedUserIds.has(candidate.thought.userId))
@@ -499,9 +504,18 @@ async function buildFeedSnapshot(
       .map((r) => r.thoughtId)
       .filter((thoughtId): thoughtId is string => typeof thoughtId === "string")
   );
-  const candidates = servedThoughtIds.size > 0
-    ? afterBlocked.filter((c) => !servedThoughtIds.has(c.thought.id))
-    : afterBlocked;
+  let candidates = afterBlocked;
+  if (servedThoughtIds.size > 0) {
+    const filtered = afterBlocked.filter((c) => !servedThoughtIds.has(c.thought.id));
+    // Only apply exclusion if enough candidates remain; otherwise re-show
+    // previously served thoughts rather than returning an empty feed.
+    if (filtered.length >= targetTotal) {
+      candidates = filtered;
+    } else if (filtered.length > 0) {
+      candidates = filtered;
+    }
+    // else: keep afterBlocked (all candidates) to avoid empty feed
+  }
 
   const layer2Scores = new Map<string, number>();
   let layer2Max = 0;
@@ -598,10 +612,10 @@ async function buildFeedSnapshot(
   const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
 
   if (selectedThoughts.length < targetTotal) {
-    const fallbackExcludeIds = new Set([
-      ...servedThoughtIds,
-      ...selectedThoughts.map((item) => item.thought.id),
-    ]);
+    // First fallback: quality-sorted candidates (exclude already selected, but NOT served)
+    const fallbackExcludeIds = new Set(
+      selectedThoughts.map((item) => item.thought.id)
+    );
     const additionalThoughts = await getVisibleFallbackCandidates(
       userId,
       fallbackExcludeIds,
@@ -611,6 +625,23 @@ async function buildFeedSnapshot(
     );
 
     for (const thought of additionalThoughts) {
+      selectedThoughts.push({
+        thought,
+        rankScore: Number.NEGATIVE_INFINITY,
+      });
+    }
+  }
+
+  // Ultimate fallback: if still empty, get ANY recent thoughts (skip all filters)
+  if (selectedThoughts.length === 0) {
+    console.warn(`[feed] Pipeline produced 0 items for viewer ${userId}, using last-resort fallback`);
+    const lastResort = await getVisibleRecentCandidates(
+      userId,
+      new Set(),
+      targetTotal,
+      blockedUserIds
+    );
+    for (const thought of lastResort) {
       selectedThoughts.push({
         thought,
         rankScore: Number.NEGATIVE_INFINITY,
