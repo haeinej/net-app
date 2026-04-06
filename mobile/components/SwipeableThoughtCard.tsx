@@ -399,7 +399,7 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
                   borderRadius={0}
                   style={StyleSheet.absoluteFillObject}
                 />
-                <View style={styles.imageOverlay} pointerEvents="none">
+                <View style={styles.imageOverlay} pointerEvents={inResponseTo ? "box-none" : "none"}>
                   {inResponseTo ? (
                     <TouchableOpacity
                       style={styles.inResponseToLink}

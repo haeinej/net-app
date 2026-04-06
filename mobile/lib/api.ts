@@ -234,7 +234,7 @@ function normalizeFeedItem(value: unknown): FeedItem | null {
 
     if (!id || !sentence || !createdAt) return null;
 
-    const rawResponseTo = asRecord(thought?.in_response_to);
+    const rawResponseTo = asRecord(record?.in_response_to);
     const inResponseTo = rawResponseTo
       ? {
           id: asString(rawResponseTo.id) ?? "",
