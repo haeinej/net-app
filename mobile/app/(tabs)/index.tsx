@@ -155,13 +155,6 @@ export default function WorldsScreen() {
 
   const anchorRef = useRef<string | null>(null);
 
-  // Pick up anchor from post screen navigation
-  useEffect(() => {
-    if (params.anchor) {
-      anchorRef.current = params.anchor;
-    }
-  }, [params.anchor]);
-
   const loadFeed = useCallback(
     async (opts: { isRefresh?: boolean } = {}) => {
       if (inFlightFeed.current) {
@@ -249,15 +242,22 @@ export default function WorldsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadNotifications();
+      // Absorb anchor from post navigation before evaluating refresh
+      // to avoid race with a separate useEffect
+      if (params.anchor) {
+        anchorRef.current = params.anchor;
+      }
       const now = Date.now();
       const shouldRefresh =
-        feed.length === 0 || now - lastFocusRefreshAt.current > FOCUS_REFRESH_INTERVAL_MS;
+        feed.length === 0 ||
+        now - lastFocusRefreshAt.current > FOCUS_REFRESH_INTERVAL_MS ||
+        anchorRef.current !== null;
 
       if (shouldRefresh) {
         lastFocusRefreshAt.current = now;
         loadFeed();
       }
-    }, [feed.length, loadFeed, loadNotifications])
+    }, [feed.length, loadFeed, loadNotifications, params.anchor])
   );
 
   return (
