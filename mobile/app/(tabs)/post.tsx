@@ -128,8 +128,8 @@ export default function PostTabScreen() {
       setResponseToId(null);
       setResponseToSentence(null);
       setPosting(false);
-      // Navigate to feed with anchor so it refreshes based on the new post
-      router.replace(`/(tabs)?anchor=${result.id}`);
+      // Navigate to feed with anchor so it refreshes based on the new post.
+      router.replace({ pathname: "/(tabs)", params: { anchor: result.id } });
     } catch {
       setPosting(false);
       Alert.alert("Error", "Could not post. Try again.");

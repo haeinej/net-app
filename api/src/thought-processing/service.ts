@@ -5,21 +5,16 @@
 
 import { eq } from "drizzle-orm";
 import { db, thoughts, failedProcessingJobs } from "../db";
-import { getEmbeddingService } from "../embedding";
 import { invalidateFeedCache } from "../feed";
 import { invalidateViewerFeedProfile } from "../feed/viewer-profile";
 import { llmConfig, complete } from "../llm";
+import { computeThoughtFeedSignals } from "./feed-signals";
 import {
   RESONANCE_SIGNATURE_SYSTEM,
   resonanceSignatureUser,
   parseResonanceSignature,
   type ResonanceSignature,
 } from "./prompts";
-
-function fullText(sentence: string, context: string | null): string {
-  const ctx = (context ?? "").trim();
-  return ctx ? `${sentence}. ${ctx}` : sentence;
-}
 
 /**
  * Extract the hidden resonance signature for a thought.
@@ -58,29 +53,9 @@ async function runPipeline(thoughtId: string): Promise<void> {
   if (!row) throw new Error(`Thought not found: ${thoughtId}`);
 
   const sentence = row.sentence;
-  const context = row.context ?? "";
-  const text = fullText(sentence, context);
-
-  const embedding = getEmbeddingService();
-
-  // Surface embedding remains useful for creative-distance scoring.
-  const surfaceEmbedding = await embedding.embed(text, "document");
-
-  // Primary resonance embedding is stored in the legacy question column.
-  const signature = await extractResonanceSignature(sentence, context);
-  const resonanceText = signature.resonance_phrases.join(" ");
-  const tensionText = signature.tensions
-    .map((tension) => tension.description)
-    .join(" ");
-  const resonanceSource = [resonanceText, tensionText].filter(Boolean).join(" ");
-  const questionEmbedding = await embedding.embed(
-    resonanceSource || sentence,
-    "document"
-  );
-  const qualityScore = Math.min(
-    1,
-    signature.openness + (signature.tensions.length > 1 ? 0.1 : 0)
-  );
+  const context = row.context;
+  const { surfaceEmbedding, questionEmbedding, qualityScore } =
+    await computeThoughtFeedSignals(sentence, context);
 
   await db
     .update(thoughts)

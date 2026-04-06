@@ -18,6 +18,7 @@ import {
   getBucketedCandidates,
   getVisibleFallbackCandidates,
 } from "./retrieve";
+import { flushPendingFeedServes } from "./analytics";
 import { scoreThought } from "./score";
 import {
   rankScorePhase1,
@@ -47,6 +48,7 @@ import type {
 } from "./types";
 import { getBlockedUserIds } from "../lib/blocked-users";
 import { loadViewerFeedProfile } from "./viewer-profile";
+import { computeThoughtFeedSignals } from "../thought-processing/feed-signals";
 
 const FEED_SNAPSHOT_PREFETCH_PAGES = 1;
 const FEED_SNAPSHOT_MIN_ITEMS = 3;
@@ -401,18 +403,62 @@ async function buildFeedSnapshot(
   if (anchorThoughtId) {
     const [anchor] = await db
       .select({
+        sentence: thoughts.sentence,
+        context: thoughts.context,
         surfaceEmbedding: thoughts.surfaceEmbedding,
         questionEmbedding: thoughts.questionEmbedding,
       })
       .from(thoughts)
       .where(eq(thoughts.id, anchorThoughtId))
       .limit(1);
-    if (anchor?.questionEmbedding) {
+
+    let anchorResonanceEmbedding = Array.isArray(anchor?.questionEmbedding)
+      ? (anchor.questionEmbedding as number[])
+      : null;
+    let anchorSurfaceEmbedding = Array.isArray(anchor?.surfaceEmbedding)
+      ? (anchor.surfaceEmbedding as number[])
+      : null;
+
+    if (
+      anchor &&
+      (!anchorResonanceEmbedding || !anchorSurfaceEmbedding)
+    ) {
+      try {
+        const computed = await computeThoughtFeedSignals(
+          anchor.sentence,
+          anchor.context
+        );
+        anchorResonanceEmbedding ??= computed.questionEmbedding;
+        anchorSurfaceEmbedding ??= computed.surfaceEmbedding;
+
+        void db
+          .update(thoughts)
+          .set({
+            surfaceEmbedding: computed.surfaceEmbedding,
+            questionEmbedding: computed.questionEmbedding,
+            qualityScore: computed.qualityScore,
+          })
+          .where(eq(thoughts.id, anchorThoughtId))
+          .catch((error) => {
+            console.error("persist anchor feed signals failed", {
+              anchorThoughtId,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          });
+      } catch (error) {
+        console.error("computeThoughtFeedSignals for anchor failed", {
+          anchorThoughtId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (anchorResonanceEmbedding) {
       embeddings = {
         ...embeddings,
-        resonanceEmbeddings: [anchor.questionEmbedding as number[]],
-        surfaceEmbeddings: anchor.surfaceEmbedding
-          ? [anchor.surfaceEmbedding as number[]]
+        resonanceEmbeddings: [anchorResonanceEmbedding],
+        surfaceEmbeddings: anchorSurfaceEmbedding
+          ? [anchorSurfaceEmbedding]
           : embeddings.surfaceEmbeddings,
       };
     }
@@ -436,6 +482,7 @@ async function buildFeedSnapshot(
     : rawCandidates;
 
   // Exclude thoughts already served to this user in the last 7 days
+  await flushPendingFeedServes();
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recentlyServed = await db
     .select({ thoughtId: feedServes.thoughtId })
@@ -447,7 +494,11 @@ async function buildFeedSnapshot(
         sql`${feedServes.thoughtId} IS NOT NULL`
       )
     );
-  const servedThoughtIds = new Set(recentlyServed.map((r) => r.thoughtId).filter(Boolean));
+  const servedThoughtIds = new Set<string>(
+    recentlyServed
+      .map((r) => r.thoughtId)
+      .filter((thoughtId): thoughtId is string => typeof thoughtId === "string")
+  );
   const candidates = servedThoughtIds.size > 0
     ? afterBlocked.filter((c) => !servedThoughtIds.has(c.thought.id))
     : afterBlocked;
@@ -547,9 +598,13 @@ async function buildFeedSnapshot(
   const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
 
   if (selectedThoughts.length < targetTotal) {
+    const fallbackExcludeIds = new Set([
+      ...servedThoughtIds,
+      ...selectedThoughts.map((item) => item.thought.id),
+    ]);
     const additionalThoughts = await getVisibleFallbackCandidates(
       userId,
-      new Set(selectedThoughts.map((item) => item.thought.id)),
+      fallbackExcludeIds,
       targetTotal - selectedThoughts.length,
       blockedUserIds,
       runtimeConfig

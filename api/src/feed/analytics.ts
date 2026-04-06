@@ -379,7 +379,7 @@ export async function recordFeedServe(
   }
 }
 
-async function flushPendingFeedServes(): Promise<void> {
+export async function flushPendingFeedServes(): Promise<void> {
   if (feedServeFlushPromise) {
     return feedServeFlushPromise;
   }
