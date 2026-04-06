@@ -26,6 +26,7 @@ import {
 } from "../lib/api";
 import {
   setOnboardingComplete,
+  setOnboardingDeferred,
   setOnboardingStep,
   getOnboardingStep,
   getStoredUserId,
@@ -187,6 +188,7 @@ export default function OnboardingScreen() {
         photo_url: selectedProfilePhoto,
         terms_accepted: true,
       });
+      await setOnboardingDeferred(false);
       await setOnboardingComplete(false);
       await setOnboardingStep(2);
       setStepState(2);
@@ -211,6 +213,7 @@ export default function OnboardingScreen() {
         .filter(Boolean)
         .slice(0, 3);
       await updateProfile({ interests });
+      await setOnboardingDeferred(false);
       await setOnboardingComplete(true);
       await setOnboardingStep(1);
       const uid = await getStoredUserId();
@@ -229,6 +232,7 @@ export default function OnboardingScreen() {
     setPosting(true);
     try {
       await createThought(s, context.trim() || undefined, thoughtPhotoUrl || undefined);
+      await setOnboardingDeferred(false);
       await setOnboardingComplete(true);
       await setOnboardingStep(1);
       const uid = await getStoredUserId();
@@ -249,12 +253,14 @@ export default function OnboardingScreen() {
     if (onboardingBusy) return;
 
     if (step === 1) {
+      await setOnboardingDeferred(true);
       await setOnboardingComplete(false);
       await setOnboardingStep(1);
       router.replace("/(tabs)");
       return;
     }
 
+    await setOnboardingDeferred(true);
     await setOnboardingComplete(false);
     await setOnboardingStep(step);
     router.replace("/(tabs)");

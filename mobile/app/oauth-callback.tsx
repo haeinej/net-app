@@ -8,6 +8,7 @@ import {
   dismissIntro,
   setAuth,
   setOnboardingComplete,
+  setOnboardingDeferred,
   setOnboardingStep,
 } from "../lib/auth-store";
 
@@ -70,6 +71,7 @@ export default function OAuthCallbackScreen() {
           await loginWithSocialAccessToken(parsed.accessToken);
         await setAuth(token, user_id);
         await dismissIntro();
+        await setOnboardingDeferred(false);
         await setOnboardingComplete(onboarding_complete);
         await setOnboardingStep(onboarding_step);
         setCachedUserId(user_id);

@@ -2,6 +2,7 @@ import type { Href } from "expo-router";
 import {
   clearAuth,
   getOnboardingComplete,
+  getOnboardingDeferred,
   getStoredToken,
   getStoredUserId,
 } from "./auth-store";
@@ -12,10 +13,11 @@ import {
 } from "./api";
 
 export async function resolveStartupRoute(): Promise<Href> {
-  const [token, userId, onboardingComplete] = await Promise.all([
+  const [token, userId, onboardingComplete, onboardingDeferred] = await Promise.all([
     getStoredToken(),
     getStoredUserId(),
     getOnboardingComplete(),
+    getOnboardingDeferred(),
   ]);
 
   if (token && userId) {
@@ -34,7 +36,7 @@ export async function resolveStartupRoute(): Promise<Href> {
     }
 
     if (sessionValid) {
-      return onboardingComplete ? "/(tabs)" : "/onboarding";
+      return onboardingComplete || onboardingDeferred ? "/(tabs)" : "/onboarding";
     }
   }
 

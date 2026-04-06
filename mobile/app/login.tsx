@@ -14,7 +14,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import { Image } from "expo-image";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, primitives, opacity } from "../theme";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
@@ -22,7 +22,6 @@ import {
   ApiError,
   getSocialAuthUrl,
   login,
-  loginDemo,
   loginWithSocialAccessToken,
   setCachedUserId,
   type AuthResponse,
@@ -32,6 +31,7 @@ import {
   dismissIntro,
   setAuth,
   setOnboardingComplete,
+  setOnboardingDeferred,
   setOnboardingStep,
 } from "../lib/auth-store";
 import { getSupabaseClient, hasSupabaseAuthConfig } from "../lib/supabase";
@@ -82,6 +82,7 @@ export default function LoginScreen() {
   }: AuthResponse) => {
     await setAuth(token, user_id);
     await dismissIntro();
+    await setOnboardingDeferred(false);
     await setOnboardingComplete(onboarding_complete);
     await setOnboardingStep(onboarding_step);
     setCachedUserId(user_id);
@@ -106,20 +107,6 @@ export default function LoginScreen() {
         return;
       }
       setError(err instanceof Error ? err.message : "Incorrect email or password");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async () => {
-    if (loading || socialLoading) return;
-    setError(null);
-    setLoading(true);
-    try {
-      const auth = await loginDemo();
-      await completeAuth(auth);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start demo mode");
     } finally {
       setLoading(false);
     }
@@ -207,62 +194,13 @@ export default function LoginScreen() {
       keyboardVerticalOffset={0}
     >
       <View style={[styles.content, containerStyle]}>
-        <Animated.View style={[styles.logoWrap, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
-          <Image source={ohmLogo} style={styles.logoImage} contentFit="contain" />
-        </Animated.View>
+        <View style={styles.topSection}>
+          <Animated.View style={[styles.logoWrap, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+            <Image source={ohmLogo} style={styles.logoImage} contentFit="contain" />
+          </Animated.View>
+        </View>
 
         <Animated.View style={[styles.form, { opacity: contentFade }]}>
-          <Text style={styles.socialTitle}>Create your account with Apple</Text>
-          <Text style={styles.socialSubtitle}>
-            New accounts start with Apple. Email is only for existing-account login.
-          </Text>
-
-          {usesNativeAppleButton ? (
-            <View
-              style={[
-                styles.appleNativeButtonWrap,
-                appleButtonDisabled && styles.buttonDisabled,
-              ]}
-            >
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={999}
-                style={styles.appleNativeButton}
-                onPress={handleAppleAuth}
-              />
-              {socialLoading === "apple" ? (
-                <View style={styles.appleNativeButtonOverlay}>
-                  <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
-                </View>
-              ) : null}
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[
-                styles.socialButton,
-                styles.appleButton,
-                appleButtonDisabled && styles.buttonDisabled,
-              ]}
-              onPress={handleAppleAuth}
-              disabled={appleButtonDisabled}
-            >
-              {socialLoading === "apple" ? (
-                <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
-              ) : (
-                <Text style={[styles.socialButtonText, styles.appleButtonText]}>
-                  Continue with Apple
-                </Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>existing account</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -303,45 +241,49 @@ export default function LoginScreen() {
               <Text style={styles.buttonText}>LOG IN WITH EMAIL</Text>
             )}
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.tertiaryLink}
-            onPress={() =>
-              router.push(
-                email.trim()
-                  ? { pathname: "/reset-password", params: { email: email.trim() } }
-                  : "/reset-password"
-              )
-            }
-            disabled={Boolean(loading || socialLoading)}
-          >
-            <Text style={styles.secondaryLinkText}>Forgot password?</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.demoLink}
-            onPress={handleDemoLogin}
-            disabled={Boolean(loading || socialLoading)}
-          >
-            <Text style={styles.demoLinkText}>Preview demo mode</Text>
-            <Text style={styles.demoHelpText}>
-              Opens the full app with sample posts, replies, conversations, and crossings.
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.tertiaryLink}
-            onPress={() => router.push("/terms" as Href)}
-            disabled={Boolean(loading || socialLoading)}
-          >
-            <Text style={styles.secondaryLinkText}>Terms of Use</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.tertiaryLink}
-            onPress={() => router.push("/privacy" as Href)}
-            disabled={Boolean(loading || socialLoading)}
-          >
-            <Text style={styles.secondaryLinkText}>Privacy Policy</Text>
-          </TouchableOpacity>
         </Animated.View>
+
+        <View style={styles.bottomSection}>
+          {usesNativeAppleButton ? (
+            <View
+              style={[
+                styles.appleNativeButtonWrap,
+                appleButtonDisabled && styles.buttonDisabled,
+              ]}
+            >
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={999}
+                style={styles.appleNativeButton}
+                onPress={handleAppleAuth}
+              />
+              {socialLoading === "apple" ? (
+                <View style={styles.appleNativeButtonOverlay}>
+                  <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.socialButton,
+                styles.appleButton,
+                appleButtonDisabled && styles.buttonDisabled,
+              ]}
+              onPress={handleAppleAuth}
+              disabled={appleButtonDisabled}
+            >
+              {socialLoading === "apple" ? (
+                <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
+              ) : (
+                <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+                  Continue with Apple
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -351,18 +293,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.WARM_GROUND,
-    justifyContent: "center",
   },
   content: {
+    flex: 1,
     paddingHorizontal: spacing.screenPadding,
     maxWidth: 320,
     alignSelf: "center",
     width: "100%",
+    justifyContent: "center",
+  },
+  topSection: {
+    alignItems: "center",
+    marginBottom: 48,
   },
   logoWrap: {
-    alignSelf: "center",
     alignItems: "center",
-    marginBottom: 32,
   },
   logoImage: {
     width: 96,
@@ -371,28 +316,16 @@ const styles = StyleSheet.create({
   form: {
     width: "100%",
   },
-  socialTitle: {
-    ...typography.heading,
-    color: colors.TYPE_DARK,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  socialSubtitle: {
-    ...typography.bodySmall,
-    color: colors.TYPE_MUTED,
-    textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 18,
+  bottomSection: {
+    marginTop: 48,
   },
   socialButton: {
     ...primitives.buttonPrimary,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.CARD_BORDER,
   },
   appleNativeButtonWrap: {
     position: "relative",
-    marginBottom: 12,
   },
   appleNativeButton: {
     width: "100%",
@@ -414,29 +347,6 @@ const styles = StyleSheet.create({
   appleButtonText: {
     color: colors.TYPE_WHITE,
   },
-  googleButton: {
-    backgroundColor: colors.TYPE_WHITE,
-  },
-  googleButtonText: {
-    color: colors.TYPE_DARK,
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginVertical: 10,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.CARD_BORDER,
-  },
-  dividerText: {
-    ...typography.metadata,
-    color: colors.TYPE_MUTED,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
   input: {
     ...primitives.input,
     marginBottom: 12,
@@ -454,28 +364,5 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     ...primitives.buttonPrimaryText,
-  },
-  tertiaryLink: {
-    marginTop: 14,
-    alignItems: "center",
-  },
-  demoLink: {
-    marginTop: 18,
-    alignItems: "center",
-    gap: 4,
-  },
-  demoLinkText: {
-    ...primitives.linkSubtle,
-    color: colors.OLIVE,
-  },
-  demoHelpText: {
-    ...typography.metadata,
-    color: colors.TYPE_MUTED,
-    textAlign: "center",
-    maxWidth: 280,
-    lineHeight: 16,
-  },
-  secondaryLinkText: {
-    ...primitives.linkSubtle,
   },
 });
