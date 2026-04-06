@@ -127,7 +127,6 @@ async function main() {
   const { internalFeedMetricsRoutes } = await import("./routes/internal-feed-metrics");
   const { moderationRoutes } = await import("./routes/moderation");
   const { pushRoutes } = await import("./routes/push");
-  const { inviteRoutes } = await import("./routes/invites");
   const { internalMatchmakerRoutes } = await import("./routes/internal-matchmaker");
 
   await app.register(waitlistRoutes);
@@ -140,7 +139,6 @@ async function main() {
   await app.register(internalFeedMetricsRoutes);
   await app.register(moderationRoutes);
   await app.register(pushRoutes);
-  await app.register(inviteRoutes);
   await app.register(internalMatchmakerRoutes);
 
   console.log("[boot] routes registered, loading cron...");

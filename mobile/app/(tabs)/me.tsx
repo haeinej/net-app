@@ -9,7 +9,6 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Share,
   Modal,
   Pressable,
   Animated,
@@ -33,8 +32,6 @@ import {
   updateProfile,
   deleteThought,
   editThought,
-  fetchMyInvites,
-  generateInvite,
   type ProfileResponse,
   type FeedItemThought,
 } from "../../lib/api";
@@ -53,7 +50,6 @@ export default function MeScreen() {
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
-  const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const menuSlide = useState(() => new Animated.Value(0))[0];
 
@@ -88,14 +84,10 @@ export default function MeScreen() {
     }
     try {
       setLoading(true);
-      const [data, invites] = await Promise.all([
-        fetchProfile(uid),
-        fetchMyInvites().catch(() => ({ remaining: 0 })),
-      ]);
+      const data = await fetchProfile(uid);
       setProfile(data);
       setEditName(data.name ?? "");
       setEditPhotoUrl(data.photo_url ?? "");
-      setInviteRemaining(invites.remaining);
     } catch (error) {
       if (isSessionInvalidError(error)) {
         await resetBrokenSession();
@@ -169,24 +161,6 @@ export default function MeScreen() {
       setSaving(false);
     }
   }, [profile, editName, editPhotoUrl, saving]);
-
-  const handleInvite = useCallback(async () => {
-    if (inviteRemaining === 0) {
-      Alert.alert("No invites left", "You've used all your invite codes.");
-      return;
-    }
-    try {
-      const { code, remaining } = await generateInvite();
-      setInviteRemaining(remaining);
-      await Share.share({
-        message: `Join me on ohm. — an app for honest, async conversation.\n\nUse my invite code: ${code}\n\nohm://invite/${code}`,
-      });
-    } catch (err) {
-      if (err instanceof Error && err.message !== "User did not share") {
-        Alert.alert("Error", err.message);
-      }
-    }
-  }, [inviteRemaining]);
 
   const handleDeleteThought = useCallback(
     async (thoughtId: string) => {
@@ -467,21 +441,6 @@ export default function MeScreen() {
             <TouchableOpacity
               style={styles.menuRow}
               activeOpacity={0.6}
-              onPress={() => closeMenu(() => handleInvite())}
-            >
-              <Text style={styles.menuRowText}>Invite Friends</Text>
-              {inviteRemaining !== null && inviteRemaining > 0 && (
-                <View style={styles.menuBadge}>
-                  <Text style={styles.menuBadgeText}>{inviteRemaining}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.menuSep} />
-
-            <TouchableOpacity
-              style={styles.menuRow}
-              activeOpacity={0.6}
               onPress={() => closeMenu(() => router.push("/settings" as Href))}
             >
               <Text style={styles.menuRowText}>Settings</Text>
@@ -617,20 +576,6 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(0,0,0,0.08)",
     marginHorizontal: 24,
-  },
-  menuBadge: {
-    backgroundColor: colors.VERMILLION,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  menuBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#fff",
   },
 
   /* ── Glass buttons (edit mode) ── */

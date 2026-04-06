@@ -79,8 +79,6 @@ export default function RootLayout() {
             <Stack.Screen name="oauth-callback" options={{ animation: "none" }} />
             <Stack.Screen name="verify-email" options={{ animation: "none" }} />
             <Stack.Screen name="reset-password" options={{ animation: "none" }} />
-            <Stack.Screen name="enter-invite" options={{ animation: "none" }} />
-            <Stack.Screen name="invite/[code]" options={{ animation: "none" }} />
             <Stack.Screen name="onboarding" options={{ animation: "none" }} />
             <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
             <Stack.Screen name="thought/[id]" />

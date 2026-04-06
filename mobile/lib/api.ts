@@ -593,7 +593,6 @@ export interface RegisterBody {
   email: string;
   password: string;
   terms_accepted: boolean;
-  invite_code?: string;
 }
 
 export interface RegisterResponse {
@@ -656,7 +655,7 @@ export async function loginWithSocialAccessToken(
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify({ access_token: accessToken }),
-      timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
+    timeoutMs: AUTH_REQUEST_TIMEOUT_MS,
   });
 }
 
@@ -862,30 +861,6 @@ export async function unregisterPushToken(token: string): Promise<void> {
     headers: JSON_HEADERS,
     body: JSON.stringify({ token }),
   });
-}
-
-// Invites
-
-export async function validateInviteCode(code: string): Promise<{ valid: boolean }> {
-  return requestJson<{ valid: boolean }>(
-    `/api/invites/validate?code=${encodeURIComponent(code)}`,
-    "Could not validate invite code",
-    { timeoutMs: AUTH_REQUEST_TIMEOUT_MS }
-  );
-}
-
-export async function fetchMyInvites(): Promise<{ remaining: number }> {
-  return requestJson<{ remaining: number }>("/api/me/invites", "Could not fetch invites", {
-    auth: true,
-  });
-}
-
-export async function generateInvite(): Promise<{ code: string; remaining: number }> {
-  return requestJson<{ code: string; remaining: number }>(
-    "/api/me/invites/generate",
-    "Could not generate invite",
-    { method: "POST", auth: true }
-  );
 }
 
 // Thought replies

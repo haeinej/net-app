@@ -4,7 +4,7 @@
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { eq } from "drizzle-orm";
-import { db, users, inviteCodes } from "../db";
+import { db, users } from "../db";
 import { getOnboardingStateForUser } from "../lib/onboarding";
 import { normalizeEmail, validateStrongPassword } from "../lib/auth-policy";
 import {
@@ -17,7 +17,6 @@ import {
   verifySupabaseRecovery,
 } from "../lib/supabase-email-verification";
 import { hashPassword, verifyPassword } from "../lib/password";
-import { generateInviteCode, MAX_INVITES_PER_USER } from "../lib/invite";
 
 function readTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -32,27 +31,6 @@ function isSocialProvider(value: unknown): value is SocialProvider {
   return value === "apple";
 }
 
-async function seedInviteCodesForUser(userId: string): Promise<void> {
-  for (let i = 0; i < MAX_INVITES_PER_USER; i++) {
-    let attempts = 0;
-    while (true) {
-      const code = generateInviteCode();
-      try {
-        await db.insert(inviteCodes).values({ code, createdByUserId: userId });
-        break;
-      } catch (err: unknown) {
-        attempts++;
-        const isUniqueViolation =
-          err &&
-          typeof err === "object" &&
-          "code" in err &&
-          (err as { code: string }).code === "23505";
-        if (!isUniqueViolation || attempts >= 5) break;
-      }
-    }
-  }
-}
-
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
     Body: {
@@ -61,7 +39,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       email?: string;
       password?: string;
       terms_accepted?: boolean;
-      invite_code?: string;
     };
   }>(
     "/api/auth/register",
@@ -164,7 +141,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           }
 
           userId = createdUser.id;
-          await seedInviteCodesForUser(userId);
         }
 
         const token = app.jwt.sign({ sub: userId });

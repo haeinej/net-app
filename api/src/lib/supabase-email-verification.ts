@@ -134,7 +134,6 @@ function normalizeVerifyType(type: string | null | undefined): string {
     case "signup":
     case "magiclink":
     case "recovery":
-    case "invite":
     case "email_change":
     case "email":
       return type;
