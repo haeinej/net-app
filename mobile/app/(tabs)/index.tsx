@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   View,
   Text,
@@ -9,29 +9,18 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSequence,
-  Easing,
-  runOnJS,
-} from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import { colors, spacing, typography } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { pickPrompt, EMPTY_STATE_PROMPTS } from "../../constants/prompts";
 import { Header } from "../../components/Header";
+import { OnboardingWalkthrough } from "../../components/OnboardingWalkthrough";
+import { getWalkthroughComplete, setWalkthroughComplete } from "../../lib/auth-store";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
-import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import { NotificationPanel } from "../../components/NotificationPanel";
 import {
   fetchFeed,
   fetchNotifications,
-  acceptReply,
-  ignoreReply,
   getMyUserId,
   deleteThought,
   editThought,
@@ -40,53 +29,46 @@ import {
   type NotificationItem,
 } from "../../lib/api";
 
-const PAGE_SIZE = 20;
-const FOCUS_REFRESH_INTERVAL_MS = 60_000;
+const PAGE_SIZE = 3;
+/** Refresh feed once per day (24 h). The API snapshot also uses a 24-hour TTL,
+ *  so pulling fresh data more often wouldn't change the result. */
+const FOCUS_REFRESH_INTERVAL_MS = 24 * 60 * 60_000;
 
 export default function WorldsScreen() {
-  const router = useRouter();
   const { containerStyle } = useResponsiveLayout();
+  const params = useLocalSearchParams<{ anchor?: string }>();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
-  // Connection moment — the felt move from stranger to thinking partner
-  const connectionOpacity = useSharedValue(0);
-  const [connectionVisible, setConnectionVisible] = useState(false);
-  const pendingNavRef = useRef<(() => void) | null>(null);
-  const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [acceptingReplyId, setAcceptingReplyId] = useState<string | null>(null);
-
-  const connectionOverlayStyle = useAnimatedStyle(() => ({
-    opacity: connectionOpacity.value,
-    pointerEvents: connectionOpacity.value > 0 ? "auto" as const : "none" as const,
-  }));
+  const [walkthroughVisible, setWalkthroughVisible] = useState(false);
 
   const inFlightFeed = useRef<Promise<void> | null>(null);
   const lastFocusRefreshAt = useRef(0);
-  const postButtonRef = useRef<View>(null);
+  const feedCardRef = useRef<View>(null);
+
+  const walkthroughRefs = useRef<Record<string, React.RefObject<View | null>>>({
+    "walkthrough-feed-card": feedCardRef,
+  }).current;
 
   useEffect(() => {
     getMyUserId().then(setMyUserId).catch(() => setMyUserId(null));
   }, []);
 
-  // Clean up connection timer on unmount to prevent navigation after screen is gone
+  // Show walkthrough on first visit after onboarding
   useEffect(() => {
-    return () => {
-      if (connectionTimerRef.current) {
-        clearTimeout(connectionTimerRef.current);
-        connectionTimerRef.current = null;
-      }
-      pendingNavRef.current = null;
-    };
+    getWalkthroughComplete().then((done) => {
+      if (!done) setWalkthroughVisible(true);
+    });
+  }, []);
+
+  const handleWalkthroughComplete = useCallback(() => {
+    setWalkthroughVisible(false);
+    setWalkthroughComplete();
   }, []);
 
   const handleFeedDelete = useCallback(async (thoughtId: string) => {
@@ -171,30 +153,30 @@ export default function WorldsScreen() {
     [feed]
   );
 
+  const anchorRef = useRef<string | null>(null);
+
   const loadFeed = useCallback(
-    async (cursor: string | null, append: boolean, opts: { isRefresh?: boolean } = {}) => {
+    async (opts: { isRefresh?: boolean } = {}) => {
       if (inFlightFeed.current) {
         return inFlightFeed.current;
       }
       const { isRefresh } = opts;
-      if (append) setLoadingMore(true);
-      else if (isRefresh) setRefreshing(true);
-      else if (!cursor) setLoading(true);
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
 
       setError(null);
+      const anchor = anchorRef.current;
+      anchorRef.current = null;
 
       const p = (async () => {
         try {
-          const page = await fetchFeed(PAGE_SIZE, cursor);
-          setFeed((prev) => (append ? prev.concat(page.items) : page.items));
-          setNextCursor(page.next_cursor);
-          setHasMore(Boolean(page.next_cursor));
+          const page = await fetchFeed(PAGE_SIZE, null, anchor);
+          setFeed(page.items.slice(0, PAGE_SIZE));
         } catch (e) {
           setError(e instanceof Error ? e.message : "Something went wrong");
         } finally {
           setLoading(false);
           setRefreshing(false);
-          setLoadingMore(false);
           inFlightFeed.current = null;
         }
       })();
@@ -206,137 +188,89 @@ export default function WorldsScreen() {
   );
 
   const loadNotifications = useCallback(async () => {
-    setNotificationsLoading(true);
     try {
       const items = await fetchNotifications();
       setNotifications(items);
     } catch {
-      setNotifications([]);
-    } finally {
-      setNotificationsLoading(false);
+      // silent
     }
   }, []);
 
-  const onRefresh = useCallback(() => {
-    setNextCursor(null);
-    loadNotifications();
-    loadFeed(null, false, { isRefresh: true });
-  }, [loadFeed, loadNotifications]);
-
-  const onEndReached = useCallback(() => {
-    if (!hasMore || loadingMore || feed.length === 0 || !nextCursor) return;
-    loadFeed(nextCursor, true);
-  }, [hasMore, loadingMore, feed.length, nextCursor, loadFeed]);
-
-  const openNotifications = useCallback(() => {
+  const toggleNotifications = useCallback(() => {
     setNotificationPanelOpen((prev) => {
       if (!prev) loadNotifications();
       return !prev;
     });
   }, [loadNotifications]);
 
-  const handleAccept = useCallback(async (item: NotificationItem) => {
-    if (acceptingReplyId) return;
-    setAcceptingReplyId(item.reply_id);
+  const onRefresh = useCallback(() => {
+    loadNotifications();
+    loadFeed({ isRefresh: true });
+  }, [loadFeed, loadNotifications]);
 
-    try {
-      const result = await acceptReply(item.reply_id);
-      setNotificationPanelOpen(false);
-      setNotifications((prev) => prev.filter((n) => n.reply_id !== item.reply_id));
+  const keyExtractor = useCallback(
+    (item: FeedItem) =>
+      item.type === "thought"
+        ? item.thought.id
+        : "unknown",
+    []
+  );
 
-      // Store the navigation for after the moment
-      const navParams = {
-        pathname: "/conversation/[id]" as const,
-        params: {
-          id: result.conversation_id,
-          otherName: item.replier?.name ?? "",
-          otherPhoto: item.replier?.photo_url ?? "",
-          otherId: item.replier?.id ?? "",
-          thoughtSentence: item.thought?.sentence ?? "",
-        },
-      };
-
-      // The connection moment — a felt crossing, not a celebration
-      setConnectionVisible(true);
-      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
-
-      // Fade in warmth, hold, then navigate on fade out
-      connectionOpacity.value = withSequence(
-        // Rise: warmth arrives
-        withTiming(1, { duration: 350, easing: Easing.out(Easing.ease) }),
-        // Hold: the felt moment
-        withTiming(1, { duration: 400 }),
-        // Dissolve: transition to what comes next
-        withTiming(0, { duration: 300, easing: Easing.in(Easing.ease) })
-      );
-
-      // Navigate during the dissolve phase
-      pendingNavRef.current = () => {
-        setConnectionVisible(false);
-        router.push(navParams);
-      };
-      if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
-      connectionTimerRef.current = setTimeout(() => {
-        pendingNavRef.current?.();
-        pendingNavRef.current = null;
-        connectionTimerRef.current = null;
-      }, 850);
-    } catch (err) {
-      const message =
-        err instanceof Error && err.message.includes("timeout")
-          ? "Network timeout — check your connection and try again."
-          : err instanceof Error && err.message.includes("reachable")
-            ? "Can't reach the server — check your connection."
-            : "Something went wrong. Try again.";
-      Alert.alert("Couldn't connect", message);
-    } finally {
-      setAcceptingReplyId(null);
-    }
-  }, [router, connectionOpacity, acceptingReplyId]);
-
-  const handleIgnore = useCallback(async (replyId: string) => {
-    try {
-      await ignoreReply(replyId);
-      setNotifications((prev) => {
-        const next = prev.filter((n) => n.reply_id !== replyId);
-        if (next.length === 0) setNotificationPanelOpen(false);
-        return next;
-      });
-    } catch {
-      // keep in list
-    }
-  }, []);
-
-  const hasNotifications = notifications.length > 0;
+  const renderItem = useCallback(
+    ({ item, index }: { item: FeedItem; index: number }) => (
+      <View
+        ref={index === 0 ? feedCardRef : undefined}
+        collapsable={false}
+        style={[styles.cardWrap, containerStyle]}
+      >
+        <CardDeck>
+          {item.type === "thought" ? (
+            <SwipeableThoughtCard
+              item={item}
+              visible
+              isOwn={Boolean(myUserId && item.user?.id && myUserId === item.user.id)}
+              onDelete={handleFeedDelete}
+              onEdit={handleFeedEdit}
+            />
+          ) : null}
+        </CardDeck>
+      </View>
+    ),
+    [containerStyle, myUserId, handleFeedDelete, handleFeedEdit]
+  );
 
   useFocusEffect(
     useCallback(() => {
+      loadNotifications();
+      // Absorb anchor from post navigation before evaluating refresh
+      // to avoid race with a separate useEffect
+      if (params.anchor) {
+        anchorRef.current = params.anchor;
+      }
       const now = Date.now();
       const shouldRefresh =
-        feed.length === 0 || now - lastFocusRefreshAt.current > FOCUS_REFRESH_INTERVAL_MS;
+        feed.length === 0 ||
+        now - lastFocusRefreshAt.current > FOCUS_REFRESH_INTERVAL_MS ||
+        anchorRef.current !== null;
 
       if (shouldRefresh) {
         lastFocusRefreshAt.current = now;
-        loadFeed(null, false);
-        loadNotifications();
+        loadFeed();
       }
-    }, [feed.length, loadFeed, loadNotifications])
+    }, [feed.length, loadFeed, loadNotifications, params.anchor])
   );
 
   return (
     <View style={styles.container}>
       <Header
-        hasNotifications={hasNotifications}
-        onNotificationPress={openNotifications}
-        postButtonRef={postButtonRef}
+        hasNotifications={notifications.length > 0}
+        onNotificationPress={toggleNotifications}
       />
       {notificationPanelOpen && (
         <NotificationPanel
           items={notifications}
-          loading={notificationsLoading}
-          acceptingReplyId={acceptingReplyId}
-          onAccept={handleAccept}
-          onIgnore={handleIgnore}
+          loading={false}
+          onDismiss={() => setNotificationPanelOpen(false)}
         />
       )}
       {loading && feed.length === 0 ? (
@@ -355,35 +289,11 @@ export default function WorldsScreen() {
       ) : (
         <FlatList
           data={feed}
-          keyExtractor={(item) =>
-            item.type === "thought"
-              ? item.thought.id
-              : item.type === "crossing"
-                ? `crossing-${item.crossing.id}`
-                : "hidden-crossing"
-          }
-          renderItem={({ item }) => (
-            <View
-              collapsable={false}
-              style={[styles.cardWrap, containerStyle]}
-            >
-              <CardDeck>
-                {item.type === "thought" ? (
-                  <SwipeableThoughtCard
-                    item={item}
-                    visible
-                    isOwn={Boolean(myUserId && item.user?.id && myUserId === item.user.id)}
-                    onDelete={handleFeedDelete}
-                    onEdit={handleFeedEdit}
-                  />
-                ) : item.type === "crossing" ? (
-                  <CrossingCard item={item} visible myUserId={myUserId} />
-                ) : null}
-              </CardDeck>
-            </View>
-          )}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           style={styles.list}
+          scrollEnabled
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -391,29 +301,14 @@ export default function WorldsScreen() {
               tintColor={colors.TYPE_MUTED}
             />
           }
-          onEndReached={onEndReached}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.footer}>
-                <ActivityIndicator size="small" color={colors.TYPE_MUTED} />
-              </View>
-            ) : null
-          }
         />
       )}
 
-      {/* Connection moment — the felt crossing from stranger to thinking partner */}
-      {connectionVisible && (
-        <Animated.View style={[StyleSheet.absoluteFill, styles.connectionOverlay, connectionOverlayStyle]}>
-          <LinearGradient
-            colors={[colors.VERMILLION, colors.PANEL_DEEP]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-      )}
+      <OnboardingWalkthrough
+        visible={walkthroughVisible}
+        onComplete={handleWalkthroughComplete}
+        targetRefs={walkthroughRefs}
+      />
     </View>
   );
 }
@@ -457,12 +352,5 @@ const styles = StyleSheet.create({
     ...typography.metadata,
     marginTop: 8,
     color: colors.TYPE_MUTED,
-  },
-  footer: {
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  connectionOverlay: {
-    zIndex: 100,
   },
 });

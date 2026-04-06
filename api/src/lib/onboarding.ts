@@ -12,7 +12,10 @@ export async function getOnboardingStateForUser(
   const [[user], [existingThought]] = await Promise.all([
     db
       .select({
+        name: users.name,
+        photoUrl: users.photoUrl,
         interests: users.interests,
+        termsAcceptedAt: users.termsAcceptedAt,
       })
       .from(users)
       .where(eq(users.id, userId))
@@ -36,6 +39,19 @@ export async function getOnboardingStateForUser(
     user.interests.some(
       (value) => typeof value === "string" && value.trim().length > 0
     );
+  const hasProfileBasics =
+    typeof user.name === "string" &&
+    user.name.trim().length > 0 &&
+    typeof user.photoUrl === "string" &&
+    user.photoUrl.trim().length > 0 &&
+    Boolean(user.termsAcceptedAt);
+
+  if (!hasProfileBasics) {
+    return {
+      onboarding_step: 1,
+      onboarding_complete: false,
+    };
+  }
 
   if (existingThought || hasInterests) {
     return {

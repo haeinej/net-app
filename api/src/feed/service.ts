@@ -3,21 +3,23 @@
  * Three-bucket system with wild card interspersion.
  */
 
-import { eq, inArray, sql, or, desc, and, isNull } from "drizzle-orm";
+import { eq, inArray, sql, desc, and, isNull, gte } from "drizzle-orm";
 import {
   db,
   users,
   userRecommendationWeights,
   systemConfig,
-  crossings,
   feedSnapshots,
   manualBoosts,
   thoughts,
+  feedServes,
 } from "../db";
 import {
   getBucketedCandidates,
+  getVisibleFallbackCandidates,
   getVisibleRecentCandidates,
 } from "./retrieve";
+import { flushPendingFeedServes } from "./analytics";
 import { scoreThought } from "./score";
 import {
   rankScorePhase1,
@@ -40,7 +42,6 @@ import type {
   RecommendationWeights,
   FeedItem,
   FeedItemThought,
-  FeedItemCrossing,
   FeedItemUser,
   BucketLabel,
   FeedPhaseUsed,
@@ -48,16 +49,18 @@ import type {
 } from "./types";
 import { getBlockedUserIds } from "../lib/blocked-users";
 import { loadViewerFeedProfile } from "./viewer-profile";
+import { computeThoughtFeedSignals } from "../thought-processing/feed-signals";
 
-const FEED_SNAPSHOT_PREFETCH_PAGES = 3;
-const FEED_SNAPSHOT_MIN_ITEMS = 60;
-const FEED_SNAPSHOT_MAX_ITEMS = 300;
+const FEED_SNAPSHOT_PREFETCH_PAGES = 1;
+const FEED_SNAPSHOT_MIN_ITEMS = 3;
+const FEED_SNAPSHOT_MAX_ITEMS = 10;
 
 type FeedRequestOptions = {
   config?: FeedRuntimeConfig;
   configVersion?: string;
   disableServeLogging?: boolean;
   skipCache?: boolean;
+  anchorThoughtId?: string;
 };
 
 type FeedPageResult = {
@@ -127,29 +130,6 @@ function sanitizeFeedItem(value: unknown): FeedItem | null {
         has_context: asStoredBoolean(thought?.has_context),
       },
       user: sanitizeFeedUser(record?.user),
-    };
-
-    return item;
-  }
-
-  if (type === "crossing") {
-    const crossing = asStoredRecord(record?.crossing);
-    const id = asStoredString(crossing?.id);
-    const sentence = asStoredString(crossing?.sentence);
-    const createdAt = asStoredString(crossing?.created_at);
-
-    if (!id || !sentence || !createdAt) return null;
-
-    const item: FeedItemCrossing = {
-      type: "crossing",
-      crossing: {
-        id,
-        sentence,
-        context: asStoredNullableString(crossing?.context),
-        created_at: createdAt,
-      },
-      participant_a: sanitizeFeedUser(record?.participant_a),
-      participant_b: sanitizeFeedUser(record?.participant_b),
     };
 
     return item;
@@ -406,7 +386,8 @@ function intersperseWildcards<T>(
 async function buildFeedSnapshot(
   userId: string,
   targetTotal: number,
-  runtimeConfig: FeedRuntimeConfig
+  runtimeConfig: FeedRuntimeConfig,
+  anchorThoughtId?: string
 ): Promise<{ items: FeedItem[]; traces: FeedServeTrace[]; hasMore: boolean }> {
   const [viewerData, affinityMap, resonanceMap, clusterAffinityMap] = await Promise.all([
     loadViewerEmbeddingsAndProfile(userId, runtimeConfig),
@@ -414,7 +395,75 @@ async function buildFeedSnapshot(
     loadTemporalResonanceMap(),
     loadClusterAffinityMap(),
   ]);
-  const { embeddings, profile, weights, viewerClusterIds } = viewerData;
+  let { embeddings } = viewerData;
+  const { profile, weights, viewerClusterIds } = viewerData;
+
+  // Anchor-biased retrieval: when a user just posted, use the new thought's
+  // embeddings as the primary retrieval vectors so the feed refreshes with
+  // cards resonant to what they just created.
+  if (anchorThoughtId) {
+    const [anchor] = await db
+      .select({
+        sentence: thoughts.sentence,
+        context: thoughts.context,
+        surfaceEmbedding: thoughts.surfaceEmbedding,
+        questionEmbedding: thoughts.questionEmbedding,
+      })
+      .from(thoughts)
+      .where(eq(thoughts.id, anchorThoughtId))
+      .limit(1);
+
+    let anchorResonanceEmbedding = Array.isArray(anchor?.questionEmbedding)
+      ? (anchor.questionEmbedding as number[])
+      : null;
+    let anchorSurfaceEmbedding = Array.isArray(anchor?.surfaceEmbedding)
+      ? (anchor.surfaceEmbedding as number[])
+      : null;
+
+    if (
+      anchor &&
+      (!anchorResonanceEmbedding || !anchorSurfaceEmbedding)
+    ) {
+      try {
+        const computed = await computeThoughtFeedSignals(
+          anchor.sentence,
+          anchor.context
+        );
+        anchorResonanceEmbedding ??= computed.questionEmbedding;
+        anchorSurfaceEmbedding ??= computed.surfaceEmbedding;
+
+        void db
+          .update(thoughts)
+          .set({
+            surfaceEmbedding: computed.surfaceEmbedding,
+            questionEmbedding: computed.questionEmbedding,
+            qualityScore: computed.qualityScore,
+          })
+          .where(eq(thoughts.id, anchorThoughtId))
+          .catch((error) => {
+            console.error("persist anchor feed signals failed", {
+              anchorThoughtId,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          });
+      } catch (error) {
+        console.error("computeThoughtFeedSignals for anchor failed", {
+          anchorThoughtId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (anchorResonanceEmbedding) {
+      embeddings = {
+        ...embeddings,
+        resonanceEmbeddings: [anchorResonanceEmbedding],
+        surfaceEmbeddings: anchorSurfaceEmbedding
+          ? [anchorSurfaceEmbedding]
+          : embeddings.surfaceEmbeddings,
+      };
+    }
+  }
   const maps: LearningMaps = { affinityMap, resonanceMap, clusterAffinityMap };
   const candidateLimit = Math.max(
     runtimeConfig.candidateLimit,
@@ -428,10 +477,45 @@ async function buildFeedSnapshot(
     runtimeConfig
   );
 
+  if (rawCandidates.length === 0) {
+    console.warn(`[feed] getBucketedCandidates returned 0 candidates for viewer ${userId} (stage=${stage})`);
+  }
+
   const blockedUserIds = await getBlockedUserIds(userId);
-  const candidates = blockedUserIds.size > 0
+  const afterBlocked = blockedUserIds.size > 0
     ? rawCandidates.filter((candidate) => !blockedUserIds.has(candidate.thought.userId))
     : rawCandidates;
+
+  // Exclude thoughts already served to this user in the last 7 days
+  await flushPendingFeedServes();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentlyServed = await db
+    .select({ thoughtId: feedServes.thoughtId })
+    .from(feedServes)
+    .where(
+      and(
+        eq(feedServes.viewerId, userId),
+        gte(feedServes.servedAt, sevenDaysAgo),
+        sql`${feedServes.thoughtId} IS NOT NULL`
+      )
+    );
+  const servedThoughtIds = new Set<string>(
+    recentlyServed
+      .map((r) => r.thoughtId)
+      .filter((thoughtId): thoughtId is string => typeof thoughtId === "string")
+  );
+  let candidates = afterBlocked;
+  if (servedThoughtIds.size > 0) {
+    const filtered = afterBlocked.filter((c) => !servedThoughtIds.has(c.thought.id));
+    // Only apply exclusion if enough candidates remain; otherwise re-show
+    // previously served thoughts rather than returning an empty feed.
+    if (filtered.length >= targetTotal) {
+      candidates = filtered;
+    } else if (filtered.length > 0) {
+      candidates = filtered;
+    }
+    // else: keep afterBlocked (all candidates) to avoid empty feed
+  }
 
   const layer2Scores = new Map<string, number>();
   let layer2Max = 0;
@@ -474,9 +558,9 @@ async function buildFeedSnapshot(
         thought,
         rankScore,
         bucket,
-        Q: layer2Max > 0 ? layer2 / layer2Max : 0.5,
-        D: 0,
-        F: 0,
+        Q: Math.min(1, Math.max(0, layer2)),
+        D: 0.5,
+        F: 0.1,
         R: 0,
       });
       continue;
@@ -519,18 +603,45 @@ async function buildFeedSnapshot(
     .sort((a, b) => b.rankScore - a.rankScore)
     .slice(0, b3Count);
 
-  const mainMerged = [...b1Diverse, ...b2Diverse].sort((a, b) => b.rankScore - a.rankScore);
+  // Shuffle jitter: add randomness so similarly-scored items get reordered each refresh
+  const SHUFFLE_JITTER = 0.15;
+  const jitter = () => Math.random() * SHUFFLE_JITTER;
+  const mainMerged = [...b1Diverse, ...b2Diverse].sort(
+    (a, b) => (b.rankScore + jitter()) - (a.rankScore + jitter())
+  );
   const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
 
   if (selectedThoughts.length < targetTotal) {
-    const additionalThoughts = await getVisibleRecentCandidates(
+    // First fallback: quality-sorted candidates (exclude already selected, but NOT served)
+    const fallbackExcludeIds = new Set(
+      selectedThoughts.map((item) => item.thought.id)
+    );
+    const additionalThoughts = await getVisibleFallbackCandidates(
       userId,
-      new Set(selectedThoughts.map((item) => item.thought.id)),
+      fallbackExcludeIds,
       targetTotal - selectedThoughts.length,
-      blockedUserIds
+      blockedUserIds,
+      runtimeConfig
     );
 
     for (const thought of additionalThoughts) {
+      selectedThoughts.push({
+        thought,
+        rankScore: Number.NEGATIVE_INFINITY,
+      });
+    }
+  }
+
+  // Ultimate fallback: if still empty, get ANY recent thoughts (skip all filters)
+  if (selectedThoughts.length === 0) {
+    console.warn(`[feed] Pipeline produced 0 items for viewer ${userId}, using last-resort fallback`);
+    const lastResort = await getVisibleRecentCandidates(
+      userId,
+      new Set(),
+      targetTotal,
+      blockedUserIds
+    );
+    for (const thought of lastResort) {
       selectedThoughts.push({
         thought,
         rankScore: Number.NEGATIVE_INFINITY,
@@ -563,8 +674,58 @@ async function buildFeedSnapshot(
       : [];
   const authorMap = new Map(authorRows.map((user) => [user.id, user]));
 
+  // Fetch parent thought info for replies (in_response_to)
+  const parentIds = [
+    ...new Set(
+      selectedThoughts
+        .map((item) => item.thought.inResponseToId)
+        .filter((id): id is string => id != null)
+    ),
+  ];
+  const parentRows =
+    parentIds.length > 0
+      ? await db
+          .select({
+            id: thoughts.id,
+            sentence: thoughts.sentence,
+            userId: thoughts.userId,
+          })
+          .from(thoughts)
+          .where(inArray(thoughts.id, parentIds))
+      : [];
+  // Also fetch parent authors
+  const parentAuthorIds = [...new Set(parentRows.map((r) => r.userId))];
+  const parentAuthorRows =
+    parentAuthorIds.length > 0
+      ? await db
+          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+          .from(users)
+          .where(inArray(users.id, parentAuthorIds))
+      : [];
+  const parentAuthorMap = new Map(parentAuthorRows.map((u) => [u.id, u]));
+  const parentMap = new Map(
+    parentRows.map((r) => {
+      const pAuthor = parentAuthorMap.get(r.userId);
+      return [
+        r.id,
+        {
+          id: r.id,
+          sentence: r.sentence,
+          user: {
+            id: r.userId,
+            name: pAuthor?.name ?? null,
+            photo_url: pAuthor?.photoUrl ?? null,
+          },
+        },
+      ];
+    })
+  );
+
   const thoughtItems: FeedItem[] = selectedThoughts.map(({ thought }) => {
     const author = authorMap.get(thought.userId);
+    const parentInfo = thought.inResponseToId
+      ? parentMap.get(thought.inResponseToId) ?? null
+      : null;
     return {
       type: "thought",
       thought: {
@@ -580,68 +741,12 @@ async function buildFeedSnapshot(
         name: author?.name ?? null,
         photo_url: author?.photoUrl ?? null,
       },
+      in_response_to: parentInfo,
     };
   });
 
-  const allUserCrossings = await db
-    .select()
-    .from(crossings)
-    .where(or(eq(crossings.participantA, userId), eq(crossings.participantB, userId)))
-    .orderBy(desc(crossings.createdAt))
-    .limit(targetTotal);
-  const userCrossings = blockedUserIds.size > 0
-    ? allUserCrossings.filter(
-        (crossing) =>
-          !blockedUserIds.has(crossing.participantA) &&
-          !blockedUserIds.has(crossing.participantB)
-      )
-    : allUserCrossings;
-  const crossingUserIds = [
-    ...new Set(userCrossings.flatMap((crossing) => [crossing.participantA, crossing.participantB])),
-  ];
-  const crossingUsers =
-    crossingUserIds.length > 0
-      ? await db
-          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
-          .from(users)
-          .where(inArray(users.id, crossingUserIds))
-      : [];
-  const crossingUserMap = new Map(
-    crossingUsers.map((user) => [
-      user.id,
-      { id: user.id, name: user.name, photo_url: user.photoUrl },
-    ])
-  );
-
-  const crossingItems: FeedItem[] = userCrossings.map((crossing) => ({
-    type: "crossing",
-    crossing: {
-      id: crossing.id,
-      sentence: crossing.sentence,
-      context: crossing.context,
-      created_at: crossing.createdAt?.toISOString() ?? new Date().toISOString(),
-    },
-    participant_a:
-      crossingUserMap.get(crossing.participantA) ?? {
-        id: crossing.participantA,
-        name: null,
-        photo_url: null,
-      },
-    participant_b:
-      crossingUserMap.get(crossing.participantB) ?? {
-        id: crossing.participantB,
-        name: null,
-        photo_url: null,
-      },
-  }));
-
-  const combinedItems = [...thoughtItems, ...crossingItems].sort((a, b) => {
-    const dateA = a.type === "thought" ? a.thought.created_at : a.crossing.created_at;
-    const dateB = b.type === "thought" ? b.thought.created_at : b.crossing.created_at;
-    return new Date(dateB).getTime() - new Date(dateA).getTime();
-  });
-  const hasMore = combinedItems.length > targetTotal || allUserCrossings.length === targetTotal;
-  const items = combinedItems.slice(0, targetTotal);
+  const hasMore = thoughtItems.length > targetTotal;
+  const items = thoughtItems.slice(0, targetTotal);
 
   // ── Manual boost injection (Wizard of Oz) ──
   const pendingBoosts = await db
@@ -688,33 +793,18 @@ async function buildFeedSnapshot(
   }
 
   const traces: FeedServeTrace[] = items.map((item, index) => {
-    if (item.type === "crossing") {
-      return {
-        item_type: "crossing",
-        thought_id: null,
-        crossing_id: item.crossing.id,
-        author_id: null,
-        position: index + 1,
-        bucket: null,
-        stage: null,
-        phase_used: null,
-        scores: { Q: null, D: null, F: null, R: null, final_rank: null },
-        resonance_similarity: null,
-        surface_similarity: null,
-      };
-    }
-
-    const candidate = candidateMap.get(item.thought.id);
-    const rankDebug = rankDebugMap.get(item.thought.id);
+    const thoughtItem = item as FeedItemThought;
+    const candidate = candidateMap.get(thoughtItem.thought.id);
+    const rankDebug = rankDebugMap.get(thoughtItem.thought.id);
     const similarities = candidate
       ? getSimilarities(candidate, embeddings)
       : { resonance_similarity: 0, surface_similarity: 0 };
 
     return {
       item_type: "thought",
-      thought_id: item.thought.id,
+      thought_id: thoughtItem.thought.id,
       crossing_id: null,
-      author_id: item.user.id,
+      author_id: thoughtItem.user.id,
       position: index + 1,
       bucket: rankDebug?.bucket ?? null,
       stage,
@@ -773,7 +863,7 @@ export async function getFeed(
 
   if (!snapshot || snapshot.items.length < offset + limit) {
     const targetTotal = getSnapshotTargetCount(limit, offset);
-    const built = await buildFeedSnapshot(userId, targetTotal, runtimeConfig);
+    const built = await buildFeedSnapshot(userId, targetTotal, runtimeConfig, options.anchorThoughtId);
     snapshot = await createFeedSnapshot(
       userId,
       configVersion,
@@ -884,7 +974,15 @@ export async function getFeedWithDebug(
     const layer2 = layer2Scores.get(thought.id) ?? 0;
     if (isPhase1) {
       const rankScore = rankScorePhase1(thought, profile, layer2, runtimeConfig);
-      withRank.push({ thought, bucket, rankScore, Q: layer2Max > 0 ? layer2 / layer2Max : 0.5, D: 0, F: 0, R: 0 });
+      withRank.push({
+        thought,
+        bucket,
+        rankScore,
+        Q: Math.min(1, Math.max(0, layer2)),
+        D: 0.5,
+        F: 0.1,
+        R: 0,
+      });
     } else {
       const debugRank = rankScorePhase2WithDebug(
         thought,

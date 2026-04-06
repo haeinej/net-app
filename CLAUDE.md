@@ -105,7 +105,7 @@ Three types: `notifyNewReply`, `notifyNewMessage`, `notifyResonanceMilestone`. S
 
 ## Deployment
 
-- **API:** Render.com (auto-deploy from main, `render.yaml`)
+- **API:** Fly.io (auto-deploy from main, `api/fly.toml` + `api/Dockerfile`)
 - **Mobile:** EAS Build → TestFlight (preview profile) → App Store (production profile)
 - **Branch:** `main` is primary. Currently working on `brand-guide-and-design-system`
 

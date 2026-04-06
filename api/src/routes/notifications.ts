@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and, desc, inArray, isNull } from "drizzle-orm";
-import { db, thoughts, replies, users } from "../db";
+import { eq, and, desc, inArray, isNull, isNotNull } from "drizzle-orm";
+import { db, thoughts, users } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { getBlockedUserIds } from "../lib/blocked-users";
 
@@ -17,53 +17,72 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const rawLimit = parseInt(request.query.limit ?? "50", 10);
     const limit =
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
-    const pendingReplies = await db
+
+    // Find the viewer's own thought IDs
+    const ownThoughtRows = await db
+      .select({ id: thoughts.id })
+      .from(thoughts)
+      .where(and(eq(thoughts.userId, userId), isNull(thoughts.deletedAt)));
+    const ownThoughtIds = ownThoughtRows.map((t) => t.id);
+
+    if (ownThoughtIds.length === 0) {
+      return reply.send([]);
+    }
+
+    // Find reply-cards: thoughts where inResponseToId points to one of the viewer's thoughts
+    const replyCards = await db
       .select({
-        replyId: replies.id,
-        text: replies.text,
-        createdAt: replies.createdAt,
-        thoughtId: replies.thoughtId,
-        replierId: replies.replierId,
+        id: thoughts.id,
+        sentence: thoughts.sentence,
+        userId: thoughts.userId,
+        inResponseToId: thoughts.inResponseToId,
+        createdAt: thoughts.createdAt,
       })
-      .from(replies)
-      .innerJoin(thoughts, eq(replies.thoughtId, thoughts.id))
-      .where(and(eq(thoughts.userId, userId), eq(replies.status, "pending"), isNull(thoughts.deletedAt)))
-      .orderBy(desc(replies.createdAt))
+      .from(thoughts)
+      .where(
+        and(
+          inArray(thoughts.inResponseToId, ownThoughtIds),
+          isNull(thoughts.deletedAt),
+          isNotNull(thoughts.inResponseToId)
+        )
+      )
+      .orderBy(desc(thoughts.createdAt))
       .limit(limit);
-    const thoughtIds = [...new Set(pendingReplies.map((r) => r.thoughtId))];
-    const replierIds = [...new Set(pendingReplies.map((r) => r.replierId))];
-    const thoughtRows =
-      thoughtIds.length > 0
-        ? await db
-            .select({
-              id: thoughts.id,
-              sentence: thoughts.sentence,
-            })
-            .from(thoughts)
-            .where(inArray(thoughts.id, thoughtIds))
-        : [];
-    const replierRows =
-      replierIds.length > 0
-        ? await db
-            .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
-            .from(users)
-            .where(inArray(users.id, replierIds))
-        : [];
-    const thoughtMap = new Map(thoughtRows.map((t) => [t.id, t]));
-    const replierMap = new Map(replierRows.map((u) => [u.id, u]));
+
+    if (replyCards.length === 0) {
+      return reply.send([]);
+    }
+
+    // Fetch author info for reply-card authors
+    const authorIds = [...new Set(replyCards.map((r) => r.userId))];
+    const authorRows = await db
+      .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+      .from(users)
+      .where(inArray(users.id, authorIds));
+    const authorMap = new Map(authorRows.map((u) => [u.id, u]));
+
+    // Fetch original thought sentences
+    const originalThoughtIds = [...new Set(replyCards.map((r) => r.inResponseToId!))];
+    const originalThoughtRows = await db
+      .select({ id: thoughts.id, sentence: thoughts.sentence })
+      .from(thoughts)
+      .where(inArray(thoughts.id, originalThoughtIds));
+    const originalMap = new Map(originalThoughtRows.map((t) => [t.id, t]));
+
     // Filter out replies from blocked users
     const blockedIds = await getBlockedUserIds(userId);
-    const filteredReplies = blockedIds.size > 0
-      ? pendingReplies.filter((r) => !blockedIds.has(r.replierId))
-      : pendingReplies;
-    const body = filteredReplies.map((r) => {
-      const t = thoughtMap.get(r.thoughtId);
-      const u = replierMap.get(r.replierId);
+    const filteredCards = blockedIds.size > 0
+      ? replyCards.filter((r) => !blockedIds.has(r.userId))
+      : replyCards;
+
+    const body = filteredCards.map((r) => {
+      const author = authorMap.get(r.userId);
+      const original = r.inResponseToId ? originalMap.get(r.inResponseToId) : null;
       return {
-        reply_id: r.replyId,
-        replier: u ? { id: u.id, name: u.name, photo_url: u.photoUrl } : null,
-        reply_preview: r.text.slice(0, 100),
-        thought: t ? { id: t.id, sentence: t.sentence } : null,
+        id: r.id,
+        sentence: r.sentence,
+        author: author ? { id: author.id, name: author.name, photo_url: author.photoUrl } : null,
+        original_thought: original ? { id: original.id, sentence: original.sentence } : null,
         created_at: r.createdAt?.toISOString(),
       };
     });

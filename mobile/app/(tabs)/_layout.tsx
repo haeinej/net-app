@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Tabs } from "expo-router";
-import { View, StyleSheet, useWindowDimensions, Image } from "react-native";
+import { View, StyleSheet, useWindowDimensions } from "react-native";
+import { Image } from "expo-image";
 import Svg, { Path } from "react-native-svg";
 import { colors } from "../../theme";
 import { requestPushPermissionIfNeeded } from "../../lib/notifications";
@@ -16,13 +17,15 @@ function WorldsIcon({ focused }: { focused: boolean }) {
   );
 }
 
-function ConvoIcon({ focused }: { focused: boolean }) {
+function PostIcon({ focused }: { focused: boolean }) {
   return (
-    <Image
-      source={ohmLogo}
-      style={[iconStyles.ohmIcon, { opacity: focused ? 1 : 0.4 }]}
-      resizeMode="contain"
-    />
+    <View style={iconStyles.logoWrap}>
+      <Image
+        source={ohmLogo}
+        style={[iconStyles.logoIcon, !focused && iconStyles.logoIconInactive]}
+        contentFit="contain"
+      />
+    </View>
   );
 }
 
@@ -98,10 +101,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="conversations"
+        name="post"
         options={{
-          title: "Conversations",
-          tabBarIcon: ({ focused }) => <ConvoIcon focused={focused} />,
+          title: "Post",
+          tabBarIcon: ({ focused }) => <PostIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -141,10 +144,6 @@ const iconStyles = StyleSheet.create({
     borderBottomRightRadius: 3,
     transform: [{ rotate: "6deg" }],
   },
-  ohmIcon: {
-    width: 21,
-    height: 21,
-  },
   meBlob: {
     width: 20,
     height: 18,
@@ -153,6 +152,16 @@ const iconStyles = StyleSheet.create({
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 8,
     transform: [{ rotate: "3deg" }],
+  },
+  logoWrap: {
+    transform: [{ translateY: -1 }],
+  },
+  logoIcon: {
+    width: 22,
+    height: 22,
+  },
+  logoIconInactive: {
+    opacity: 0.58,
   },
 });
 

@@ -5,13 +5,9 @@ import {
   StyleSheet,
   useWindowDimensions,
   ActivityIndicator,
-  TextInput,
   TouchableOpacity,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
-  type GestureResponderEvent,
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -20,29 +16,23 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSequence,
   runOnJS,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily, shadows, glass } from "../../theme";
+import { colors, spacing, typography, IMAGE_ASPECT_RATIO, fontFamily } from "../../theme";
 import { ScreenExitButton } from "../../components/ScreenExitButton";
 import { WarmthBar } from "../../components/WarmthBar";
 import { ThoughtImageFrame } from "../../components/ThoughtImageFrame";
 import {
-  deleteReply,
   deleteThought,
   editThought,
   fetchThought,
-  postReply,
+  fetchThoughtReplies,
+  type FeedItem,
   type ThoughtDetailResponse,
 } from "../../lib/api";
 import { ReportModal } from "../../components/ReportModal";
 import { useEngagementTracking } from "../../hooks/useEngagementTracking";
-import { pickPrompt, REPLY_PROMPTS, REPLY_SAFETY_TEXT } from "../../constants/prompts";
-
-const REPLY_MIN_LENGTH = 30;
-const REPLY_MAX_LENGTH = 300;
 
 export default function ThoughtDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -52,18 +42,10 @@ export default function ThoughtDetailScreen() {
 
   const [data, setData] = useState<ThoughtDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [replyText, setReplyText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [replyPlaceholder] = useState(() => pickPrompt(REPLY_PROMPTS));
   const [reportVisible, setReportVisible] = useState(false);
-  const pulseOpacity = useSharedValue(0);
-  const sendSwipeProgress = useSharedValue(0);
-  const sendHapticArmed = useSharedValue(0);
-  const sendTriggered = useSharedValue(0);
-  const replyLengthValue = useSharedValue(0);
-  const canReplyValue = useSharedValue(0);
-  const sendingValue = useSharedValue(0);
+  const [replyCards, setReplyCards] = useState<FeedItem[]>([]);
+  const [replyCardsLoading, setReplyCardsLoading] = useState(false);
+  const replyCardsFetchedRef = useRef(false);
   const panelIndexValue = useSharedValue(0);
 
   const translateX = useSharedValue(0);
@@ -75,8 +57,6 @@ export default function ThoughtDetailScreen() {
     recordViewP1,
     recordSwipeP2,
     recordSwipeP3,
-    recordTypeStart,
-    recordReplySent,
   } = useEngagementTracking({
     thoughtId: id ?? "",
     visible: true,
@@ -116,15 +96,30 @@ export default function ThoughtDetailScreen() {
     [panelIndexValue]
   );
 
+  const loadReplyCards = useCallback(async () => {
+    if (replyCardsFetchedRef.current || !id) return;
+    replyCardsFetchedRef.current = true;
+    setReplyCardsLoading(true);
+    try {
+      const items = await fetchThoughtReplies(id);
+      setReplyCards(items);
+    } catch {
+      replyCardsFetchedRef.current = false;
+    } finally {
+      setReplyCardsLoading(false);
+    }
+  }, [id]);
+
   const handleSwipeToPanel = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (fromIndex === 0 && toIndex === 1) {
         recordSwipeP2();
       } else if (fromIndex === 1 && toIndex === 2) {
         recordSwipeP3();
+        loadReplyCards();
       }
     },
-    [recordSwipeP2, recordSwipeP3]
+    [recordSwipeP2, recordSwipeP3, loadReplyCards]
   );
 
   const handleBack = useCallback(() => {
@@ -135,9 +130,6 @@ export default function ThoughtDetailScreen() {
     (targetIndex: number) => {
       const target = -targetIndex * screenWidth;
       translateX.value = withTiming(target, { duration: 280 });
-      sendSwipeProgress.value = withTiming(0, { duration: 140 });
-      sendHapticArmed.value = 0;
-      sendTriggered.value = 0;
       const fromIndex = lastPanelIndex.current;
       handleSwipeToPanel(fromIndex, targetIndex);
       applyPanel(targetIndex);
@@ -145,9 +137,6 @@ export default function ThoughtDetailScreen() {
     [
       screenWidth,
       translateX,
-      sendSwipeProgress,
-      sendHapticArmed,
-      sendTriggered,
       handleSwipeToPanel,
       applyPanel,
     ]
@@ -169,8 +158,6 @@ export default function ThoughtDetailScreen() {
       const min = -2 * screenWidth;
       const max = 0;
       const rawNext = gestureStartX.value + e.translationX;
-      sendSwipeProgress.value = 0;
-      sendHapticArmed.value = 0;
       const next = Math.min(max, Math.max(min, rawNext));
       translateX.value = next;
     })
@@ -178,8 +165,6 @@ export default function ThoughtDetailScreen() {
       const current = translateX.value;
       const velocity = e.velocityX;
 
-      sendSwipeProgress.value = withTiming(0, { duration: 120 });
-      sendHapticArmed.value = 0;
       let targetIndex = Math.round(-current / screenWidth);
       if (targetIndex < 0) targetIndex = 0;
       if (targetIndex > 2) targetIndex = 2;
@@ -194,103 +179,9 @@ export default function ThoughtDetailScreen() {
     transform: [{ translateX: translateX.value }],
   }));
 
-  const pulseStyle = useAnimatedStyle(() => ({
-    opacity: pulseOpacity.value,
-  }));
-
   const panelWidth = screenWidth;
   const imageHeight = panelWidth / IMAGE_ASPECT_RATIO;
   const fullPanelHeight = screenHeight - insets.top - insets.bottom;
-  const trimmedReplyLength = replyText.trim().length;
-
-  useEffect(() => {
-    replyLengthValue.value = trimmedReplyLength;
-  }, [replyLengthValue, trimmedReplyLength]);
-
-  useEffect(() => {
-    canReplyValue.value = data?.panel_3.can_reply ? 1 : 0;
-  }, [canReplyValue, data?.panel_3.can_reply]);
-
-  useEffect(() => {
-    sendingValue.value = sending ? 1 : 0;
-  }, [sending, sendingValue]);
-
-  const submitReply = useCallback(async () => {
-    const text = replyText.trim();
-    if (
-      !text ||
-      text.length < REPLY_MIN_LENGTH ||
-      !id ||
-      !data?.panel_3.can_reply ||
-      sending
-    ) {
-      sendTriggered.value = 0;
-      sendSwipeProgress.value = withTiming(0, { duration: 100 });
-      sendHapticArmed.value = 0;
-      snapToPanel(2);
-      return;
-    }
-    sendingValue.value = 1;
-    setSending(true);
-    try {
-      await postReply(id, text);
-      recordReplySent({ reply_length_chars: text.length });
-      pulseOpacity.value = withSequence(
-        withTiming(0.25, { duration: 100 }),
-        withTiming(0, { duration: 300 })
-      );
-      setReplyText("");
-      setIsTyping(false);
-      sendSwipeProgress.value = withTiming(0, { duration: 100 });
-      sendHapticArmed.value = 0;
-      sendTriggered.value = 0;
-      translateX.value = withTiming(0, { duration: 220 });
-      applyPanel(0);
-      await refreshThought();
-    } catch {
-      sendTriggered.value = 0;
-      sendSwipeProgress.value = withTiming(0, { duration: 100 });
-      sendHapticArmed.value = 0;
-      snapToPanel(2);
-      setSending(false);
-    } finally {
-      sendingValue.value = 0;
-      setSending(false);
-    }
-  }, [
-    sendingValue,
-    id,
-    replyText,
-    data?.panel_3.can_reply,
-    sending,
-    recordReplySent,
-    pulseOpacity,
-    sendSwipeProgress,
-    sendHapticArmed,
-    sendTriggered,
-    translateX,
-    applyPanel,
-    snapToPanel,
-    refreshThought,
-  ]);
-  const handleDeleteReply = useCallback(
-    (replyId: string) => {
-      Alert.alert("Delete reply", "Remove this reply from your thought?", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteReply(replyId);
-              await refreshThought();
-            } catch {}
-          },
-        },
-      ]);
-    },
-    [refreshThought]
-  );
 
   const handleOwnerCardMenu = useCallback(() => {
     if (!id || !data?.panel_3.viewer_is_author) return;
@@ -378,15 +269,6 @@ export default function ThoughtDetailScreen() {
       { text: "Cancel", style: "cancel" },
     ]);
   }, [data, id, router]);
-
-  const onReplyFocus = useCallback(() => {
-    setIsTyping(true);
-    recordTypeStart();
-  }, [recordTypeStart]);
-
-  const onReplyBlur = useCallback(() => {
-    setIsTyping(false);
-  }, []);
 
   useEffect(() => {
     if (!data || loading) return;
@@ -503,108 +385,55 @@ export default function ThoughtDetailScreen() {
             </ScrollView>
           </View>
 
-          {/* Panel 3 */}
+          {/* Panel 3 — Reply cards */}
           <View style={[styles.panel, styles.panel3, { width: panelWidth, minHeight: fullPanelHeight }]}>
             <ScrollView
               style={styles.repliesScroll}
               contentContainerStyle={styles.repliesContent}
               showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
             >
               <Text style={styles.panelLabel}>Replies</Text>
-              {p3.replies.length === 0 ? (
-                <Text style={styles.panelEmpty}>No replies yet.</Text>
-              ) : null}
-              {p3.replies.map((r) => (
-                <TouchableOpacity
-                  key={r.id}
-                  style={styles.replyRow}
-                  onPress={() => {
-                    if (r.user?.id) {
-                      router.push({ pathname: "/user/[id]", params: { id: r.user.id } });
-                    }
-                  }}
-                  disabled={!r.user?.id}
-                  activeOpacity={0.7}
-                >
-                  {r.user?.photo_url ? (
-                    <Image source={{ uri: r.user.photo_url }} style={styles.replyAvatar} />
-                  ) : (
-                    <View style={[styles.replyAvatar, styles.avatarPlc]} />
-                  )}
-                  <View style={styles.replyBody}>
-                    <View style={styles.replyTopRow}>
-                      <Text style={styles.replyName}>
-                        {r.user?.name ? r.user.name.toUpperCase() : "—"}
-                      </Text>
-                      {p3.viewer_is_author ? (
-                        <Text style={styles.replyStatus}>
-                          {r.status === "accepted" ? "IN CHAT" : "PENDING"}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Text style={styles.replyText}>{r.text}</Text>
-                  </View>
-                  {r.can_delete ? (
+              {replyCardsLoading ? (
+                <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" style={{ marginTop: 24 }} />
+              ) : replyCards.length > 0 ? (
+                replyCards.map((rc) => {
+                  if (rc.type !== "thought") return null;
+                  return (
                     <TouchableOpacity
-                      style={styles.replyDeleteBtn}
-                      onPress={(event: GestureResponderEvent) => {
-                        event.stopPropagation();
-                        handleDeleteReply(r.id);
-                      }}
+                      key={rc.thought.id}
+                      style={styles.replyCardRow}
+                      onPress={() => router.push({ pathname: "/thought/[id]", params: { id: rc.thought.id } })}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.replyDeleteText}>Delete</Text>
+                      <Text style={styles.replyCardAuthor} numberOfLines={1}>
+                        {rc.user.name ? rc.user.name.toUpperCase() : "---"}
+                      </Text>
+                      <Text style={styles.replyCardSentence} numberOfLines={2}>
+                        {rc.thought.sentence}
+                      </Text>
                     </TouchableOpacity>
-                  ) : null}
-                </TouchableOpacity>
-              ))}
+                  );
+                })
+              ) : (
+                <Text style={styles.panelEmpty}>No replies yet.</Text>
+              )}
             </ScrollView>
-            {p3.can_reply && (
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-                style={styles.inputWrap}
+            {!p3.viewer_is_author && (
+              <TouchableOpacity
+                style={styles.replyPillButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/post",
+                    params: {
+                      in_response_to_id: id,
+                      in_response_to_sentence: p1.sentence,
+                    },
+                  })
+                }
+                activeOpacity={0.8}
               >
-                <Text style={styles.replyLabel}>reply.</Text>
-                <TextInput
-                  style={styles.replyInput}
-                  placeholder={replyPlaceholder}
-                  placeholderTextColor={colors.TYPE_MUTED}
-                  value={replyText}
-                  onChangeText={(t) => setReplyText(t.slice(0, REPLY_MAX_LENGTH))}
-                  onFocus={onReplyFocus}
-                  onBlur={onReplyBlur}
-                  editable={!sending}
-                  multiline={false}
-                  maxLength={REPLY_MAX_LENGTH}
-                />
-                <Text style={styles.replySafety}>{REPLY_SAFETY_TEXT}</Text>
-                <View style={styles.replyActionRow}>
-                  <Text style={styles.replyHintText}>
-                    {sending
-                      ? "sending..."
-                      : trimmedReplyLength < REPLY_MIN_LENGTH
-                        ? `${trimmedReplyLength}/${REPLY_MIN_LENGTH} min`
-                        : "ready to send"}
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.replySendButton,
-                      (sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3.can_reply) &&
-                        styles.replySendButtonDisabled,
-                    ]}
-                    onPress={() => {
-                      void submitReply();
-                    }}
-                    disabled={sending || trimmedReplyLength < REPLY_MIN_LENGTH || !p3.can_reply}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.replySendButtonText}>
-                      {sending ? "POSTING" : "POST"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </KeyboardAvoidingView>
+                <Text style={styles.replyPillButtonText}>Reply with your own thought</Text>
+              </TouchableOpacity>
             )}
           </View>
         </Animated.View>
@@ -617,10 +446,6 @@ export default function ThoughtDetailScreen() {
         <View style={[styles.indicatorDot, currentPanelIndex === 2 && styles.indicatorDotActive]} />
       </View>
 
-      <Animated.View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, styles.pulseOverlay, pulseStyle]}
-      />
       <ScreenExitButton
         onPress={() => router.back()}
         style={[styles.exitButton, { top: insets.top + 12 }]}
@@ -799,113 +624,39 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     paddingBottom: 120,
   },
-  replyRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 16,
+  replyCardRow: {
+    marginBottom: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
-  replyAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    marginRight: 10,
-  },
-  replyBody: { flex: 1 },
-  replyTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  replyName: {
+  replyCardAuthor: {
     ...typography.metadata,
-    fontSize: 8,
+    fontSize: 7.5,
     color: colors.TYPE_MUTED,
-    marginBottom: 4,
+    marginBottom: 3,
   },
-  replyStatus: {
-    ...typography.metadata,
-    fontSize: 6.5,
-    color: colors.OLIVE,
-    letterSpacing: 0.7,
-  },
-  replyText: {
+  replyCardSentence: {
     ...typography.context,
-    fontSize: 14.5,
-    lineHeight: 20,
-    color: colors.TYPE_WHITE,
-  },
-  replyDeleteBtn: {
-    marginLeft: 10,
-    paddingVertical: 2,
-  },
-  replyDeleteText: {
-    ...typography.metadata,
-    color: colors.VERMILLION,
-  },
-  inputWrap: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 0,
-    paddingTop: 8,
-    paddingBottom: 26,
-    backgroundColor: colors.PANEL_DEEP,
-  },
-  replyLabel: {
-    ...typography.replyInput,
-    fontSize: 9.5,
-    lineHeight: 14,
-    color: colors.VERMILLION,
-    marginBottom: 6,
-  },
-  replyInput: {
-    ...typography.replyInput,
-    fontSize: 12.5,
+    fontSize: 13.5,
     lineHeight: 18,
     color: colors.TYPE_WHITE,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.2)",
-    minHeight: 34,
-    paddingHorizontal: 0,
-    paddingTop: Platform.OS === "ios" ? 8 : 6,
-    paddingBottom: Platform.OS === "ios" ? 10 : 6,
   },
-  replySafety: {
-    ...typography.metadata,
-    color: "rgba(255,255,255,0.35)",
+  replyPillButton: {
     marginTop: 8,
-    fontStyle: "italic",
-  },
-  replyActionRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  replyHintText: {
-    ...typography.metadata,
-    fontSize: 11,
-    color: "rgba(245,240,234,0.45)",
-    textAlign: "left",
-    flex: 1,
-  },
-  replySendButton: {
-    minWidth: 92,
-    paddingHorizontal: 16,
+    marginBottom: 32,
+    paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: colors.VERMILLION,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "center",
   },
-  replySendButtonDisabled: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  replySendButtonText: {
+  replyPillButtonText: {
     ...typography.label,
-    fontSize: 8.5,
+    fontSize: 9,
     color: colors.TYPE_WHITE,
   },
   indicator: {
@@ -929,8 +680,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.20,
     shadowRadius: 3,
-  },
-  pulseOverlay: {
-    backgroundColor: colors.TYPE_WHITE,
   },
 });

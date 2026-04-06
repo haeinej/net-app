@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { View, StyleSheet } from "react-native";
 import { colors, spacing } from "../theme";
 
@@ -12,7 +12,7 @@ interface CardDeckProps {
  * Clean stacked-deck effect — thin card edges peek below the main card,
  * centered and progressively narrower to create depth.
  */
-export function CardDeck({ children, layers = 2 }: CardDeckProps) {
+export const CardDeck = memo(function CardDeck({ children, layers = 2 }: CardDeckProps) {
   return (
     <View style={styles.container} pointerEvents="box-none">
       {/* Deepest layer — barely visible, subtle depth cue */}
@@ -55,7 +55,7 @@ export function CardDeck({ children, layers = 2 }: CardDeckProps) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

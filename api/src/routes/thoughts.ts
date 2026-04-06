@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { eq, and, isNull, inArray, asc, ne } from "drizzle-orm";
-import { db, thoughts, users, replies } from "../db";
+import { eq, and, isNull, inArray, asc, ne, desc, sql } from "drizzle-orm";
+import { db, thoughts, users } from "../db";
 import { getUserId, authenticate } from "../lib/auth";
 import { processNewThought } from "../thought-processing";
 import { invalidateFeedCache } from "../feed";
 import { filterContent } from "../lib/content-filter";
 import { invalidateViewerFeedProfile } from "../feed/viewer-profile";
+import { notifyNewReply } from "../lib/push";
 
 const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
@@ -14,6 +15,7 @@ interface CreateBody {
   sentence?: string;
   context?: string;
   photo_url?: string;
+  in_response_to_id?: string;
   preview_image_url?: string; // deprecated
   preview_image_metadata?: Record<string, unknown>; // deprecated
 }
@@ -54,6 +56,20 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    const inResponseToId =
+      typeof body.in_response_to_id === "string" ? body.in_response_to_id.trim() || null : null;
+
+    if (inResponseToId) {
+      const [parent] = await db
+        .select({ id: thoughts.id, userId: thoughts.userId })
+        .from(thoughts)
+        .where(and(eq(thoughts.id, inResponseToId), isNull(thoughts.deletedAt)))
+        .limit(1);
+      if (!parent) {
+        return reply.status(400).send({ error: "Referenced thought not found" });
+      }
+    }
+
     const [row] = await db
       .insert(thoughts)
       .values({
@@ -63,6 +79,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         photoUrl,
         imageUrl: null,
         imageMetadata: null,
+        inResponseToId: inResponseToId,
       })
       .returning({
         id: thoughts.id,
@@ -70,6 +87,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         context: thoughts.context,
         photoUrl: thoughts.photoUrl,
         imageUrl: thoughts.imageUrl,
+        inResponseToId: thoughts.inResponseToId,
         createdAt: thoughts.createdAt,
       });
     if (!row) return reply.status(500).send();
@@ -82,8 +100,20 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
         code: err?.code,
       });
     });
-    void invalidateFeedCache();
+    void invalidateFeedCache(userId);
     void invalidateViewerFeedProfile(userId);
+
+    // Notify original thought's author about the reply-card
+    if (inResponseToId) {
+      const [parent] = await db
+        .select({ userId: thoughts.userId, sentence: thoughts.sentence })
+        .from(thoughts)
+        .where(eq(thoughts.id, inResponseToId))
+        .limit(1);
+      if (parent && parent.userId !== userId) {
+        notifyNewReply(parent.userId, userId, parent.sentence, sentence, inResponseToId).catch(() => {});
+      }
+    }
 
     return reply.status(201).send({
       id: thoughtId,
@@ -91,6 +121,7 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       context: row.context ?? "",
       photo_url: row.photoUrl ?? null,
       image_url: row.imageUrl ?? null,
+      in_response_to_id: row.inResponseToId ?? null,
       created_at: row.createdAt?.toISOString(),
     });
   });
@@ -164,33 +195,37 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
     if (!t) return reply.status(404).send();
     const [author] = await db.select().from(users).where(eq(users.id, t.userId));
     const viewerIsAuthor = t.userId === userId;
-    const visibleReplies = await db
-      .select({
-        id: replies.id,
-        replierId: replies.replierId,
-        text: replies.text,
-        status: replies.status,
-        createdAt: replies.createdAt,
-      })
-      .from(replies)
-      .where(
-        viewerIsAuthor
-          ? and(eq(replies.thoughtId, id), ne(replies.status, "deleted"))
-          : and(eq(replies.thoughtId, id), eq(replies.status, "accepted"))
-      )
-      .orderBy(asc(replies.createdAt));
-    const replierIds = [...new Set(visibleReplies.map((r) => r.replierId))];
-    const repliers = replierIds.length
-      ? await db.select().from(users).where(inArray(users.id, replierIds))
-      : [];
-    const replierMap = new Map(repliers.map((u) => [u.id, u]));
-    const pending = await db
-      .select()
-      .from(replies)
-      .where(and(eq(replies.thoughtId, id), eq(replies.status, "pending"), eq(replies.replierId, userId)))
-      .limit(1);
-    const canReply =
-      !viewerIsAuthor && pending.length === 0;
+
+    // Load parent thought info if this is a reply-card
+    let inResponseTo: { id: string; sentence: string; user: { id: string; name: string | null; photo_url: string | null } } | null = null;
+    if (t.inResponseToId) {
+      const [parent] = await db
+        .select({ id: thoughts.id, sentence: thoughts.sentence, userId: thoughts.userId })
+        .from(thoughts)
+        .where(eq(thoughts.id, t.inResponseToId))
+        .limit(1);
+      if (parent) {
+        const [parentAuthor] = await db
+          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+          .from(users)
+          .where(eq(users.id, parent.userId))
+          .limit(1);
+        inResponseTo = {
+          id: parent.id,
+          sentence: parent.sentence,
+          user: parentAuthor
+            ? { id: parentAuthor.id, name: parentAuthor.name, photo_url: parentAuthor.photoUrl }
+            : { id: parent.userId, name: null, photo_url: null },
+        };
+      }
+    }
+
+    // Count reply-cards (thoughts that reference this one)
+    const [replyCountRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(thoughts)
+      .where(and(eq(thoughts.inResponseToId, id), isNull(thoughts.deletedAt)));
+    const replyCount = replyCountRow?.count ?? 0;
 
     return reply.send({
       panel_1: {
@@ -205,19 +240,64 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       panel_2: { sentence: t.sentence, context: t.context ?? "" },
       panel_3: {
         viewer_is_author: viewerIsAuthor,
-        replies: visibleReplies.map((r) => {
-          const u = replierMap.get(r.replierId);
-          return {
-            id: r.id,
-            user: u ? { id: u.id, name: u.name, photo_url: u.photoUrl } : null,
-            text: r.text,
-            status: r.status,
-            can_delete: viewerIsAuthor && r.status === "pending",
-            created_at: r.createdAt?.toISOString(),
-          };
-        }),
-        can_reply: canReply,
+        can_reply: !viewerIsAuthor,
+        reply_count: replyCount,
       },
+      in_response_to: inResponseTo,
     });
   });
+
+  // Reply-cards: thoughts created in response to this thought
+  app.get<{ Params: ThoughtParams; Querystring: { limit?: string } }>(
+    "/api/thoughts/:id/replies",
+    async (request, reply) => {
+      const userId = getUserId(request);
+      if (!userId) return reply.status(401).send();
+      const { id } = request.params;
+      const limit = Math.min(50, Math.max(1, parseInt(request.query.limit ?? "20", 10) || 20));
+
+      const replyThoughts = await db
+        .select({
+          id: thoughts.id,
+          sentence: thoughts.sentence,
+          photoUrl: thoughts.photoUrl,
+          imageUrl: thoughts.imageUrl,
+          context: thoughts.context,
+          createdAt: thoughts.createdAt,
+          userId: thoughts.userId,
+        })
+        .from(thoughts)
+        .where(and(eq(thoughts.inResponseToId, id), isNull(thoughts.deletedAt)))
+        .orderBy(desc(thoughts.createdAt))
+        .limit(limit);
+
+      const authorIds = [...new Set(replyThoughts.map((t) => t.userId))];
+      const authors = authorIds.length > 0
+        ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, authorIds))
+        : [];
+      const authorMap = new Map(authors.map((u) => [u.id, u]));
+
+      const items = replyThoughts.map((t) => {
+        const a = authorMap.get(t.userId);
+        return {
+          type: "thought" as const,
+          thought: {
+            id: t.id,
+            sentence: t.sentence,
+            photo_url: t.photoUrl,
+            image_url: t.imageUrl,
+            created_at: t.createdAt?.toISOString() ?? new Date().toISOString(),
+            has_context: (t.context ?? "").trim().length > 0,
+          },
+          user: {
+            id: t.userId,
+            name: a?.name ?? null,
+            photo_url: a?.photoUrl ?? null,
+          },
+        };
+      });
+
+      return reply.send({ items });
+    }
+  );
 }

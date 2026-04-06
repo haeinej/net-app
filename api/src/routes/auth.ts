@@ -3,18 +3,20 @@
  * JWT payload: { sub: user.id }
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { eq, and, isNull } from "drizzle-orm";
-import { db, users, inviteCodes } from "../db";
+import { eq } from "drizzle-orm";
+import { db, users } from "../db";
 import { getOnboardingStateForUser } from "../lib/onboarding";
 import { normalizeEmail, validateStrongPassword } from "../lib/auth-policy";
 import {
+  buildSupabaseOAuthUrl,
+  getSupabaseUserFromAccessToken,
+  type SocialProvider,
   sendSupabaseVerificationEmail,
   sendSupabasePasswordRecoveryEmail,
   verifySupabaseEmail,
   verifySupabaseRecovery,
 } from "../lib/supabase-email-verification";
 import { hashPassword, verifyPassword } from "../lib/password";
-import { generateInviteCode, isAdminInviteCode, MAX_INVITES_PER_USER } from "../lib/invite";
 
 function readTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -25,11 +27,8 @@ function readOptionalTrimmedString(value: unknown): string | null {
   return normalized || null;
 }
 
-function verificationRequiredResponse(email: string) {
-  return {
-    verification_required: true as const,
-    verification_email: email,
-  };
+function isSocialProvider(value: unknown): value is SocialProvider {
+  return value === "apple";
 }
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -40,7 +39,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       email?: string;
       password?: string;
       terms_accepted?: boolean;
-      invite_code?: string;
     };
   }>(
     "/api/auth/register",
@@ -53,135 +51,112 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         },
       },
     },
+    async (_request, reply) =>
+      reply.status(410).send({
+        error: "Email signup is disabled. Continue with Apple.",
+      })
+  );
+
+  app.get<{
+    Querystring: { provider?: string; redirect_to?: string };
+  }>(
+    "/api/auth/social/url",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => `ip:${req.ip}`,
+        },
+      },
+    },
     async (request, reply) => {
-    const body = request.body ?? {};
-    const name = readTrimmedString(body.name);
-    const photoUrl = readOptionalTrimmedString(body.photo_url);
-    const emailRaw = readOptionalTrimmedString(body.email);
-    const email = emailRaw ? normalizeEmail(emailRaw) : null;
-    const password = typeof body.password === "string" ? body.password : "";
-    const termsAccepted = body.terms_accepted === true;
-    const inviteCode = readTrimmedString(body.invite_code).toUpperCase();
+      const provider = readTrimmedString(request.query?.provider);
+      const redirectTo = readOptionalTrimmedString(request.query?.redirect_to);
 
-    // Validate invite code
-    if (!inviteCode) {
-      return reply.status(400).send({ error: "Invite code required" });
-    }
-
-    const isAdmin = isAdminInviteCode(inviteCode);
-    let inviteCodeRow: { id: string; createdByUserId: string } | null = null;
-
-    if (!isAdmin) {
-      const [row] = await db
-        .select({ id: inviteCodes.id, createdByUserId: inviteCodes.createdByUserId })
-        .from(inviteCodes)
-        .where(and(eq(inviteCodes.code, inviteCode), isNull(inviteCodes.redeemedByUserId)))
-        .limit(1);
-
-      if (!row) {
-        return reply.status(400).send({ error: "Invalid or already used invite code" });
-      }
-      inviteCodeRow = row;
-    }
-
-    if (!name) return reply.status(400).send({ error: "name required" });
-    if (!photoUrl) {
-      return reply.status(400).send({ error: "profile photo required" });
-    }
-    if (!termsAccepted) return reply.status(400).send({ error: "You must accept the Terms of Use" });
-    if (!email) return reply.status(400).send({ error: "email required" });
-    const passwordError = validateStrongPassword(password);
-    if (passwordError) {
-      return reply.status(400).send({ error: passwordError });
-    }
-
-    const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    const passwordHash = await hashPassword(password);
-
-    let userId: string;
-    if (existing.length > 0) {
-      const user = existing[0];
-      if (user?.emailVerifiedAt) {
-        return reply.status(202).send(verificationRequiredResponse(email));
+      if (!isSocialProvider(provider)) {
+        return reply.status(400).send({ error: "Unsupported sign in provider" });
       }
 
-      const [updated] = await db
-        .update(users)
-        .set({
-          name,
-          photoUrl,
-          passwordHash,
-          termsAcceptedAt: new Date(),
-          invitedByUserId: inviteCodeRow?.createdByUserId ?? null,
-        })
-        .where(eq(users.id, user.id))
-        .returning({ id: users.id });
-
-      if (!updated) {
-        return reply.status(500).send({ error: "Could not update registration" });
+      if (!redirectTo) {
+        return reply.status(400).send({ error: "redirect_to required" });
       }
 
-      userId = updated.id;
-    } else {
-      const [user] = await db
-        .insert(users)
-        .values({
-          name,
-          photoUrl,
-          email,
-          passwordHash,
-          termsAcceptedAt: new Date(),
-          invitedByUserId: inviteCodeRow?.createdByUserId ?? null,
-        })
-        .returning({ id: users.id });
-
-      if (!user) return reply.status(500).send();
-      userId = user.id;
-    }
-
-    // Redeem the invite code (non-admin only)
-    if (inviteCodeRow) {
-      await db
-        .update(inviteCodes)
-        .set({ redeemedByUserId: userId, redeemedAt: new Date() })
-        .where(eq(inviteCodes.id, inviteCodeRow.id));
-    }
-
-    // Seed invite codes for the new user
-    for (let i = 0; i < MAX_INVITES_PER_USER; i++) {
-      let attempts = 0;
-      while (true) {
-        const code = generateInviteCode();
-        try {
-          await db.insert(inviteCodes).values({ code, createdByUserId: userId });
-          break;
-        } catch (err: unknown) {
-          attempts++;
-          const isUniqueViolation =
-            err &&
-            typeof err === "object" &&
-            "code" in err &&
-            (err as { code: string }).code === "23505";
-          if (!isUniqueViolation || attempts >= 5) break;
-        }
-      }
-    }
-
-      try {
-        await sendSupabaseVerificationEmail({
-          userId,
-          email,
-          name,
-        });
-    } catch (error) {
-      return reply.status(503).send({
-        error:
-          error instanceof Error ? error.message : "Could not send verification email",
+      return reply.send({
+        url: buildSupabaseOAuthUrl(provider, redirectTo),
       });
     }
+  );
 
-    return reply.status(202).send(verificationRequiredResponse(email));
-  });
+  app.post<{
+    Body: { access_token?: string };
+  }>(
+    "/api/auth/social",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => `ip:${req.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
+      const accessToken = readOptionalTrimmedString(request.body?.access_token);
+      if (!accessToken) {
+        return reply.status(400).send({ error: "access_token required" });
+      }
+
+      try {
+        const socialUser = await getSupabaseUserFromAccessToken(accessToken);
+        const [existingUser] = await db
+          .select({
+            id: users.id,
+            emailVerifiedAt: users.emailVerifiedAt,
+          })
+          .from(users)
+          .where(eq(users.email, socialUser.email))
+          .limit(1);
+
+        let userId: string;
+        if (existingUser) {
+          userId = existingUser.id;
+          if (!existingUser.emailVerifiedAt) {
+            await db
+              .update(users)
+              .set({ emailVerifiedAt: new Date() })
+              .where(eq(users.id, existingUser.id));
+          }
+        } else {
+          const [createdUser] = await db
+            .insert(users)
+            .values({
+              email: socialUser.email,
+              emailVerifiedAt: new Date(),
+            })
+            .returning({ id: users.id });
+
+          if (!createdUser) {
+            return reply.status(500).send({ error: "Could not create account" });
+          }
+
+          userId = createdUser.id;
+        }
+
+        const token = app.jwt.sign({ sub: userId });
+        const onboardingState = await getOnboardingStateForUser(userId);
+        return reply.send({
+          token,
+          user_id: userId,
+          ...onboardingState,
+        });
+      } catch (error) {
+        return reply.status(400).send({
+          error: error instanceof Error ? error.message : "Could not finish sign in",
+        });
+      }
+    }
+  );
 
   app.post<{
     Body: { email?: string; code?: string; token_hash?: string; type?: string };

@@ -26,6 +26,7 @@ interface UpdateProfileBody {
   name?: string;
   photo_url?: string;
   interests?: string[];
+  terms_accepted?: boolean;
 }
 
 interface DeleteAccountBody {
@@ -346,7 +347,12 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     const userId = getUserId(request);
     if (!userId) return reply.status(401).send();
     const body = request.body ?? {};
-    const updates: { name?: string; photoUrl?: string | null; interests?: string[] | null } = {};
+    const updates: {
+      name?: string;
+      photoUrl?: string | null;
+      interests?: string[] | null;
+      termsAcceptedAt?: Date;
+    } = {};
     if (typeof body.name === "string") updates.name = body.name.trim();
     if (typeof body.photo_url === "string") updates.photoUrl = body.photo_url.trim() || null;
     if (Array.isArray(body.interests)) {
@@ -357,6 +363,9 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       updates.interests = arr;
       // Re-embed for fallback: feed service embeds interests at query time from user row.
       // No persisted interest embedding column; next getFeed will use new interests.
+    }
+    if (body.terms_accepted === true) {
+      updates.termsAcceptedAt = new Date();
     }
     if (Object.keys(updates).length === 0)
       return reply.status(400).send({ error: "no valid fields to update" });

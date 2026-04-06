@@ -1,172 +1,150 @@
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
-import { Image } from "expo-image";
+import { memo, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import { useRouter } from "expo-router";
-import { colors, spacing, typography, shadows, radii } from "../theme";
+import { colors, spacing, typography } from "../theme";
 import type { NotificationItem } from "../lib/api";
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d`;
+}
 
 interface NotificationPanelProps {
   items: NotificationItem[];
-  loading?: boolean;
-  acceptingReplyId?: string | null;
-  onAccept: (item: NotificationItem) => void;
-  onIgnore: (replyId: string) => void;
+  loading: boolean;
+  onDismiss: () => void;
 }
 
-export function NotificationPanel({
+export const NotificationPanel = memo(function NotificationPanel({
   items,
   loading,
-  acceptingReplyId,
-  onAccept,
-  onIgnore,
+  onDismiss,
 }: NotificationPanelProps) {
   const router = useRouter();
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="small" color={colors.TYPE_MUTED} />
-      </View>
-    );
-  }
-  if (items.length === 0) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.empty}>No pending replies</Text>
-      </View>
-    );
-  }
+  const handleTap = useCallback(
+    (item: NotificationItem) => {
+      onDismiss();
+      router.push({ pathname: "/thought/[id]", params: { id: item.id } });
+    },
+    [router, onDismiss]
+  );
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Pending replies</Text>
-      {items.map((n) => (
-        <View key={n.reply_id} style={styles.row}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            disabled={!n.replier?.id}
-            onPress={() => {
-              if (!n.replier?.id) return;
-              router.push({ pathname: "/user/[id]", params: { id: n.replier.id } });
-            }}
-          >
-            {n.replier?.photo_url ? (
-              <Image source={{ uri: n.replier.photo_url }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]} />
-            )}
-          </TouchableOpacity>
-          <View style={styles.body}>
-            <Text style={styles.name} numberOfLines={1}>
-              {n.replier?.name ? n.replier.name.toUpperCase() : "—"}
-            </Text>
-            <Text style={styles.preview} numberOfLines={2}>
-              {n.reply_preview}
-            </Text>
-            {n.thought && (
-              <Text style={styles.thought} numberOfLines={1}>
-                Replied to: {n.thought.sentence}
-              </Text>
-            )}
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.acceptBtn, acceptingReplyId === n.reply_id && styles.acceptBtnDisabled]}
-                disabled={acceptingReplyId != null}
-                onPress={() => onAccept(n)}
-              >
-                {acceptingReplyId === n.reply_id ? (
-                  <ActivityIndicator size="small" color={colors.TYPE_WHITE} />
-                ) : (
-                  <Text style={styles.acceptText}>Reply in chat</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.ignoreBtn}
-                disabled={acceptingReplyId != null}
-                onPress={() => onIgnore(n.reply_id)}
-              >
-                <Text style={styles.ignoreText}>Ignore</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      {loading && items.length === 0 ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="small" color={colors.TYPE_MUTED} />
         </View>
-      ))}
+      ) : items.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyText}>No new replies</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {items.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.row}
+              onPress={() => handleTap(item)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.rowContent}>
+                <View style={styles.rowHeader}>
+                  <Text style={styles.authorName} numberOfLines={1}>
+                    {item.author?.name ?? "someone"}
+                  </Text>
+                  <Text style={styles.time}>{relativeTime(item.created_at)}</Text>
+                </View>
+                <Text style={styles.sentence} numberOfLines={1}>
+                  {item.sentence}
+                </Text>
+                {item.original_thought ? (
+                  <Text style={styles.originalRef} numberOfLines={1}>
+                    in response to your "{item.original_thought.sentence}"
+                  </Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.CARD_GROUND,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.screenPadding,
-    borderBottomWidth: 0.5,
+    borderBottomWidth: 1,
     borderBottomColor: colors.CARD_BORDER,
-    ...shadows.card,
+    maxHeight: 280,
+  },
+  loadingWrap: {
+    padding: 24,
+    alignItems: "center",
+  },
+  emptyWrap: {
+    padding: 24,
+    alignItems: "center",
+  },
+  emptyText: {
+    ...typography.metadata,
+    color: colors.TYPE_MUTED,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingVertical: 8,
   },
   row: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: 12,
+  },
+  rowContent: {
+    gap: 3,
+  },
+  rowHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 16,
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  title: {
-    ...typography.label,
-    textTransform: "uppercase",
+  authorName: {
+    ...typography.metadata,
     color: colors.TYPE_DARK,
-    marginBottom: 14,
+    fontWeight: "600",
+    flex: 1,
   },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    marginRight: 12,
-  },
-  avatarPlaceholder: {
-    backgroundColor: colors.CARD_BORDER,
-  },
-  body: { flex: 1 },
-  name: {
-    ...typography.label,
-    textTransform: "uppercase",
-    color: colors.TYPE_DARK,
-    marginBottom: 4,
-  },
-  preview: {
-    ...typography.context,
-    color: colors.TYPE_DARK,
-    marginBottom: 3,
-  },
-  thought: {
+  time: {
     ...typography.metadata,
     color: colors.TYPE_MUTED,
-    marginBottom: 10,
+    marginLeft: 8,
   },
-  actions: { flexDirection: "row", gap: 12, alignItems: "center" },
-  acceptBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    backgroundColor: colors.OLIVE,
-    borderRadius: radii.button,
-    minWidth: 100,
-    alignItems: "center" as const,
-    ...shadows.raised,
+  sentence: {
+    ...typography.bodySmall,
+    color: colors.TYPE_DARK,
   },
-  acceptBtnDisabled: {
-    opacity: 0.6,
-  },
-  acceptText: {
-    ...typography.metadata,
-    color: colors.TYPE_WHITE,
-  },
-  ignoreBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-  },
-  ignoreText: {
+  originalRef: {
     ...typography.metadata,
     color: colors.TYPE_MUTED,
-  },
-  empty: {
-    ...typography.metadata,
-    color: colors.TYPE_MUTED,
-    textAlign: "center",
+    fontStyle: "italic",
   },
 });

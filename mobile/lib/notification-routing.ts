@@ -6,7 +6,6 @@
 interface NotificationData {
   type?: string;
   thought_id?: string;
-  conversation_id?: string;
   [key: string]: unknown;
 }
 
@@ -24,11 +23,6 @@ export function resolveNotificationRoute(data?: NotificationData | null): RouteT
     case "reply":
       return data.thought_id
         ? { pathname: "/thought/[id]", params: { id: data.thought_id } }
-        : FALLBACK_ROUTE;
-
-    case "message":
-      return data.conversation_id
-        ? { pathname: "/conversation/[id]", params: { id: data.conversation_id } }
         : FALLBACK_ROUTE;
 
     case "resonance_milestone":

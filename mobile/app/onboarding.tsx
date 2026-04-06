@@ -16,19 +16,17 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter, useLocalSearchParams, type Href } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing, typography, fontFamily, IMAGE_ASPECT_RATIO, primitives, radii, opacity } from "../theme";
-import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 import {
-  register,
   updateProfile,
   createThought,
   setCachedUserId,
-  type RegisterBody,
 } from "../lib/api";
 import {
   setOnboardingComplete,
+  setOnboardingDeferred,
   setOnboardingStep,
   getOnboardingStep,
   getStoredUserId,
@@ -43,30 +41,16 @@ const SENTENCE_MAX = 200;
 const CONTEXT_MAX = 600;
 const PHOTO_SIZE = 80;
 
-function validateStrongPassword(password: string): string | null {
-  if (password.length < 10) return "Password must be at least 10 characters";
-  if (!/[a-z]/.test(password)) return "Password must include a lowercase letter";
-  if (!/[A-Z]/.test(password)) return "Password must include an uppercase letter";
-  if (!/\d/.test(password)) return "Password must include a number";
-  if (!/[^A-Za-z0-9]/.test(password)) return "Password must include a symbol";
-  return null;
-}
-
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { invite_code } = useLocalSearchParams<{ invite_code?: string }>();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { containerStyle, contentWidth } = useResponsiveLayout();
   const [step, setStepState] = useState<1 | 2 | 3>(1);
 
   // Step 1
   const [name, setName] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [regError, setRegError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [sendingStep1, setSendingStep1] = useState(false);
@@ -110,6 +94,10 @@ export default function OnboardingScreen() {
         getStoredUserId(),
       ]);
       if (cancelled) return;
+      if (!storedUserId) {
+        router.replace("/login");
+        return;
+      }
       if (storedUserId && savedStep === 3) {
         await setOnboardingComplete(true);
         await setOnboardingStep(1);
@@ -184,9 +172,6 @@ export default function OnboardingScreen() {
   const canContinueStep1 =
     name.trim().length > 0 &&
     Boolean(selectedProfilePhoto) &&
-    email.trim().length > 0 &&
-    password.length >= 10 &&
-    confirmPassword.length > 0 &&
     termsAccepted;
 
   const handleStep1Continue = useCallback(async () => {
@@ -195,33 +180,20 @@ export default function OnboardingScreen() {
       setRegError("Profile photo required");
       return;
     }
-    const passwordError = validateStrongPassword(password);
-    if (passwordError) {
-      setRegError(passwordError);
-      return;
-    }
-    if (password !== confirmPassword) {
-      setRegError("Passwords do not match");
-      return;
-    }
     setRegError(null);
     setSendingStep1(true);
     try {
-      const body: RegisterBody = {
+      await updateProfile({
         name: name.trim(),
         photo_url: selectedProfilePhoto,
-        email: email.trim(),
-        password,
         terms_accepted: true,
-        invite_code: invite_code || undefined,
-      };
-      const { verification_email } = await register(body);
-      router.replace({
-        pathname: "/verify-email",
-        params: { email: verification_email },
       });
+      await setOnboardingDeferred(false);
+      await setOnboardingComplete(false);
+      await setOnboardingStep(2);
+      setStepState(2);
     } catch (err) {
-      setRegError(err instanceof Error ? err.message : "Registration failed");
+      setRegError(err instanceof Error ? err.message : "Could not save your profile");
     } finally {
       setSendingStep1(false);
     }
@@ -230,10 +202,6 @@ export default function OnboardingScreen() {
     sendingStep1,
     name,
     selectedProfilePhoto,
-    email,
-    password,
-    confirmPassword,
-    invite_code,
     router,
   ]);
 
@@ -245,6 +213,7 @@ export default function OnboardingScreen() {
         .filter(Boolean)
         .slice(0, 3);
       await updateProfile({ interests });
+      await setOnboardingDeferred(false);
       await setOnboardingComplete(true);
       await setOnboardingStep(1);
       const uid = await getStoredUserId();
@@ -263,6 +232,7 @@ export default function OnboardingScreen() {
     setPosting(true);
     try {
       await createThought(s, context.trim() || undefined, thoughtPhotoUrl || undefined);
+      await setOnboardingDeferred(false);
       await setOnboardingComplete(true);
       await setOnboardingStep(1);
       const uid = await getStoredUserId();
@@ -283,10 +253,14 @@ export default function OnboardingScreen() {
     if (onboardingBusy) return;
 
     if (step === 1) {
-      router.replace("/login");
+      await setOnboardingDeferred(true);
+      await setOnboardingComplete(false);
+      await setOnboardingStep(1);
+      router.replace("/(tabs)");
       return;
     }
 
+    await setOnboardingDeferred(true);
     await setOnboardingComplete(false);
     await setOnboardingStep(step);
     router.replace("/(tabs)");
@@ -314,7 +288,10 @@ export default function OnboardingScreen() {
           <Animated.View style={[styles.logoHero, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
             <Image source={ohmLogo} style={styles.logoHeroImage} contentFit="contain" />
           </Animated.View>
-          <Animated.Text style={[styles.stepTitle, { opacity: fadeAnim }]}>Identity</Animated.Text>
+          <Animated.Text style={[styles.stepTitle, { opacity: fadeAnim }]}>Profile</Animated.Text>
+          <Text style={styles.stepSubtitle}>
+            Add the name and photo people will recognize when they find you on ohm.
+          </Text>
 
           <TextInput
             style={styles.input}
@@ -350,37 +327,6 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
           <Text style={styles.photoGuide}>
             Add a clear profile photo with your full face visible. This is required.
-          </Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={colors.TYPE_MUTED}
-            value={email}
-            onChangeText={(t) => { setEmail(t); setRegError(null); }}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            editable={!sendingStep1}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={colors.TYPE_MUTED}
-            value={password}
-            onChangeText={(t) => { setPassword(t); setRegError(null); }}
-            secureTextEntry
-            editable={!sendingStep1}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm password"
-            placeholderTextColor={colors.TYPE_MUTED}
-            value={confirmPassword}
-            onChangeText={(t) => { setConfirmPassword(t); setRegError(null); }}
-            secureTextEntry
-            editable={!sendingStep1}
-          />
-          <Text style={styles.passwordGuide}>
-            Use 10+ characters with uppercase, lowercase, a number, and a symbol.
           </Text>
 
           <View style={styles.termsRow}>

@@ -3,15 +3,33 @@ node_modules/
 .pnp
 .pnp.js
 
-# Environment
+# Environment / secrets
 .env
 .env.local
 .env.production
-mobile/.env
-mobile/.env.local
-mobile/.env.production
-mobile/.env.development
-mobile/.env.*.local
+.env.development
+.env.test
+.env.*.local
+**/.env
+**/.env.local
+**/.env.production
+**/.env.development
+**/.env.test
+**/.env.*.local
+**/.env.*
+!**/.env.example
+!**/.env.production.example
+*.pem
+*.p8
+*.key
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
 
 # Build
 dist/

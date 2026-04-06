@@ -4,8 +4,6 @@ import * as Haptics from "expo-haptics";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { registerPushToken as apiRegisterToken, unregisterPushToken as apiUnregisterToken } from "./api";
-import { isDemoAuthToken } from "./demo-mode";
-import { getStoredToken } from "./auth-store";
 
 const KEY_PUSH_TOKEN = "ohm.push.token";
 
@@ -37,14 +35,9 @@ export function setupForegroundHandler(): void {
 /**
  * Request push permission, obtain an Expo push token, and register it
  * with the backend. Returns true if successfully registered.
- * Skips silently for demo sessions.
  */
 export async function requestPushPermissionIfNeeded(): Promise<boolean> {
   try {
-    // Skip for demo users
-    const authToken = await getStoredToken();
-    if (isDemoAuthToken(authToken)) return false;
-
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
 

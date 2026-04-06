@@ -50,6 +50,13 @@ Current runtime compatibility choices:
 - [`/Users/jeonghaein/Desktop/ohm-app/docs`](./docs): spec mirrors and implementation guidance
 - [`/Users/jeonghaein/Desktop/ohm-app/ml`](./ml): auxiliary ML services and local experimentation
 
+## Secrets & Local Setup
+
+- Real secrets stay local in ignored files like `api/.env.local`, `api/.env`, and `mobile/.env.local`.
+- Share setup values with teammates through a secure channel, not Git.
+- Before pushing, run `npm run check:secrets`.
+- Local setup and collaboration notes live in [`/Users/jeonghaein/Desktop/ohm-app/docs/setup-local.md`](./docs/setup-local.md).
+
 ## Current Priorities
 
 - Keep the feed centered on resonance, not topic similarity

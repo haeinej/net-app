@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Alert,
-  Share,
   Modal,
   Pressable,
   Animated,
@@ -22,7 +22,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { colors, spacing, fontFamily, shadows, typography, primitives, radii, opacity } from "../../theme";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { SwipeableThoughtCard } from "../../components/SwipeableThoughtCard";
-import { CrossingCard } from "../../components/CrossingCard";
 import { CardDeck } from "../../components/CardDeck";
 import {
   getMyUserId,
@@ -33,11 +32,8 @@ import {
   updateProfile,
   deleteThought,
   editThought,
-  fetchMyInvites,
-  generateInvite,
   type ProfileResponse,
   type FeedItemThought,
-  type FeedItemCrossing,
 } from "../../lib/api";
 import { clearAuth } from "../../lib/auth-store";
 
@@ -48,12 +44,12 @@ export default function MeScreen() {
   const photoSize = 170;
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editPhotoUrl, setEditPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
-  const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const menuSlide = useState(() => new Animated.Value(0))[0];
 
@@ -88,14 +84,10 @@ export default function MeScreen() {
     }
     try {
       setLoading(true);
-      const [data, invites] = await Promise.all([
-        fetchProfile(uid),
-        fetchMyInvites().catch(() => ({ remaining: 0 })),
-      ]);
+      const data = await fetchProfile(uid);
       setProfile(data);
       setEditName(data.name ?? "");
       setEditPhotoUrl(data.photo_url ?? "");
-      setInviteRemaining(invites.remaining);
     } catch (error) {
       if (isSessionInvalidError(error)) {
         await resetBrokenSession();
@@ -110,6 +102,16 @@ export default function MeScreen() {
   useEffect(() => {
     if (myUserId) load();
   }, [myUserId, load]);
+
+  const onRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load, refreshing]);
 
   const startEdit = useCallback(() => {
     if (profile) {
@@ -159,24 +161,6 @@ export default function MeScreen() {
       setSaving(false);
     }
   }, [profile, editName, editPhotoUrl, saving]);
-
-  const handleInvite = useCallback(async () => {
-    if (inviteRemaining === 0) {
-      Alert.alert("No invites left", "You've used all your invite codes.");
-      return;
-    }
-    try {
-      const { code, remaining } = await generateInvite();
-      setInviteRemaining(remaining);
-      await Share.share({
-        message: `Join me on ohm. — an app for honest, async conversation.\n\nUse my invite code: ${code}\n\nohm://invite/${code}`,
-      });
-    } catch (err) {
-      if (err instanceof Error && err.message !== "User did not share") {
-        Alert.alert("Error", err.message);
-      }
-    }
-  }, [inviteRemaining]);
 
   const handleDeleteThought = useCallback(
     async (thoughtId: string) => {
@@ -301,20 +285,9 @@ export default function MeScreen() {
     );
   }
 
-  // Merge thoughts + crossings into a single deck sorted by most recent
-  const deckItems: Array<
-    | { kind: "thought"; date: string; data: (typeof profile.thoughts)[number] }
-    | { kind: "crossing"; date: string; data: NonNullable<typeof profile.crossings>[number] }
-  > = [];
-
-  for (const t of profile.thoughts) {
-    deckItems.push({ kind: "thought", date: t.created_at ?? new Date(0).toISOString(), data: t });
-  }
-  for (const c of profile.crossings ?? []) {
-    deckItems.push({ kind: "crossing", date: c.created_at ?? new Date(0).toISOString(), data: c });
-  }
-
-  deckItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const deckItems = [...profile.thoughts].sort(
+    (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
 
   const sheetTranslateY = menuSlide.interpolate({
     inputRange: [0, 1],
@@ -332,7 +305,7 @@ export default function MeScreen() {
 
       {/* ☰ Hamburger menu — top right */}
       <TouchableOpacity
-        style={[styles.hamburger, { top: insets.top + 12 }]}
+        style={[styles.hamburger, { top: insets.top + 24 }]}
         onPress={openMenu}
         activeOpacity={0.6}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -344,22 +317,32 @@ export default function MeScreen() {
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 46 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.TYPE_MUTED}
+            progressViewOffset={insets.top + 16}
+          />
+        }
       >
-        {/* Profile photo — organic asymmetric round shape */}
-        <View style={styles.photoOuter}>
-          <View style={styles.photoInner}>
-            {profile.photo_url ? (
-              <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
-            ) : (
-              <View style={styles.photoEmpty} />
-            )}
+        <View style={styles.profileHeader}>
+          {/* Profile photo — organic asymmetric round shape */}
+          <View style={styles.photoOuter}>
+            <View style={styles.photoInner}>
+              {profile.photo_url ? (
+                <Image source={{ uri: profile.photo_url }} style={styles.photoImage} contentFit="cover" />
+              ) : (
+                <View style={styles.photoEmpty} />
+              )}
+            </View>
           </View>
-        </View>
 
-        {/* Name */}
-        <Text style={styles.name}>{profile.name || "—"}</Text>
+          {/* Name */}
+          <Text style={styles.name}>{profile.name || "—"}</Text>
+        </View>
 
         {/* Edit mode (inline) */}
         {editing && (
@@ -396,12 +379,11 @@ export default function MeScreen() {
           </View>
         )}
 
-        {deckItems.length === 0 ? (
-          <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
-        ) : (
-          deckItems.map((item) => {
-            if (item.kind === "thought") {
-              const t = item.data;
+        <View style={styles.deckSection}>
+          {deckItems.length === 0 ? (
+            <Text style={styles.emptyDeck}>Your deck will appear here.</Text>
+          ) : (
+            deckItems.map((t) => {
               const feedItem: FeedItemThought = {
                 type: "thought",
                 thought: {
@@ -420,7 +402,7 @@ export default function MeScreen() {
               };
               return (
                 <View key={`t-${t.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                  <CardDeck>
+                  <CardDeck layers={0}>
                     <SwipeableThoughtCard
                       item={feedItem}
                       visible
@@ -431,30 +413,9 @@ export default function MeScreen() {
                   </CardDeck>
                 </View>
               );
-            }
-            if (item.kind === "crossing") {
-              const c = item.data;
-              const crossingItem: FeedItemCrossing = {
-                type: "crossing",
-                crossing: {
-                  id: c.id,
-                  sentence: c.sentence,
-                  context: c.context,
-                  created_at: c.created_at ?? new Date().toISOString(),
-                },
-                participant_a: c.participant_a ?? { id: "", name: null, photo_url: null },
-                participant_b: c.participant_b ?? { id: "", name: null, photo_url: null },
-              };
-              return (
-                <View key={`c-${c.id}`} style={[styles.thoughtWrap, containerStyle]}>
-                  <CardDeck>
-                    <CrossingCard item={crossingItem} visible myUserId={myUserId} />
-                  </CardDeck>
-                </View>
-              );
-            }
-          })
-        )}
+            })
+          )}
+        </View>
       </ScrollView>
 
       {/* ─── Bottom sheet menu ─── */}
@@ -473,21 +434,6 @@ export default function MeScreen() {
               onPress={() => closeMenu(() => startEdit())}
             >
               <Text style={styles.menuRowText}>Edit Profile</Text>
-            </TouchableOpacity>
-
-            <View style={styles.menuSep} />
-
-            <TouchableOpacity
-              style={styles.menuRow}
-              activeOpacity={0.6}
-              onPress={() => closeMenu(() => handleInvite())}
-            >
-              <Text style={styles.menuRowText}>Invite Friends</Text>
-              {inviteRemaining !== null && inviteRemaining > 0 && (
-                <View style={styles.menuBadge}>
-                  <Text style={styles.menuBadgeText}>{inviteRemaining}</Text>
-                </View>
-              )}
             </TouchableOpacity>
 
             <View style={styles.menuSep} />
@@ -527,6 +473,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 16,
     flexGrow: 1,
+  },
+  profileHeader: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 10,
   },
 
   /* ── Photo — organic asymmetric shape ── */
@@ -568,7 +519,7 @@ const styles = StyleSheet.create({
     ...typography.headingLg,
     color: WARM,
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 28,
   },
 
   /* ── Hamburger icon ── */
@@ -625,20 +576,6 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: "rgba(0,0,0,0.08)",
     marginHorizontal: 24,
-  },
-  menuBadge: {
-    backgroundColor: colors.VERMILLION,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  menuBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#fff",
   },
 
   /* ── Glass buttons (edit mode) ── */
@@ -707,6 +644,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: spacing.screenPadding,
     marginBottom: 12,
+  },
+  deckSection: {
+    width: "100%",
+    marginTop: 18,
   },
   thoughtWrap: {
     marginBottom: spacing.cardGap + 6,

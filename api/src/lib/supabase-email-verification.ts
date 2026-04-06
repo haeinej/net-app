@@ -38,6 +38,16 @@ type SupabaseVerifyResponse = {
   } | null;
 };
 
+type SupabaseAuthUserRecord = {
+  email?: string | null;
+  app_metadata?: Record<string, unknown> | null;
+  user_metadata?: Record<string, unknown> | null;
+  identities?: Array<Record<string, unknown>> | null;
+  user?: SupabaseAuthUserRecord | null;
+};
+
+export type SocialProvider = "google" | "apple";
+
 const DEFAULT_EMAIL_VERIFICATION_REDIRECT_URL = "https://www.ohmmmm.com/verify-email/";
 const DEFAULT_PASSWORD_RESET_REDIRECT_URL = "https://www.ohmmmm.com/reset-password/";
 
@@ -56,6 +66,10 @@ function getSupabaseUrl(): string {
 
 function getSupabaseAnonKey(): string {
   return readRequiredEnv("SUPABASE_ANON_KEY");
+}
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function getRedirectUrl(): string {
@@ -120,7 +134,6 @@ function normalizeVerifyType(type: string | null | undefined): string {
     case "signup":
     case "magiclink":
     case "recovery":
-    case "invite":
     case "email_change":
     case "email":
       return type;
@@ -148,7 +161,45 @@ async function postSupabaseAuth<T>(
   return (payload ?? {}) as T;
 }
 
-async function getSupabaseUserEmailFromAccessToken(accessToken: string): Promise<string> {
+function unwrapSupabaseUser(
+  payload: SupabaseAuthUserRecord | Record<string, unknown> | null
+): SupabaseAuthUserRecord | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const record = payload as SupabaseAuthUserRecord;
+  if (record.user && typeof record.user === "object") {
+    return record.user;
+  }
+
+  return record;
+}
+
+function readProvider(record: SupabaseAuthUserRecord | null): string | null {
+  const appMetadataProvider = readOptionalString(record?.app_metadata?.provider);
+  if (appMetadataProvider) return appMetadataProvider;
+
+  const firstIdentity = Array.isArray(record?.identities) ? record.identities[0] : null;
+  return readOptionalString(firstIdentity?.provider);
+}
+
+export function buildSupabaseOAuthUrl(
+  provider: SocialProvider,
+  redirectTo: string
+): string {
+  const params = new URLSearchParams({
+    provider,
+    redirect_to: redirectTo,
+  });
+
+  return `${getSupabaseUrl()}/auth/v1/authorize?${params.toString()}`;
+}
+
+export async function getSupabaseUserFromAccessToken(accessToken: string): Promise<{
+  email: string;
+  provider: string | null;
+  name: string | null;
+  photoUrl: string | null;
+}> {
   const response = await fetch(`${getSupabaseUrl()}/auth/v1/user`, {
     method: "GET",
     headers: {
@@ -166,13 +217,24 @@ async function getSupabaseUserEmailFromAccessToken(accessToken: string): Promise
     throw new Error(normalizeErrorMessage(payload, "Could not verify password reset"));
   }
 
-  const verifiedPayload = payload as SupabaseVerifyResponse | null;
-  const email = verifiedPayload?.user?.email?.trim().toLowerCase();
+  const user = unwrapSupabaseUser(payload);
+  const email = user?.email?.trim().toLowerCase();
   if (!email) {
     throw new Error("Could not verify password reset");
   }
 
-  return email;
+  return {
+    email,
+    provider: readProvider(user),
+    name:
+      readOptionalString(user?.user_metadata?.name) ??
+      readOptionalString(user?.user_metadata?.full_name) ??
+      null,
+    photoUrl:
+      readOptionalString(user?.user_metadata?.avatar_url) ??
+      readOptionalString(user?.user_metadata?.picture) ??
+      null,
+  };
 }
 
 
@@ -239,8 +301,8 @@ export async function verifySupabaseRecovery(
   params: VerifyEmailParams
 ): Promise<{ email: string }> {
   if (params.accessToken) {
-    const email = await getSupabaseUserEmailFromAccessToken(params.accessToken);
-    return { email };
+    const user = await getSupabaseUserFromAccessToken(params.accessToken);
+    return { email: user.email };
   }
 
   const payload = await postSupabaseAuth<SupabaseVerifyResponse>(

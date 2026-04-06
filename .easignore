@@ -3,6 +3,7 @@ android/
 ios/
 ios/build/
 node_modules/
+node_modules.root-expo55.bak/
 node_modules.bad.*/
 node_modules.repair-backup*/
 expo 2/

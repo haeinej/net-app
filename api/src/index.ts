@@ -3,6 +3,7 @@ loadEnv();
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import compress from "@fastify/compress";
 import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 
@@ -17,6 +18,7 @@ const DEV_CORS_ORIGINS = [
 const PUBLIC_WEB_ORIGINS = [
   "https://www.ohmmmm.com",
   "https://ohmmmm.com",
+  "https://api.ohmmmm.com",
   "https://haeinej.github.io",
 ];
 
@@ -29,7 +31,11 @@ function parseCorsOrigins(raw: string | undefined): string[] {
 
 async function main() {
   console.log("[boot] main() entered");
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      level: process.env.NODE_ENV === "production" ? "warn" : "info",
+    },
+  });
   console.log("[boot] fastify created");
 
   const corsOrigin = process.env.CORS_ORIGIN;
@@ -69,6 +75,8 @@ async function main() {
   });
 
 
+  console.log("[boot] registering compress...");
+  await app.register(compress, { threshold: 1024 });
   console.log("[boot] registering cors...");
   await app.register(cors, {
     origin(origin, callback) {
@@ -113,32 +121,24 @@ async function main() {
   console.log("[boot] routes imported");
   const { thoughtRoutes } = await import("./routes/thoughts");
   const { feedRoutes } = await import("./routes/feed");
-  const { replyRoutes } = await import("./routes/replies");
   const { notificationRoutes } = await import("./routes/notifications");
-  const { conversationRoutes } = await import("./routes/conversations");
-  const { crossingRoutes } = await import("./routes/crossings");
   const { profileRoutes } = await import("./routes/profile");
   const { engagementRoutes } = await import("./engagement");
   const { internalFeedMetricsRoutes } = await import("./routes/internal-feed-metrics");
   const { moderationRoutes } = await import("./routes/moderation");
   const { pushRoutes } = await import("./routes/push");
-  const { inviteRoutes } = await import("./routes/invites");
   const { internalMatchmakerRoutes } = await import("./routes/internal-matchmaker");
 
   await app.register(waitlistRoutes);
   await app.register(authRoutes);
   await app.register(thoughtRoutes);
   await app.register(feedRoutes);
-  await app.register(replyRoutes);
   await app.register(notificationRoutes);
-  await app.register(conversationRoutes);
-  await app.register(crossingRoutes);
   await app.register(profileRoutes);
   await app.register(engagementRoutes);
   await app.register(internalFeedMetricsRoutes);
   await app.register(moderationRoutes);
   await app.register(pushRoutes);
-  await app.register(inviteRoutes);
   await app.register(internalMatchmakerRoutes);
 
   console.log("[boot] routes registered, loading cron...");

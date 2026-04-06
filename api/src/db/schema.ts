@@ -12,6 +12,7 @@ import {
   jsonb,
   vector,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -80,30 +81,8 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
-  invitedByUserId: uuid("invited_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 });
-
-// 1b. invite_codes
-export const inviteCodes = pgTable(
-  "invite_codes",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    code: text("code").notNull(),
-    createdByUserId: uuid("created_by_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    redeemedByUserId: uuid("redeemed_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("invite_codes_code_unique").on(table.code),
-    index("invite_codes_created_by_idx").on(table.createdByUserId),
-  ]
-);
 
 export const emailVerificationCodes = pgTable(
   "email_verification_codes",
@@ -156,6 +135,7 @@ export const thoughts = pgTable(
     questionEmbedding: vector("question_embedding", { dimensions: VECTOR_DIMS }), // primary resonance embedding stored in legacy column
     qualityScore: real("quality_score"), // openness-weighted signal
     clusterId: uuid("cluster_id"), // FK to resonance clusters, set by weekly learning
+    inResponseToId: uuid("in_response_to_id").references((): AnyPgColumn => thoughts.id, { onDelete: "set null" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
@@ -172,6 +152,7 @@ export const thoughts = pgTable(
       "hnsw",
       table.questionEmbedding.op("vector_cosine_ops")
     ),
+    index("thoughts_in_response_to_idx").on(table.inResponseToId),
   ]
 );
 
@@ -259,6 +240,7 @@ export const messages = pgTable(
       .notNull()
       .references(() => users.id),
     text: text("text").notNull(),
+    metadata: jsonb("metadata"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => [
@@ -560,6 +542,7 @@ export const crossingDrafts = pgTable(
       .notNull()
       .references(() => users.id),
     sentence: text("sentence_a"),
+    sentenceB: text("sentence_b"),
     context: text("context"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     autoPostAt: timestamp("auto_post_at", { withTimezone: true }),
@@ -589,6 +572,8 @@ export const crossings = pgTable("crossings", {
     .notNull()
     .references(() => users.id),
   sentence: text("sentence").notNull(),
+  sentenceA: text("sentence_a"),
+  sentenceB: text("sentence_b"),
   context: text("context"),
   imageUrl: text("image_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),

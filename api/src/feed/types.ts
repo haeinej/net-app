@@ -19,6 +19,11 @@ export interface FeedItemThought {
     has_context: boolean;
   };
   user: FeedItemUser;
+  in_response_to?: {
+    id: string;
+    sentence: string;
+    user: FeedItemUser;
+  } | null;
 }
 
 export interface FeedItemCrossing {
@@ -50,6 +55,7 @@ export interface ThoughtCandidate {
   authorCohortYear: number | null;
   authorConcentration: string | null;
   clusterId: string | null;
+  inResponseToId: string | null;
 }
 
 /** Viewer's embeddings from posted thoughts, or internal interests fallback. */

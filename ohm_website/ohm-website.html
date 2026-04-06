@@ -1034,9 +1034,7 @@ const subscribeForm = document.getElementById('subscribeForm');
 const subscribeEmail = document.getElementById('subscribeEmail');
 const subscribeStatus = document.getElementById('subscribeStatus');
 const subscribeButton = subscribeForm ? subscribeForm.querySelector('button[type="submit"]') : null;
-const subscribeEndpoint = window.location.hostname.endsWith('ohmmmm.com')
-  ? 'https://api.ohmmmm.com/api/waitlist'
-  : 'https://ohm-api.onrender.com/api/waitlist';
+const subscribeEndpoint = 'https://api.ohmmmm.com/api/waitlist';
 
 function setSubscribeStatus(message, tone) {
   if (!subscribeStatus) return;

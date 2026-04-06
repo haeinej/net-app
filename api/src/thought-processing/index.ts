@@ -10,3 +10,4 @@ export {
   extractUnderlyingQuestion,
   computeQualityScore,
 } from "./service";
+export { computeThoughtFeedSignals } from "./feed-signals";

@@ -109,6 +109,7 @@ export async function internalMatchmakerRoutes(
     "/api/internal/matchmaker/boost",
     { preHandler: ensureInternalAccess },
     async (request, reply) => {
+      try {
       const { targetUserId, thoughtId, createdBy, reason } = request.body;
 
       if (!targetUserId || !thoughtId || !createdBy) {
@@ -163,13 +164,14 @@ export async function internalMatchmakerRoutes(
       }
 
       // Insert boost
+      const trimmedReason = reason?.trim() || null;
       const [boost] = await db
         .insert(manualBoosts)
         .values({
           targetUserId,
           thoughtId,
           createdBy: createdBy.trim(),
-          reason: reason?.trim() || null,
+          ...(trimmedReason ? { reason: trimmedReason } : {}),
         })
         .returning();
 
@@ -177,6 +179,10 @@ export async function internalMatchmakerRoutes(
       await invalidateFeedCache(targetUserId);
 
       return reply.send({ boost });
+      } catch (err: any) {
+        request.log.error(err, "matchmaker boost error");
+        return reply.status(500).send({ error: err?.message || "Unknown error" });
+      }
     }
   );
 
@@ -623,8 +629,10 @@ function renderMatchmakerHtml(): string {
   async function api(path, opts) {
     const res = await fetch(BASE + path, { headers: headers(), ...opts });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || 'Request failed: ' + res.status);
+      const text = await res.text();
+      let msg = 'Request failed: ' + res.status;
+      try { const j = JSON.parse(text); msg = j.error || j.message || msg; } catch(e) { msg = text || msg; }
+      throw new Error(msg);
     }
     return res.json();
   }
