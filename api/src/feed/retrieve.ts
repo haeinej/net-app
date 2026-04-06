@@ -24,6 +24,7 @@ type CandidateRow = {
   authorCohortYear: number | null;
   authorConcentration: string | null;
   clusterId: string | null;
+  inResponseToId: string | null;
 };
 
 const candidateSelect = {
@@ -38,6 +39,7 @@ const candidateSelect = {
   qualityScore: thoughts.qualityScore,
   createdAt: thoughts.createdAt,
   clusterId: thoughts.clusterId,
+  inResponseToId: thoughts.inResponseToId,
   authorCohortYear: users.cohortYear,
   authorConcentration: users.concentration,
 } as const;
@@ -60,6 +62,7 @@ function toCandidate(row: CandidateRow): ThoughtCandidate {
     authorCohortYear: row.authorCohortYear,
     authorConcentration: row.authorConcentration,
     clusterId: row.clusterId ?? null,
+    inResponseToId: row.inResponseToId ?? null,
   };
 }
 

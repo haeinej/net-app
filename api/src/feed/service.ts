@@ -674,8 +674,58 @@ async function buildFeedSnapshot(
       : [];
   const authorMap = new Map(authorRows.map((user) => [user.id, user]));
 
+  // Fetch parent thought info for replies (in_response_to)
+  const parentIds = [
+    ...new Set(
+      selectedThoughts
+        .map((item) => item.thought.inResponseToId)
+        .filter((id): id is string => id != null)
+    ),
+  ];
+  const parentRows =
+    parentIds.length > 0
+      ? await db
+          .select({
+            id: thoughts.id,
+            sentence: thoughts.sentence,
+            userId: thoughts.userId,
+          })
+          .from(thoughts)
+          .where(inArray(thoughts.id, parentIds))
+      : [];
+  // Also fetch parent authors
+  const parentAuthorIds = [...new Set(parentRows.map((r) => r.userId))];
+  const parentAuthorRows =
+    parentAuthorIds.length > 0
+      ? await db
+          .select({ id: users.id, name: users.name, photoUrl: users.photoUrl })
+          .from(users)
+          .where(inArray(users.id, parentAuthorIds))
+      : [];
+  const parentAuthorMap = new Map(parentAuthorRows.map((u) => [u.id, u]));
+  const parentMap = new Map(
+    parentRows.map((r) => {
+      const pAuthor = parentAuthorMap.get(r.userId);
+      return [
+        r.id,
+        {
+          id: r.id,
+          sentence: r.sentence,
+          user: {
+            id: r.userId,
+            name: pAuthor?.name ?? null,
+            photo_url: pAuthor?.photoUrl ?? null,
+          },
+        },
+      ];
+    })
+  );
+
   const thoughtItems: FeedItem[] = selectedThoughts.map(({ thought }) => {
     const author = authorMap.get(thought.userId);
+    const parentInfo = thought.inResponseToId
+      ? parentMap.get(thought.inResponseToId) ?? null
+      : null;
     return {
       type: "thought",
       thought: {
@@ -691,6 +741,7 @@ async function buildFeedSnapshot(
         name: author?.name ?? null,
         photo_url: author?.photoUrl ?? null,
       },
+      in_response_to: parentInfo,
     };
   });
 
