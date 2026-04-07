@@ -82,7 +82,6 @@ export default function RootLayout() {
             <Stack.Screen name="onboarding" options={{ animation: "none" }} />
             <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
             <Stack.Screen name="thought/[id]" />
-            <Stack.Screen name="conversation/[id]" />
             <Stack.Screen name="user/[id]" />
             <Stack.Screen
               name="post"

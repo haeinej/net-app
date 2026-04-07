@@ -220,12 +220,47 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    // Count reply-cards (thoughts that reference this one)
-    const [replyCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
+    // Fetch reply-cards (thoughts that reference this one)
+    const replyThoughts = await db
+      .select({
+        id: thoughts.id,
+        sentence: thoughts.sentence,
+        photoUrl: thoughts.photoUrl,
+        imageUrl: thoughts.imageUrl,
+        context: thoughts.context,
+        createdAt: thoughts.createdAt,
+        userId: thoughts.userId,
+      })
       .from(thoughts)
-      .where(and(eq(thoughts.inResponseToId, id), isNull(thoughts.deletedAt)));
-    const replyCount = replyCountRow?.count ?? 0;
+      .where(and(eq(thoughts.inResponseToId, id), isNull(thoughts.deletedAt)))
+      .orderBy(desc(thoughts.createdAt))
+      .limit(10);
+
+    const replyAuthorIds = [...new Set(replyThoughts.map((rt) => rt.userId))];
+    const replyAuthors = replyAuthorIds.length > 0
+      ? await db.select({ id: users.id, name: users.name, photoUrl: users.photoUrl }).from(users).where(inArray(users.id, replyAuthorIds))
+      : [];
+    const replyAuthorMap = new Map(replyAuthors.map((u) => [u.id, u]));
+
+    const replies = replyThoughts.map((rt) => {
+      const ra = replyAuthorMap.get(rt.userId);
+      return {
+        type: "thought" as const,
+        thought: {
+          id: rt.id,
+          sentence: rt.sentence,
+          photo_url: rt.photoUrl,
+          image_url: rt.imageUrl,
+          created_at: rt.createdAt?.toISOString() ?? new Date().toISOString(),
+          has_context: (rt.context ?? "").trim().length > 0,
+        },
+        user: {
+          id: rt.userId,
+          name: ra?.name ?? null,
+          photo_url: ra?.photoUrl ?? null,
+        },
+      };
+    });
 
     return reply.send({
       panel_1: {
@@ -241,7 +276,8 @@ export async function thoughtRoutes(app: FastifyInstance): Promise<void> {
       panel_3: {
         viewer_is_author: viewerIsAuthor,
         can_reply: !viewerIsAuthor,
-        reply_count: replyCount,
+        reply_count: replyThoughts.length,
+        replies,
       },
       in_response_to: inResponseTo,
     });
