@@ -122,3 +122,14 @@ Three types: `notifyNewReply`, `notifyNewMessage`, `notifyResonanceMilestone`. S
 - **Email normalization:** Lowercased + trimmed before storage/lookup
 - **No test framework:** Validation is via TypeScript type-checking + ESLint only
 - **package-lock.json:** Mobile lock file can conflict frequently; prefer local version on merge
+
+## Skills
+
+- **Motion & Interaction Design:** `.claude/skills/ohm-motion/SKILL.md` — spring physics, gesture handling, animation patterns, copy/content philosophy. Reference when touching any animated or interactive component.
+
+## Code hygiene rules
+
+- No file over 400 lines. Split into modules.
+- Every new feature must remove any code it replaces.
+- No commented-out code in commits.
+- Run unused import/export check before committing.

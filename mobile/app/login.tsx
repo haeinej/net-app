@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,8 +8,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Animated,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  withDelay,
+  Easing,
+} from "react-native-reanimated";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
@@ -60,19 +67,24 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<SocialProvider | null>(null);
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.85)).current;
-  const contentFade = useRef(new Animated.Value(0)).current;
+  const logoOpacity = useSharedValue(0);
+  const logoScale = useSharedValue(0.85);
+  const contentOpacity = useSharedValue(0);
 
   useEffect(() => {
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
-      ]),
-      Animated.timing(contentFade, { toValue: 1, duration: 400, useNativeDriver: true }),
-    ]).start();
-  }, [fadeAnim, scaleAnim, contentFade]);
+    logoOpacity.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) });
+    logoScale.value = withSpring(1, { damping: 12, stiffness: 200, mass: 0.6 });
+    contentOpacity.value = withDelay(500, withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) }));
+  }, []);
+
+  const logoAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: logoOpacity.value,
+    transform: [{ scale: logoScale.value }],
+  }));
+
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+  }));
 
   const completeAuth = async ({
     token,
@@ -195,12 +207,12 @@ export default function LoginScreen() {
     >
       <View style={[styles.content, containerStyle]}>
         <View style={styles.topSection}>
-          <Animated.View style={[styles.logoWrap, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+          <Animated.View style={[styles.logoWrap, logoAnimatedStyle]}>
             <Image source={ohmLogo} style={styles.logoImage} contentFit="contain" />
           </Animated.View>
         </View>
 
-        <Animated.View style={[styles.form, { opacity: contentFade }]}>
+        <Animated.View style={[styles.form, contentAnimatedStyle]}>
           <TextInput
             style={styles.input}
             placeholder="Email"

@@ -11,6 +11,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSpring,
   withDelay,
   runOnJS,
   Easing,
@@ -186,12 +187,13 @@ export function OnboardingWalkthrough({
     const timer = setTimeout(() => {
       measureTarget(STEPS[currentStep]?.targetTestID ?? null);
       cardOpacity.value = withTiming(1, {
-        duration: 260,
+        duration: 250,
         easing: Easing.out(Easing.cubic),
       });
-      cardTranslateY.value = withTiming(0, {
-        duration: 260,
-        easing: Easing.out(Easing.cubic),
+      cardTranslateY.value = withSpring(0, {
+        damping: 20,
+        stiffness: 300,
+        mass: 0.8,
       });
     }, 120);
 

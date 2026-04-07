@@ -1,5 +1,7 @@
-import { StyleSheet, Text, TouchableOpacity, type StyleProp, type ViewStyle } from "react-native";
+import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
+import Animated from "react-native-reanimated";
 import { colors, fontFamily } from "../theme";
+import { usePressAnimation } from "../hooks/usePressAnimation";
 
 type ScreenExitButtonProps = {
   onPress: () => void;
@@ -16,25 +18,32 @@ export function ScreenExitButton({
   style,
   accessibilityLabel = "Close screen",
 }: ScreenExitButtonProps) {
+  const { animatedStyle: pressStyle, onPressIn, onPressOut } = usePressAnimation();
+
   return (
-    <TouchableOpacity
+    <Pressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      activeOpacity={0.8}
       disabled={disabled}
       hitSlop={10}
       onPress={onPress}
-      style={[
-        styles.button,
-        variant === "dark" ? styles.buttonDark : styles.buttonLight,
-        disabled && styles.buttonDisabled,
-        style,
-      ]}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
     >
-      <Text style={[styles.label, variant === "dark" ? styles.labelDark : styles.labelLight]}>
-        X
-      </Text>
-    </TouchableOpacity>
+      <Animated.View
+        style={[
+          styles.button,
+          variant === "dark" ? styles.buttonDark : styles.buttonLight,
+          disabled && styles.buttonDisabled,
+          pressStyle,
+          style,
+        ]}
+      >
+        <Text style={[styles.label, variant === "dark" ? styles.labelDark : styles.labelLight]}>
+          X
+        </Text>
+      </Animated.View>
+    </Pressable>
   );
 }
 
