@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,8 +12,14 @@ import {
   ActivityIndicator,
   Alert,
   Image as NativeImage,
-  Animated,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  Easing,
+} from "react-native-reanimated";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter, type Href } from "expo-router";
@@ -74,17 +80,20 @@ export default function OnboardingScreen() {
   const previewHeight = previewWidth / IMAGE_ASPECT_RATIO;
   const selectedProfilePhoto = photoBase64 ?? photoUri;
 
-  // Smooth fade-in for logo and content
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  // Smooth fade-in for step content
+  const stepOpacity = useSharedValue(0);
+  const stepTranslateY = useSharedValue(20);
   useEffect(() => {
-    fadeAnim.setValue(0);
-    slideAnim.setValue(20);
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
-    ]).start();
-  }, [step, fadeAnim, slideAnim]);
+    stepOpacity.value = 0;
+    stepTranslateY.value = 20;
+    stepOpacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.cubic) });
+    stepTranslateY.value = withSpring(0, { damping: 20, stiffness: 300, mass: 0.8 });
+  }, [step]);
+
+  const stepAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: stepOpacity.value,
+    transform: [{ translateY: stepTranslateY.value }],
+  }));
 
   useEffect(() => {
     let cancelled = false;
@@ -285,10 +294,10 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={[styles.logoHero, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <Animated.View style={[styles.logoHero, stepAnimatedStyle]}>
             <Image source={ohmLogo} style={styles.logoHeroImage} contentFit="contain" />
           </Animated.View>
-          <Animated.Text style={[styles.stepTitle, { opacity: fadeAnim }]}>Profile</Animated.Text>
+          <Animated.Text style={[styles.stepTitle, stepAnimatedStyle]}>Profile</Animated.Text>
           <Text style={styles.stepSubtitle}>
             Add the name and photo people will recognize when they find you on ohm.
           </Text>
@@ -396,10 +405,10 @@ export default function OnboardingScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View style={[styles.logoHero, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <Animated.View style={[styles.logoHero, stepAnimatedStyle]}>
             <Image source={ohmLogo} style={styles.logoHeroImage} contentFit="contain" />
           </Animated.View>
-          <Animated.Text style={[styles.stepTitle, { opacity: fadeAnim }]}>Right now</Animated.Text>
+          <Animated.Text style={[styles.stepTitle, stepAnimatedStyle]}>Right now</Animated.Text>
           <Text style={styles.stepSubtitle}>
             What is alive in your thinking right now. This stays internal.
           </Text>

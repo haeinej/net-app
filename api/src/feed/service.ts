@@ -486,16 +486,18 @@ async function buildFeedSnapshot(
     ? rawCandidates.filter((candidate) => !blockedUserIds.has(candidate.thought.userId))
     : rawCandidates;
 
-  // Exclude thoughts already served to this user in the last 7 days
+  // Exclude thoughts served in the last 3 days — same card shouldn't reappear
+  // for at least 3 days. When not enough fresh candidates exist, fall back to
+  // least-recently-served ordering so users see the stalest cards first.
   await flushPendingFeedServes();
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
   const recentlyServed = await db
-    .select({ thoughtId: feedServes.thoughtId })
+    .select({ thoughtId: feedServes.thoughtId, servedAt: feedServes.servedAt })
     .from(feedServes)
     .where(
       and(
         eq(feedServes.viewerId, userId),
-        gte(feedServes.servedAt, sevenDaysAgo),
+        gte(feedServes.servedAt, threeDaysAgo),
         sql`${feedServes.thoughtId} IS NOT NULL`
       )
     );
@@ -507,14 +509,28 @@ async function buildFeedSnapshot(
   let candidates = afterBlocked;
   if (servedThoughtIds.size > 0) {
     const filtered = afterBlocked.filter((c) => !servedThoughtIds.has(c.thought.id));
-    // Only apply exclusion if enough candidates remain; otherwise re-show
-    // previously served thoughts rather than returning an empty feed.
     if (filtered.length >= targetTotal) {
       candidates = filtered;
-    } else if (filtered.length > 0) {
-      candidates = filtered;
+    } else {
+      // Not enough fresh candidates — include served ones but prefer least-recently-served
+      const servedAtMap = new Map<string, Date>();
+      for (const r of recentlyServed) {
+        if (r.thoughtId && r.servedAt) {
+          const existing = servedAtMap.get(r.thoughtId);
+          if (!existing || r.servedAt > existing) {
+            servedAtMap.set(r.thoughtId, r.servedAt);
+          }
+        }
+      }
+      candidates = [...afterBlocked].sort((a, b) => {
+        const aServed = servedAtMap.get(a.thought.id);
+        const bServed = servedAtMap.get(b.thought.id);
+        if (!aServed && !bServed) return 0;
+        if (!aServed) return -1;  // never served → show first
+        if (!bServed) return 1;
+        return aServed.getTime() - bServed.getTime();  // oldest serve first
+      });
     }
-    // else: keep afterBlocked (all candidates) to avoid empty feed
   }
 
   const layer2Scores = new Map<string, number>();
@@ -603,11 +619,19 @@ async function buildFeedSnapshot(
     .sort((a, b) => b.rankScore - a.rankScore)
     .slice(0, b3Count);
 
-  // Shuffle jitter: add randomness so similarly-scored items get reordered each refresh
-  const SHUFFLE_JITTER = 0.15;
-  const jitter = () => Math.random() * SHUFFLE_JITTER;
+  // Daily shuffle: date-seeded jitter so cards rotate each day but stay stable within a day
+  const dayKey = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+  const stableJitter = (thoughtId: string) => {
+    let hash = 2166136261;
+    const input = `${userId}:${thoughtId}:${dayKey}`;
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return ((hash >>> 0) / 0xffffffff) * 0.15;
+  };
   const mainMerged = [...b1Diverse, ...b2Diverse].sort(
-    (a, b) => (b.rankScore + jitter()) - (a.rankScore + jitter())
+    (a, b) => (b.rankScore + stableJitter(b.thought.id)) - (a.rankScore + stableJitter(a.thought.id))
   );
   const selectedThoughts = intersperseWildcards(mainMerged, b3Sorted);
 

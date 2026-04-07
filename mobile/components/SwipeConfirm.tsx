@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Animated,
   PanResponder,
   StyleSheet,
   Text,
@@ -9,19 +8,25 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  interpolate,
+  interpolateColor,
+  Extrapolation,
+} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { colors, typography } from "../theme";
 
 const CARD_HEIGHT = 52;
-const SEND_THRESHOLD = 0.40; // 40% of container width to trigger send
-const FLYOUT_DURATION = 180;
+const SEND_THRESHOLD = 0.40;
 
 /**
  * Threshold (px) the finger must move before the PanResponder claims the
  * gesture. Keeping this *higher* than the parent Gesture.Pan's activeOffsetX
- * (12 px) avoids stealing the parent's panel-navigation swipe.  The user has
- * to start a deliberate horizontal drag on the SwipeConfirm card itself for
- * the send gesture to engage.
+ * (12 px) avoids stealing the parent's panel-navigation swipe.
  */
 const CLAIM_THRESHOLD = 16;
 
@@ -33,7 +38,6 @@ interface SwipeConfirmProps {
   loading?: boolean;
   onComplete: () => void | Promise<void>;
   style?: StyleProp<ViewStyle>;
-  /** When true, text colors adapt for a dark background (Panel 3). */
   darkSurface?: boolean;
 }
 
@@ -47,43 +51,31 @@ export function SwipeConfirm({
   style,
   darkSurface = false,
 }: SwipeConfirmProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
+  const translateX = useSharedValue(0);
+  const cardOpacity = useSharedValue(1);
   const [containerWidth, setContainerWidth] = useState(0);
   const [completing, setCompleting] = useState(false);
   const hasFiredHaptic = useRef(false);
 
   useEffect(() => {
     if (disabled) {
-      translateX.setValue(0);
-      opacity.setValue(1);
+      translateX.value = 0;
+      cardOpacity.value = 1;
     }
-  }, [disabled, translateX, opacity]);
+  }, [disabled]);
 
   const resetCard = () => {
     hasFiredHaptic.current = false;
-    Animated.spring(translateX, {
-      toValue: 0,
-      useNativeDriver: true,
-      damping: 20,
-      stiffness: 260,
-      mass: 0.7,
-    }).start();
+    translateX.value = withSpring(0, { damping: 20, stiffness: 260, mass: 0.7 });
   };
 
   const flyOut = (cb: () => void) => {
-    Animated.parallel([
-      Animated.timing(translateX, {
-        toValue: containerWidth * 1.2,
-        duration: FLYOUT_DURATION,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: FLYOUT_DURATION,
-        useNativeDriver: true,
-      }),
-    ]).start(cb);
+    translateX.value = withSpring(containerWidth * 1.2, {
+      damping: 20, stiffness: 300, mass: 0.8,
+      velocity: 800,
+    });
+    cardOpacity.value = withTiming(0, { duration: 180 });
+    setTimeout(cb, 200);
   };
 
   const panResponder = useMemo(
@@ -91,12 +83,9 @@ export function SwipeConfirm({
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_, gs) => {
-          // Only claim rightward drags that exceed our threshold and are
-          // primarily horizontal (prevent stealing vertical scroll).
           if (disabled || loading || completing) return false;
           return gs.dx > CLAIM_THRESHOLD && Math.abs(gs.dy) < gs.dx * 0.5;
         },
-        // Prevent the parent RNGH Gesture.Pan from reclaiming mid-drag.
         onMoveShouldSetPanResponderCapture: () => false,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
@@ -105,14 +94,12 @@ export function SwipeConfirm({
         onPanResponderMove: (_, gs) => {
           const dx = gs.dx;
           if (dx >= 0) {
-            translateX.setValue(dx);
+            translateX.value = dx;
           } else {
-            // Rubber-band leftward
             const resist = 12 * (1 - Math.exp((-0.25 * Math.abs(dx)) / 12));
-            translateX.setValue(-resist);
+            translateX.value = -resist;
           }
 
-          // Haptic when crossing threshold
           if (containerWidth > 0 && dx >= containerWidth * SEND_THRESHOLD && !hasFiredHaptic.current) {
             hasFiredHaptic.current = true;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -137,8 +124,8 @@ export function SwipeConfirm({
                 await onComplete();
               } finally {
                 setCompleting(false);
-                translateX.setValue(0);
-                opacity.setValue(1);
+                translateX.value = 0;
+                cardOpacity.value = 1;
                 hasFiredHaptic.current = false;
               }
             });
@@ -148,7 +135,7 @@ export function SwipeConfirm({
         },
         onPanResponderTerminate: () => resetCard(),
       }),
-    [completing, disabled, loading, containerWidth, onComplete, translateX, opacity]
+    [completing, disabled, loading, containerWidth, onComplete]
   );
 
   const handleLayout = (e: LayoutChangeEvent) => {
@@ -156,43 +143,48 @@ export function SwipeConfirm({
   };
 
   const inFlight = loading || completing;
+  const thresholdPx = containerWidth * SEND_THRESHOLD || 1;
 
-  // Progress-based background tint
-  const bgInterpolation = translateX.interpolate({
-    inputRange: [0, containerWidth * SEND_THRESHOLD || 1],
-    outputRange: darkSurface
-      ? ["rgba(235, 65, 1, 0.10)", "rgba(235, 65, 1, 0.28)"]
-      : ["rgba(235, 65, 1, 0.06)", "rgba(235, 65, 1, 0.18)"],
-    extrapolate: "clamp",
-  });
+  const cardAnimatedStyle = useAnimatedStyle(() => {
+    const rotation = interpolate(
+      translateX.value,
+      [0, containerWidth || 1],
+      [0, 4],
+      Extrapolation.CLAMP
+    );
 
-  // Slight rotation as card moves
-  const rotate = translateX.interpolate({
-    inputRange: [0, containerWidth || 1],
-    outputRange: ["0deg", "4deg"],
-    extrapolate: "clamp",
+    const bgColor = interpolateColor(
+      translateX.value,
+      [0, thresholdPx],
+      darkSurface
+        ? ["rgba(235, 65, 1, 0.10)", "rgba(235, 65, 1, 0.28)"]
+        : ["rgba(235, 65, 1, 0.06)", "rgba(235, 65, 1, 0.18)"]
+    );
+
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { rotate: `${rotation}deg` },
+      ],
+      opacity: cardOpacity.value,
+      backgroundColor: bgColor,
+    };
   });
 
   return (
     <View style={[styles.wrapper, style]} onLayout={handleLayout}>
-      {/* Reveal layer behind the card */}
       <View style={styles.revealLayer}>
         <Text style={styles.revealText}>
           {inFlight ? "sending..." : "→ send"}
         </Text>
       </View>
 
-      {/* Swipeable card */}
       <Animated.View
         style={[
           styles.card,
           darkSurface && styles.cardDark,
           disabled && styles.cardDisabled,
-          {
-            transform: [{ translateX }, { rotate }],
-            opacity,
-            backgroundColor: bgInterpolation,
-          },
+          cardAnimatedStyle,
         ]}
         {...panResponder.panHandlers}
       >
@@ -232,8 +224,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
-
-  // Reveal layer sits behind the card
   revealLayer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(235, 65, 1, 0.14)",
@@ -248,8 +238,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: colors.VERMILLION,
   },
-
-  // The draggable card
   card: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 14,

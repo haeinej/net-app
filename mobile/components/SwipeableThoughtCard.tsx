@@ -149,19 +149,20 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
   const jsRecordSwipeP3 = useCallback(() => { recordSwipeP3Ref.current(); }, []);
 
   const snapTo = useCallback(
-    (target: number, from: number) => {
+    (target: number, from: number, velocityX = 0) => {
       "worklet";
 
-      // Spring-based snap for organic feel
+      // Spring-based snap with gesture velocity carryover
+      const springWithV = { ...SNAP_SPRING, velocity: velocityX };
       if (target >= 1) {
-        panel2X.value = withSpring(0, SNAP_SPRING);
+        panel2X.value = withSpring(0, springWithV);
       } else {
-        panel2X.value = withSpring(cardWidth, SNAP_SPRING);
+        panel2X.value = withSpring(cardWidth, springWithV);
       }
       if (target >= 2) {
-        panel3X.value = withSpring(0, SNAP_SPRING);
+        panel3X.value = withSpring(0, springWithV);
       } else {
-        panel3X.value = withSpring(cardWidth, SNAP_SPRING);
+        panel3X.value = withSpring(cardWidth, springWithV);
       }
       // Animate indicator smoothly
       indicatorProgress.value = withSpring(target, { damping: 20, stiffness: 200 });
@@ -264,35 +265,33 @@ export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, v
 
       if (ci === 0) {
         if (e.translationX > 0) {
-          // Rubber-band release — snap back
-          snapTo(0, 0);
+          snapTo(0, 0, vx);
         } else if (panel2X.value < cardWidth - threshold || vx < -flickVelocity) {
-          snapTo(1, 0);
+          snapTo(1, 0, vx);
         } else {
-          snapTo(0, 0);
+          snapTo(0, 0, vx);
         }
       } else if (ci === 1) {
         if (e.translationX < 0) {
           if (panel3X.value < cardWidth - threshold || vx < -flickVelocity) {
-            snapTo(2, 1);
+            snapTo(2, 1, vx);
           } else {
-            snapTo(1, 1);
+            snapTo(1, 1, vx);
           }
         } else {
           if (panel2X.value > threshold || vx > flickVelocity) {
-            snapTo(0, 1);
+            snapTo(0, 1, vx);
           } else {
-            snapTo(1, 1);
+            snapTo(1, 1, vx);
           }
         }
       } else if (ci === 2) {
         if (e.translationX < 0) {
-          // Rubber-band release — snap back
-          snapTo(2, 2);
+          snapTo(2, 2, vx);
         } else if (panel3X.value > threshold || vx > flickVelocity) {
-          snapTo(1, 2);
+          snapTo(1, 2, vx);
         } else {
-          snapTo(2, 2);
+          snapTo(2, 2, vx);
         }
       }
     });
