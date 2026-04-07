@@ -44,7 +44,6 @@ interface SwipeableThoughtCardProps {
   isOwn?: boolean;
   onDelete?: (thoughtId: string) => void;
   onEdit?: (thoughtId: string) => void;
-  onReplySent?: (thoughtId: string) => void;
 }
 
 export const SwipeableThoughtCard = memo(function SwipeableThoughtCard({ item, visible = false, isOwn = false, onDelete, onEdit }: SwipeableThoughtCardProps) {

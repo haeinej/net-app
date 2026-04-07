@@ -600,11 +600,6 @@ export interface RegisterResponse {
   verification_email: string;
 }
 
-export interface RegisterResponse {
-  verification_required: true;
-  verification_email: string;
-}
-
 export interface AuthResponse {
   token: string;
   user_id: string;

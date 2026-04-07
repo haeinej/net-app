@@ -32,11 +32,6 @@ export async function getOnboardingDeferred(): Promise<boolean> {
   return v === "true";
 }
 
-export async function getShouldShowIntro(): Promise<boolean> {
-  const v = await SecureStore.getItemAsync(KEY_SHOW_INTRO);
-  return v !== "false";
-}
-
 export async function setAuth(token: string, userId: string): Promise<void> {
   await SecureStore.setItemAsync(KEY_TOKEN, token);
   await SecureStore.setItemAsync(KEY_USER_ID, userId);

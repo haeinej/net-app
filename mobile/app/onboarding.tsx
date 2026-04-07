@@ -45,7 +45,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const [step, setStepState] = useState<1 | 2 | 3>(1);
+  const [step, setStepState] = useState<1 | 2 | 3 | null>(null);
 
   // Step 1
   const [name, setName] = useState("");
@@ -107,6 +107,8 @@ export default function OnboardingScreen() {
       }
       if (storedUserId && savedStep === 2) {
         setStepState(2);
+      } else {
+        setStepState(1);
       }
     })();
     return () => {
@@ -250,21 +252,21 @@ export default function OnboardingScreen() {
   const onboardingBusy = uploadingPhoto || sendingStep1 || sendingStep2 || posting;
 
   const handleExit = useCallback(async () => {
-    if (onboardingBusy) return;
-
-    if (step === 1) {
-      await setOnboardingDeferred(true);
-      await setOnboardingComplete(false);
-      await setOnboardingStep(1);
-      router.replace("/(tabs)");
-      return;
-    }
+    if (onboardingBusy || step === null || step === 1) return;
 
     await setOnboardingDeferred(true);
     await setOnboardingComplete(false);
     await setOnboardingStep(step);
     router.replace("/(tabs)");
   }, [onboardingBusy, router, step]);
+
+  if (step === null) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color={colors.TYPE_MUTED} />
+      </View>
+    );
+  }
 
   if (step === 1) {
     return (
@@ -273,9 +275,7 @@ export default function OnboardingScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={0}
       >
-        <View style={styles.topBar}>
-          <ScreenExitButton onPress={handleExit} disabled={onboardingBusy} />
-        </View>
+        <View style={styles.topBar} />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={[
