@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import Animated, { FadeIn, FadeOut, SlideInUp, SlideOutUp } from "react-native-reanimated";
 import {
   View,
   Text,
@@ -170,7 +171,7 @@ export default function WorldsScreen() {
 
       const p = (async () => {
         try {
-          const page = await fetchFeed(PAGE_SIZE, null, anchor);
+          const page = await fetchFeed(PAGE_SIZE, null, anchor, isRefresh);
           setFeed(page.items.slice(0, PAGE_SIZE));
         } catch (e) {
           setError(e instanceof Error ? e.message : "Something went wrong");
@@ -218,10 +219,11 @@ export default function WorldsScreen() {
 
   const renderItem = useCallback(
     ({ item, index }: { item: FeedItem; index: number }) => (
-      <View
+      <Animated.View
         ref={index === 0 ? feedCardRef : undefined}
         collapsable={false}
         style={[styles.cardWrap, containerStyle]}
+        entering={FadeIn.delay(index * 60).duration(300).springify().damping(18)}
       >
         <CardDeck>
           {item.type === "thought" ? (
@@ -234,7 +236,7 @@ export default function WorldsScreen() {
             />
           ) : null}
         </CardDeck>
-      </View>
+      </Animated.View>
     ),
     [containerStyle, myUserId, handleFeedDelete, handleFeedEdit]
   );
@@ -267,11 +269,16 @@ export default function WorldsScreen() {
         onNotificationPress={toggleNotifications}
       />
       {notificationPanelOpen && (
-        <NotificationPanel
-          items={notifications}
-          loading={false}
-          onDismiss={() => setNotificationPanelOpen(false)}
-        />
+        <Animated.View
+          entering={SlideInUp.duration(250).springify().damping(20).stiffness(300)}
+          exiting={SlideOutUp.duration(150)}
+        >
+          <NotificationPanel
+            items={notifications}
+            loading={false}
+            onDismiss={() => setNotificationPanelOpen(false)}
+          />
+        </Animated.View>
       )}
       {loading && feed.length === 0 ? (
         <View style={styles.centered}>

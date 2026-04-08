@@ -348,13 +348,17 @@ async function getAuthToken(): Promise<string | null> {
 export async function fetchFeed(
   limit: number,
   cursor?: string | null,
-  anchor?: string | null
+  anchor?: string | null,
+  refresh?: boolean
 ): Promise<FeedPageResponse> {
   let query = cursor
     ? `/api/feed?limit=${limit}&cursor=${encodeURIComponent(cursor)}`
     : `/api/feed?limit=${limit}`;
   if (anchor) {
     query += `&anchor=${encodeURIComponent(anchor)}`;
+  }
+  if (refresh) {
+    query += "&refresh=true";
   }
   const data = await requestJson<unknown>(query, "Feed failed", { auth: true });
   return normalizeFeedPageResponse(data);

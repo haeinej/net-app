@@ -86,9 +86,9 @@ export const feedConfig: FeedRuntimeConfig = {
   thoughtActiveDays: 180,
   thoughtSleepTransitionDays: 30,
   defaultWeights: {
-    qWeight: 0.50,
-    dWeight: 0.30,
-    fWeight: 0.0,
+    qWeight: 0.47,
+    dWeight: 0.28,
+    fWeight: 0.07,
     rWeight: 0.18,
     alpha: 0.3,
   },
@@ -96,7 +96,7 @@ export const feedConfig: FeedRuntimeConfig = {
   windowSize: 10,
   cohortDemotePositions: 5,
   concentrationDemotePositions: 3,
-  cacheTtlSeconds: 86400,
+  cacheTtlSeconds: 21600,
 };
 
 function mergeBucketRatios(
