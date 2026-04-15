@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "ohm.",
+    "slug": "ohm-app",
+    "version": "2.0",
+    "description": "Share one thought at a time and let it open private conversations.",
+    "scheme": "ohm",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "icon": "./assets/images/ohm-app-icon.png",
+    "splash": {
+      "backgroundColor": "#F5F0EA"
+    },
+    "plugins": [
+      "expo-apple-authentication",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "sounds": []
+        }
+      ],
+      "expo-router",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow ohm. to access your contacts to find friends."
+        }
+      ],
+      ["@react-native-google-signin/google-signin", {
+          "iosUrlScheme": "com.googleusercontent.apps.914487858160-2rd1dgea944rn260mrjc38ac3dvpc0rd"
+        }],
+      "expo-web-browser"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "usesAppleSignIn": true,
+      "bundleIdentifier": "com.ohmmmm.app",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSFaceIDUsageDescription": "Allow ohm to access your Face ID biometric data.",
+        "NSPhotoLibraryUsageDescription": "Allow ohm. to access your photos so you can choose a profile or thought image.",
+        "NSContactsUsageDescription": "Allow ohm. to access your contacts to find friends.",
+        "NSSpeechRecognitionUsageDescription": "Allow ohm. to transcribe your voice into thoughts.",
+        "NSMicrophoneUsageDescription": "Allow ohm. to use your microphone for voice-to-text.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.ohmmmm.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/ohm-app-icon.png",
+        "backgroundColor": "#F5F0EA"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8954382e-1e4f-4137-8714-9890844f9dcd"
+      }
+    },
+    "owner": "haeinej"
+  }
+}
