@@ -1,7 +1,9 @@
 import { View, StyleSheet, useWindowDimensions } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import { GridCard } from "./GridCard";
 import { AnimatedPressable } from "../ui/AnimatedPressable";
+import { motion } from "../../theme";
 
 export interface GridItem {
   id: string;
@@ -53,7 +55,11 @@ export function PuzzleGrid({
           ]}
         >
           {column.map((item, itemIndex) => (
-            <AnimatedPressable key={item.id} style={{ marginBottom: gap }} onPress={() => handlePress(item.id)} activeScale={0.96}>
+            <Animated.View
+              key={item.id}
+              entering={FadeIn.delay((colIndex * column.length + itemIndex) * motion.staggerDelay).duration(250).springify().damping(18)}
+            >
+            <AnimatedPressable style={{ marginBottom: gap }} onPress={() => handlePress(item.id)} activeScale={0.96}>
               <GridCard
                 sentence={item.sentence}
                 keywords={item.keywords}
@@ -65,6 +71,7 @@ export function PuzzleGrid({
                 index={colIndex * 10 + itemIndex}
               />
             </AnimatedPressable>
+            </Animated.View>
           ))}
         </View>
       ))}

@@ -156,16 +156,15 @@ export default function MeScreen() {
               </View>
             ) : (
               <View style={styles.gridContainer}>
-                <View style={styles.gridColumn}>
-                  {thoughts.filter((_, i) => i % 2 === 0).map((t) => (
-                    <View key={t.id} style={{ marginBottom: 6 }}><ProfileGridCard thought={t} /></View>
-                  ))}
-                </View>
-                <View style={styles.gridColumn}>
-                  {thoughts.filter((_, i) => i % 2 === 1).map((t) => (
-                    <View key={t.id} style={{ marginBottom: 6 }}><ProfileGridCard thought={t} /></View>
-                  ))}
-                </View>
+                {[0, 1, 2].map((col) => (
+                  <View key={col} style={styles.gridColumn}>
+                    {thoughts.filter((_, i) => i % 3 === col).map((t) => (
+                      <AnimatedPressable key={t.id} style={{ marginBottom: 3 }} onPress={() => router.push(`/thought/${t.id}`)} activeScale={0.96}>
+                        <ProfileGridCard thought={t} />
+                      </AnimatedPressable>
+                    ))}
+                  </View>
+                ))}
               </View>
             )
           ) : (
@@ -175,20 +174,15 @@ export default function MeScreen() {
               </View>
             ) : (
               <View style={styles.gridContainer}>
-                <View style={styles.gridColumn}>
-                  {savedCards.filter((_, i) => i % 2 === 0).map((item) => (
-                    <View key={item.thought.id} style={{ marginBottom: 6 }}>
-                      <ProfileGridCard thought={{ id: item.thought.id, sentence: item.thought.sentence, photo_url: item.thought.photo_url, image_url: item.thought.image_url, created_at: item.thought.created_at }} />
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.gridColumn}>
-                  {savedCards.filter((_, i) => i % 2 === 1).map((item) => (
-                    <View key={item.thought.id} style={{ marginBottom: 6 }}>
-                      <ProfileGridCard thought={{ id: item.thought.id, sentence: item.thought.sentence, photo_url: item.thought.photo_url, image_url: item.thought.image_url, created_at: item.thought.created_at }} />
-                    </View>
-                  ))}
-                </View>
+                {[0, 1, 2].map((col) => (
+                  <View key={col} style={styles.gridColumn}>
+                    {savedCards.filter((_, i) => i % 3 === col).map((item) => (
+                      <AnimatedPressable key={item.thought.id} style={{ marginBottom: 3 }} onPress={() => router.push(`/thought/${item.thought.id}`)} activeScale={0.96}>
+                        <ProfileGridCard thought={{ id: item.thought.id, sentence: item.thought.sentence, photo_url: item.thought.photo_url, image_url: item.thought.image_url, created_at: item.thought.created_at }} />
+                      </AnimatedPressable>
+                    ))}
+                  </View>
+                ))}
               </View>
             )
           )}
@@ -222,7 +216,7 @@ const styles = StyleSheet.create({
   tabTextInactive: { fontSize: 12, fontWeight: "500", color: colors.TYPE_MUTED },
   tabCount: { fontSize: 10, color: colors.TYPE_MUTED },
   tabLine: { height: 1, backgroundColor: colors.SURFACE },
-  gridContainer: { flexDirection: "row", paddingHorizontal: 8, gap: 6, paddingTop: 4 },
+  gridContainer: { flexDirection: "row", paddingHorizontal: 8, gap: 3, paddingTop: 4 },
   gridColumn: { flex: 1 },
   gc: { overflow: "hidden", position: "relative" },
   gcText: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, padding: 12 },

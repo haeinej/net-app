@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
+import Animated, { FadeInUp } from "react-native-reanimated";
 import { colors, shared, typography, computeCardFontSize } from "../../theme";
 import { useCardDeckStore } from "../../hooks/stores/cardDeckStore";
 import { SkeletonCard, SkeletonGrid } from "../../components/ui/Skeleton";
@@ -52,9 +53,12 @@ function ExploreCard({ card, onNext }: { card: any; onNext: () => void }) {
   const fontSize = computeCardFontSize(card.sentence.length);
 
   return (
-    <View style={[styles.immersiveCard, {
-      backgroundColor: isPhoto ? "#0A0A0A" : card.background === "black" ? "#0A0A0A" : "#FFFFFF",
-    }]}>
+    <Animated.View
+      entering={FadeInUp.duration(250).springify().damping(20)}
+      style={[styles.immersiveCard, {
+        backgroundColor: isPhoto ? "#0A0A0A" : card.background === "black" ? "#0A0A0A" : "#FFFFFF",
+      }]}
+    >
       {isPhoto && card.background.photo && (
         <>
           <Image source={{ uri: card.background.photo }} style={StyleSheet.absoluteFill} contentFit="cover" />
@@ -88,7 +92,7 @@ function ExploreCard({ card, onNext }: { card: any; onNext: () => void }) {
           </Pressable>
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 

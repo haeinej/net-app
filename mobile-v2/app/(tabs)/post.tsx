@@ -3,6 +3,7 @@ import { View, Text, TextInput, StyleSheet, Alert, Platform, Keyboard, Touchable
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
+import Svg, { Path } from "react-native-svg";
 import { colors, shared } from "../../theme";
 import { PillButton } from "../../components/ui/PillButton";
 import { AnimatedPressable } from "../../components/ui/AnimatedPressable";
@@ -82,15 +83,27 @@ export default function CreateScreen() {
 
       {/* Bottom toolbar */}
       <View style={styles.toolbar}>
-        <View style={styles.bgPicker}>
-          <AnimatedPressable
-            style={[styles.bgCircle, styles.bgWhite, bg === "white" && styles.bgSelected]}
-            onPress={() => setBg("white")}
-          />
-          <AnimatedPressable
-            style={[styles.bgCircle, styles.bgBlack, bg === "black" && styles.bgSelected]}
-            onPress={() => setBg("black")}
-          />
+        <View style={styles.toolRow}>
+          <AnimatedPressable style={styles.toolBtn}>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z" stroke={colors.TYPE_MUTED} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </AnimatedPressable>
+          <AnimatedPressable style={styles.toolBtn}>
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+              <Path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" stroke={colors.TYPE_MUTED} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </AnimatedPressable>
+          <View style={styles.bgPicker}>
+            <AnimatedPressable
+              style={[styles.bgCircle, styles.bgWhite, bg === "white" && styles.bgSelected]}
+              onPress={() => setBg("white")}
+            />
+            <AnimatedPressable
+              style={[styles.bgCircle, styles.bgBlack, bg === "black" && styles.bgSelected]}
+              onPress={() => setBg("black")}
+            />
+          </View>
         </View>
         <PillButton
           label={posting ? "Posting..." : "Post"}
@@ -115,7 +128,9 @@ const styles = StyleSheet.create({
   charCount: { fontSize: 10, color: colors.TYPE_MUTED, textAlign: "right", marginTop: 4 },
   divider: { height: 1, backgroundColor: colors.SURFACE, marginTop: 16, marginBottom: 14 },
   toolbar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 12, paddingBottom: 24 },
-  bgPicker: { flexDirection: "row", gap: 6 },
+  toolRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  toolBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.SURFACE, alignItems: "center", justifyContent: "center" },
+  bgPicker: { flexDirection: "row", gap: 6, marginLeft: 6 },
   bgCircle: { width: 22, height: 22, borderRadius: 11 },
   bgWhite: { backgroundColor: "#FFFFFF" },
   bgBlack: { backgroundColor: "#0A0A0A", borderWidth: 1, borderColor: colors.TYPE_MUTED },

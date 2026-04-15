@@ -50,6 +50,7 @@ export function CardGestures({
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(1);
   const cardOpacity = useSharedValue(1);
+  const saveFlash = useSharedValue(0);
 
   // Hermes-safe stable refs for runOnJS
   const swipeRightRef = useRef(onSwipeRight);
@@ -105,6 +106,11 @@ export function CardGestures({
         e.translationX < -SWIPE_THRESHOLD || (e.translationX < 0 && e.velocityX < -VELOCITY_THRESHOLD);
 
       if (shouldSwipeRight) {
+        // Vermillion save flash on right edge (400ms)
+        saveFlash.value = withSequence(
+          withTiming(1, { duration: 100 }),
+          withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) })
+        );
         // Exit with momentum carry — the card continues its velocity
         translateX.value = withSpring(SCREEN_WIDTH * 1.3, {
           ...SPRING_SNAPPY,
@@ -161,10 +167,16 @@ export function CardGestures({
     };
   });
 
+  const flashStyle = useAnimatedStyle(() => ({
+    opacity: saveFlash.value,
+  }));
+
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={[styles.container, animatedStyle]}>
         {children}
+        {/* Vermillion save flash on right edge */}
+        <Animated.View style={[styles.saveFlash, flashStyle]} pointerEvents="none" />
       </Animated.View>
     </GestureDetector>
   );
@@ -173,5 +185,14 @@ export function CardGestures({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  saveFlash: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: "#EB4101",
+    borderRadius: 2,
   },
 });
