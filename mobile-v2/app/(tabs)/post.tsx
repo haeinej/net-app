@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { View, Text, TextInput, StyleSheet, Pressable, Alert, Platform, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView } from "react-native";
+import { View, Text, TextInput, StyleSheet, Alert, Platform, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { colors, shared } from "../../theme";
 import { PillButton } from "../../components/ui/PillButton";
+import { AnimatedPressable } from "../../components/ui/AnimatedPressable";
 import { createThought } from "../../lib/api";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -82,11 +83,11 @@ export default function CreateScreen() {
       {/* Bottom toolbar */}
       <View style={styles.toolbar}>
         <View style={styles.bgPicker}>
-          <Pressable
+          <AnimatedPressable
             style={[styles.bgCircle, styles.bgWhite, bg === "white" && styles.bgSelected]}
             onPress={() => setBg("white")}
           />
-          <Pressable
+          <AnimatedPressable
             style={[styles.bgCircle, styles.bgBlack, bg === "black" && styles.bgSelected]}
             onPress={() => setBg("black")}
           />

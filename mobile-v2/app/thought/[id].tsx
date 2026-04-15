@@ -198,7 +198,7 @@ export default function ThoughtDetailScreen() {
             multiline
           />
           <PillButton
-            label="Send"
+            label={sending ? "Sending..." : "Send"}
             onPress={handleReply}
             variant="vermillion"
             disabled={!replyText.trim() || sending}

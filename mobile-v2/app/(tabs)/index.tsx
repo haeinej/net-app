@@ -19,6 +19,7 @@ import { TopBar } from "../../components/ui/TopBar";
 import { PuzzleGrid } from "../../components/feed/PuzzleGrid";
 import { CardGestures } from "../../components/card/CardGestures";
 import { ContextOverlay } from "../../components/card/ContextOverlay";
+import { AnimatedPressable } from "../../components/ui/AnimatedPressable";
 import * as api from "../../lib/api";
 import { formatRelativeTime } from "../../lib/format";
 
@@ -140,6 +141,7 @@ export default function ExploreScreen() {
   const router = useRouter();
 
   const [contextVisible, setContextVisible] = useState(false);
+  const [contextText, setContextText] = useState("");
 
   // Connect to the real store (cache + API)
   const { cards, loading, initialized, init, like, dismiss } = useCardDeckStore();
@@ -160,8 +162,14 @@ export default function ExploreScreen() {
   }, [like]);
 
   const handleLongPress = useCallback(() => {
+    if (!currentCard?.id) return;
+    setContextText("");
     setContextVisible(true);
-  }, []);
+    // Fetch full context from API (not in feed cache)
+    api.fetchThought(currentCard.id).then((detail) => {
+      setContextText(detail.panel_2.context);
+    }).catch(() => {});
+  }, [currentCard]);
 
   const handleSwipeUp = useCallback(() => {
     if (currentCard?.id) {
@@ -176,12 +184,12 @@ export default function ExploreScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <TopBar hasNotification={false} />
         <View style={styles.segmentBar}>
-          <Pressable onPress={() => setSegment("explore")}>
+          <AnimatedPressable onPress={() => setSegment("explore")}>
             <Text style={styles.segmentText}>Explore</Text>
-          </Pressable>
-          <Pressable onPress={() => setSegment("friends")}>
+          </AnimatedPressable>
+          <AnimatedPressable onPress={() => setSegment("friends")}>
             <Text style={[styles.segmentText, styles.segmentActive]}>Friends</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
         {friendsFeed.loading ? (
           <SkeletonGrid count={6} />
@@ -233,12 +241,12 @@ export default function ExploreScreen() {
       <View style={[styles.floatingUI, { paddingTop: insets.top }]} pointerEvents="box-none">
         <TopBar hasNotification={true} />
         <View style={styles.segmentBar}>
-          <Pressable onPress={() => setSegment("explore")}>
+          <AnimatedPressable onPress={() => setSegment("explore")}>
             <Text style={[styles.segmentText, styles.segmentActiveLight]}>Explore</Text>
-          </Pressable>
-          <Pressable onPress={() => setSegment("friends")}>
+          </AnimatedPressable>
+          <AnimatedPressable onPress={() => setSegment("friends")}>
             <Text style={[styles.segmentText, { color: "rgba(255,255,255,0.3)" }]}>Friends</Text>
-          </Pressable>
+          </AnimatedPressable>
         </View>
       </View>
 
@@ -246,15 +254,19 @@ export default function ExploreScreen() {
       {currentCard && (
         <ContextOverlay
           visible={contextVisible}
+          thoughtId={currentCard.id}
           sentence={currentCard.sentence ?? ""}
-          context={currentCard.context ?? ""}
+          context={contextText}
+          authorId={currentCard.authorId ?? ""}
           authorName={currentCard.authorName ?? ""}
           authorPhotoUrl={currentCard.authorPhotoUrl}
           timeAgo={currentCard.createdAt ? formatRelativeTime(currentCard.createdAt) : ""}
           onClose={() => setContextVisible(false)}
-          onSync={() => {
+          onSync={(replyText) => {
             setContextVisible(false);
-            if (currentCard.id) router.push(`/thought/${currentCard.id}`);
+            if (currentCard.authorId) {
+              api.sendFriendRequest(currentCard.authorId, currentCard.id, replyText || undefined).catch(() => {});
+            }
           }}
         />
       )}

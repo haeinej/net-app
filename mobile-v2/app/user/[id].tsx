@@ -36,8 +36,14 @@ export default function UserProfileScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const data = await api.fetchProfile(id);
+      const [data, friends] = await Promise.all([
+        api.fetchProfile(id),
+        api.fetchFriends(),
+      ]);
       setProfile(data);
+      if (friends.some((f) => f.id === id)) {
+        setFriendStatus("friends");
+      }
     } catch {
       // silent
     } finally {
@@ -117,7 +123,7 @@ export default function UserProfileScreen() {
           <View style={styles.actionRow}>
             {friendStatus === "none" && (
               <PillButton
-                label="Add Friend"
+                label={sendingRequest ? "Sending..." : "Add Friend"}
                 onPress={handleAddFriend}
                 variant="filled"
                 disabled={sendingRequest}
@@ -174,7 +180,7 @@ const styles = StyleSheet.create({
 
   // Profile
   profileHeader: { alignItems: "center", paddingVertical: 24 },
-  avatar: { width: 72, height: 72, borderRadius: 36, marginBottom: 12 },
+  avatar: { width: 64, height: 64, borderRadius: 32, marginBottom: 12 },
   name: {
     fontSize: 20,
     fontWeight: "700",

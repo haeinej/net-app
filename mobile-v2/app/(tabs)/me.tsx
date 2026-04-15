@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
+import { AnimatedPressable } from "../../components/ui/AnimatedPressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
@@ -92,16 +93,16 @@ export default function MeScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Top bar: share + hamburger */}
       <View style={styles.topBar}>
-        <Pressable hitSlop={12}>
+        <AnimatedPressable hitSlop={12}>
           <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
             <Path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke={colors.TYPE_MUTED} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
           </Svg>
-        </Pressable>
-        <Pressable style={styles.menuBtn} hitSlop={12} onPress={() => router.push("/settings")}>
+        </AnimatedPressable>
+        <AnimatedPressable style={styles.menuBtn} hitSlop={12} onPress={() => router.push("/settings")}>
           <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
             <Path d="M4 6h16M4 12h16M4 18h16" stroke={colors.TYPE_MUTED} strokeWidth={1.5} strokeLinecap="round" />
           </Svg>
-        </Pressable>
+        </AnimatedPressable>
       </View>
 
       {loading ? (
@@ -127,23 +128,23 @@ export default function MeScreen() {
 
           <View style={{ height: 18 }} />
           <View style={styles.editRow}>
-            <Pressable style={styles.editBtn} onPress={() => router.push("/edit-profile")}>
+            <AnimatedPressable style={styles.editBtn} onPress={() => router.push("/edit-profile")}>
               <Text style={styles.editBtnText}>Edit Profile</Text>
-            </Pressable>
+            </AnimatedPressable>
           </View>
 
           <View style={{ height: 22 }} />
 
           {/* Tabs 50/50 */}
           <View style={styles.tabs}>
-            <Pressable style={[styles.tab, tab === "profile" && styles.tabActive]} onPress={() => setTab("profile")}>
+            <AnimatedPressable style={[styles.tab, tab === "profile" && styles.tabActive]} onPress={() => setTab("profile")}>
               <Text style={tab === "profile" ? styles.tabTextActive : styles.tabTextInactive}>
                 Profile <Text style={styles.tabCount}>{thoughts.length}</Text>
               </Text>
-            </Pressable>
-            <Pressable style={[styles.tab, tab === "collections" && styles.tabActive]} onPress={() => setTab("collections")}>
+            </AnimatedPressable>
+            <AnimatedPressable style={[styles.tab, tab === "collections" && styles.tabActive]} onPress={() => setTab("collections")}>
               <Text style={tab === "collections" ? styles.tabTextActive : styles.tabTextInactive}>Collections</Text>
-            </Pressable>
+            </AnimatedPressable>
           </View>
           <View style={styles.tabLine} />
 
