@@ -12,7 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import { colors, shared, typography, computeCardFontSize, computeGridFontSize } from "../../theme";
+import { colors, shared, typography, computeCardFontSize } from "../../theme";
 import { useCardDeckStore } from "../../hooks/stores/cardDeckStore";
 import { SkeletonCard, SkeletonGrid } from "../../components/ui/Skeleton";
 import { TopBar } from "../../components/ui/TopBar";
@@ -20,6 +20,7 @@ import { PuzzleGrid } from "../../components/feed/PuzzleGrid";
 import { CardGestures } from "../../components/card/CardGestures";
 import { ContextOverlay } from "../../components/card/ContextOverlay";
 import { AnimatedPressable } from "../../components/ui/AnimatedPressable";
+import { useEngagementTracking } from "../../hooks/useEngagementTracking";
 import * as api from "../../lib/api";
 import { formatRelativeTime } from "../../lib/format";
 
@@ -153,13 +154,21 @@ export default function ExploreScreen() {
 
   const currentCard = cards[0];
 
+  // Track engagement events
+  const { recordSwipeP2, recordSwipeP3 } = useEngagementTracking({
+    thoughtId: currentCard?.id ?? "",
+    visible: !!currentCard && segment === "explore",
+  });
+
   const handleNext = useCallback(() => {
+    recordSwipeP2();
     dismiss();
-  }, [dismiss]);
+  }, [dismiss, recordSwipeP2]);
 
   const handleLike = useCallback(() => {
+    recordSwipeP3();
     like();
-  }, [like]);
+  }, [like, recordSwipeP3]);
 
   const handleLongPress = useCallback(() => {
     if (!currentCard?.id) return;
@@ -170,12 +179,6 @@ export default function ExploreScreen() {
       setContextText(detail.panel_2.context);
     }).catch(() => {});
   }, [currentCard]);
-
-  const handleSwipeUp = useCallback(() => {
-    if (currentCard?.id) {
-      router.push(`/thought/${currentCard.id}`);
-    }
-  }, [currentCard, router]);
 
   // ── Friends segment ────────────────────────────────
   if (segment === "friends") {

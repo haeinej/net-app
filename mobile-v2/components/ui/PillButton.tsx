@@ -81,8 +81,9 @@ const variantStyles = {
 
 const styles = StyleSheet.create({
   pill: {
-    height: spacing.pillButtonHeight,
+    minHeight: spacing.pillButtonHeight,
     paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: spacing.pillButtonHeight / 2,
     alignItems: "center",
     justifyContent: "center",
