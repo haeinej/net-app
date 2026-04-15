@@ -12,20 +12,24 @@ import { clearAuth } from "../lib/auth-store";
 export default function DeleteAccountScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  const confirmed = confirmation.trim().toUpperCase() === "DELETE";
 
   const handleDelete = async () => {
-    if (!password.trim()) return;
+    if (!confirmed || deleting) return;
 
     const doDelete = async () => {
       setDeleting(true);
+      setError("");
       try {
-        await api.deleteAccount(password);
+        await api.deleteAccount("");
         await clearAuth();
         router.replace("/login");
       } catch (e: any) {
-        if (Platform.OS !== "web") Alert.alert("Error", e?.message ?? "Could not delete account");
+        setError(e?.message ?? "Could not delete account. Please try again.");
         setDeleting(false);
       }
     };
@@ -35,7 +39,7 @@ export default function DeleteAccountScreen() {
     } else {
       Alert.alert(
         "Delete Account",
-        "This is permanent. All your thoughts, replies, and profile data will be deleted. This cannot be undone.",
+        "This is permanent. All your thoughts, replies, and profile data will be deleted forever.",
         [
           { text: "Cancel", style: "cancel" },
           { text: "Delete Forever", style: "destructive", onPress: doDelete },
@@ -61,22 +65,24 @@ export default function DeleteAccountScreen() {
           This will permanently delete your account, all your thoughts, and all your data. This cannot be undone.
         </Text>
 
-        <Text style={styles.label}>Enter your password to confirm</Text>
+        <Text style={styles.label}>Type DELETE to confirm</Text>
         <TextInput
           style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
+          value={confirmation}
+          onChangeText={setConfirmation}
+          placeholder="DELETE"
           placeholderTextColor={colors.TYPE_MUTED}
-          secureTextEntry
-          autoCapitalize="none"
+          autoCapitalize="characters"
+          autoCorrect={false}
         />
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <PillButton
           label={deleting ? "Deleting..." : "Delete My Account"}
           onPress={handleDelete}
           variant="vermillion"
-          disabled={!password.trim() || deleting}
+          disabled={!confirmed || deleting}
           style={{ marginTop: 24, width: "100%" }}
         />
       </View>
@@ -92,4 +98,5 @@ const styles = StyleSheet.create({
   warning: { fontSize: 14, color: shared.VERMILLION, lineHeight: 20, marginBottom: 24, fontFamily: "Helvetica Neue" },
   label: { fontSize: 9, fontWeight: "500", color: colors.TYPE_MUTED, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, fontFamily: "Helvetica Neue" },
   input: { backgroundColor: colors.SURFACE, borderRadius: 12, padding: 14, fontSize: 15, color: colors.TYPE_PRIMARY, fontFamily: "Helvetica Neue" },
+  errorText: { color: shared.VERMILLION, fontSize: 12, marginTop: 8, fontFamily: "Helvetica Neue" },
 });

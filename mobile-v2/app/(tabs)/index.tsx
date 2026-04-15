@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Platform,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
@@ -228,7 +229,8 @@ export default function ExploreScreen() {
       )}
 
       {/* Floating UI on top */}
-      <View style={[styles.floatingUI, { paddingTop: insets.top }]}>
+      <StatusBar style="light" />
+      <View style={[styles.floatingUI, { paddingTop: insets.top }]} pointerEvents="box-none">
         <TopBar hasNotification={true} />
         <View style={styles.segmentBar}>
           <Pressable onPress={() => setSegment("explore")}>
