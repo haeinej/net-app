@@ -5,9 +5,11 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withSequence,
   runOnJS,
   interpolate,
   Extrapolation,
+  Easing,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Platform } from "react-native";
@@ -20,10 +22,13 @@ const Haptics = {
   },
   ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
 };
-import { springs, easings, durations, motion } from "../../theme";
+
+// ohm-motion spring configs — physical, not canned
+const SPRING_SNAPPY = { damping: 20, stiffness: 300, mass: 0.8 };
+const SPRING_BOUNCY = { damping: 12, stiffness: 200, mass: 0.6 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.35;
 const VELOCITY_THRESHOLD = 500;
 
 interface CardGesturesProps {
@@ -44,7 +49,7 @@ export function CardGestures({
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const cardScale = useSharedValue(1);
-  const isActive = useSharedValue(false);
+  const cardOpacity = useSharedValue(1);
 
   // Hermes-safe stable refs for runOnJS
   const swipeRightRef = useRef(onSwipeRight);
@@ -54,14 +59,23 @@ export function CardGestures({
   const longPressRef = useRef(onLongPress);
   longPressRef.current = onLongPress;
 
+  const resetTransform = () => {
+    translateX.value = 0;
+    translateY.value = 0;
+    cardScale.value = 1;
+    cardOpacity.value = 1;
+  };
+
   const handleSwipeRight = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     swipeRightRef.current?.();
+    resetTransform();
   };
 
   const handleSwipeLeft = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     swipeLeftRef.current?.();
+    resetTransform();
   };
 
   const handleLongPress = () => {
@@ -72,52 +86,67 @@ export function CardGestures({
   const pan = Gesture.Pan()
     .enabled(enabled)
     .onStart(() => {
-      isActive.value = true;
-      cardScale.value = withSpring(motion.cardScaleOnPress, springs.snap);
+      // Subtle press-in: card breathes on touch (metaball feel)
+      cardScale.value = withSpring(0.98, SPRING_SNAPPY);
     })
     .onUpdate((e: { translationX: number; translationY: number }) => {
+      // 1:1 tracking — finger moves, card moves
       translateX.value = e.translationX;
-      translateY.value = e.translationY * 0.3; // damped vertical
+      // Damped vertical — resist vertical movement like rubber
+      translateY.value = e.translationY * 0.25;
+      // Scale couples to distance: further from center = slightly smaller
+      const dist = Math.abs(e.translationX) / SCREEN_WIDTH;
+      cardScale.value = interpolate(dist, [0, 0.5], [0.98, 0.93], Extrapolation.CLAMP);
     })
-    .onEnd((e: { translationX: number; velocityX: number }) => {
-      isActive.value = false;
+    .onEnd((e: { translationX: number; translationY: number; velocityX: number; velocityY: number }) => {
       const shouldSwipeRight =
-        e.translationX > SWIPE_THRESHOLD || e.velocityX > VELOCITY_THRESHOLD;
+        e.translationX > SWIPE_THRESHOLD || (e.translationX > 0 && e.velocityX > VELOCITY_THRESHOLD);
       const shouldSwipeLeft =
-        e.translationX < -SWIPE_THRESHOLD || e.velocityX < -VELOCITY_THRESHOLD;
+        e.translationX < -SWIPE_THRESHOLD || (e.translationX < 0 && e.velocityX < -VELOCITY_THRESHOLD);
 
       if (shouldSwipeRight) {
-        translateX.value = withTiming(SCREEN_WIDTH * 1.5, {
-          duration: durations.slow,
+        // Exit with momentum carry — the card continues its velocity
+        translateX.value = withSpring(SCREEN_WIDTH * 1.3, {
+          ...SPRING_SNAPPY,
+          velocity: e.velocityX,
         });
+        cardOpacity.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
         runOnJS(handleSwipeRight)();
       } else if (shouldSwipeLeft) {
-        translateX.value = withTiming(-SCREEN_WIDTH * 1.5, {
-          duration: durations.slow,
+        translateX.value = withSpring(-SCREEN_WIDTH * 1.3, {
+          ...SPRING_SNAPPY,
+          velocity: e.velocityX,
         });
+        cardOpacity.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
         runOnJS(handleSwipeLeft)();
       } else {
-        // Snap back
-        translateX.value = withSpring(0, springs.snap);
-        translateY.value = withSpring(0, springs.snap);
+        // Snap back with bouncy spring — visible overshoot, organic settle
+        translateX.value = withSpring(0, SPRING_BOUNCY);
+        translateY.value = withSpring(0, SPRING_BOUNCY);
+        cardScale.value = withSpring(1, SPRING_BOUNCY);
       }
-      cardScale.value = withSpring(1, springs.snap);
     });
 
   const longPress = Gesture.LongPress()
     .enabled(enabled)
     .minDuration(400)
     .onStart(() => {
+      // Scale breathing: press in then pulse on long-press recognition
+      cardScale.value = withSequence(
+        withSpring(0.96, { damping: 15, stiffness: 400 }),
+        withSpring(1, SPRING_BOUNCY)
+      );
       runOnJS(handleLongPress)();
     });
 
   const gesture = Gesture.Race(pan, longPress);
 
   const animatedStyle = useAnimatedStyle(() => {
+    // Rotation coupled to horizontal movement (like holding a physical card)
     const rotation = interpolate(
       translateX.value,
-      [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-      [-motion.cardRotationMax, 0, motion.cardRotationMax],
+      [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
+      [-8, 0, 8],
       Extrapolation.CLAMP
     );
 
@@ -128,6 +157,7 @@ export function CardGestures({
         { rotate: `${rotation}deg` },
         { scale: cardScale.value },
       ],
+      opacity: cardOpacity.value,
     };
   });
 
