@@ -16,7 +16,10 @@ import { useCardDeckStore } from "../../hooks/stores/cardDeckStore";
 import { SkeletonCard, SkeletonGrid } from "../../components/ui/Skeleton";
 import { TopBar } from "../../components/ui/TopBar";
 import { PuzzleGrid } from "../../components/feed/PuzzleGrid";
+import { CardGestures } from "../../components/card/CardGestures";
+import { ContextOverlay } from "../../components/card/ContextOverlay";
 import * as api from "../../lib/api";
+import { formatRelativeTime } from "../../lib/format";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const ohmLogo = require("../../assets/images/ohm-logo.png");
@@ -135,6 +138,8 @@ export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
+  const [contextVisible, setContextVisible] = useState(false);
+
   // Connect to the real store (cache + API)
   const { cards, loading, initialized, init, like, dismiss } = useCardDeckStore();
   const friendsFeed = useFriendsFeed();
@@ -148,6 +153,20 @@ export default function ExploreScreen() {
   const handleNext = useCallback(() => {
     dismiss();
   }, [dismiss]);
+
+  const handleLike = useCallback(() => {
+    like();
+  }, [like]);
+
+  const handleLongPress = useCallback(() => {
+    setContextVisible(true);
+  }, []);
+
+  const handleSwipeUp = useCallback(() => {
+    if (currentCard?.id) {
+      router.push(`/thought/${currentCard.id}`);
+    }
+  }, [currentCard, router]);
 
   // ── Friends segment ────────────────────────────────
   if (segment === "friends") {
@@ -195,7 +214,13 @@ export default function ExploreScreen() {
       {!initialized || (!currentCard && loading) ? (
         <SkeletonCard />
       ) : currentCard ? (
-        <ExploreCard card={currentCard} onNext={handleNext} />
+        <CardGestures
+          onSwipeLeft={handleNext}
+          onSwipeRight={handleLike}
+          onLongPress={handleLongPress}
+        >
+          <ExploreCard card={currentCard} onNext={handleNext} />
+        </CardGestures>
       ) : (
         <View style={[styles.container, styles.emptyState]}>
           <Text style={styles.emptyText}>You've seen everything. Come back later.</Text>
@@ -214,6 +239,23 @@ export default function ExploreScreen() {
           </Pressable>
         </View>
       </View>
+
+      {/* Context overlay (long-press) */}
+      {currentCard && (
+        <ContextOverlay
+          visible={contextVisible}
+          sentence={currentCard.sentence ?? ""}
+          context={currentCard.context ?? ""}
+          authorName={currentCard.authorName ?? ""}
+          authorPhotoUrl={currentCard.authorPhotoUrl}
+          timeAgo={currentCard.createdAt ? formatRelativeTime(currentCard.createdAt) : ""}
+          onClose={() => setContextVisible(false)}
+          onSync={() => {
+            setContextVisible(false);
+            if (currentCard.id) router.push(`/thought/${currentCard.id}`);
+          }}
+        />
+      )}
     </View>
   );
 }
