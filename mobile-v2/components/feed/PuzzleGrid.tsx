@@ -13,6 +13,7 @@ export interface GridItem {
   authorName?: string;
   authorColor?: string;
   synced?: boolean;
+  blurred?: boolean;
 }
 
 interface PuzzleGridProps {
@@ -68,6 +69,7 @@ export function PuzzleGrid({
                 authorColor={item.authorColor}
                 showAuthor={showAuthors}
                 synced={item.synced}
+                blurred={item.blurred}
                 index={colIndex * 10 + itemIndex}
               />
             </AnimatedPressable>

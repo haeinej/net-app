@@ -212,6 +212,8 @@ export default function ExploreScreen() {
                 refreshing={friendsFeed.refreshing}
                 onRefresh={friendsFeed.refresh}
                 tintColor={shared.VERMILLION}
+                colors={[shared.VERMILLION]}
+                progressViewOffset={-10}
               />
             }
           >
