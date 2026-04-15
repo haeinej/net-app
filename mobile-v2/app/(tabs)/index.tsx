@@ -18,6 +18,7 @@ import { useCardDeckStore } from "../../hooks/stores/cardDeckStore";
 import { SkeletonCard, SkeletonGrid } from "../../components/ui/Skeleton";
 import { TopBar } from "../../components/ui/TopBar";
 import { PuzzleGrid } from "../../components/feed/PuzzleGrid";
+import { useHeroTransition } from "../../components/feed/HeroTransition";
 import { CardGestures } from "../../components/card/CardGestures";
 import { ContextOverlay } from "../../components/card/ContextOverlay";
 import { AnimatedPressable } from "../../components/ui/AnimatedPressable";
@@ -148,6 +149,9 @@ export default function ExploreScreen() {
   const [contextVisible, setContextVisible] = useState(false);
   const [contextText, setContextText] = useState("");
 
+  // Hero transition for gallery → full-screen
+  const { startTransition, HeroOverlay } = useHeroTransition();
+
   // Connect to the real store (cache + API)
   const { cards, loading, initialized, init, like, dismiss } = useCardDeckStore();
   const friendsFeed = useFriendsFeed();
@@ -217,10 +221,11 @@ export default function ExploreScreen() {
               />
             }
           >
-            <PuzzleGrid items={gridItems} showAuthors />
+            <PuzzleGrid items={gridItems} showAuthors onItemPress={(_id, item, rect) => startTransition(item, rect)} />
             <View style={{ height: 100 }} />
           </ScrollView>
         )}
+        {HeroOverlay}
       </View>
     );
   }
